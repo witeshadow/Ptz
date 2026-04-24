@@ -368,19 +368,24 @@ def capture_usb_device(index: str) -> bytes:
         tmp = f.name
     try:
         if _IS_MACOS:
-            # -ss 0.3: skip warm-up frames; try plain index first then index:none
+            # Try each device variant without a forced framerate first (lets avfoundation
+            # negotiate the native rate), then retry with 30fps for cameras that require it.
             for device_arg in (index, f"{index}:none"):
-                args = [
-                    "ffmpeg", "-y",
-                    "-f", "avfoundation", "-framerate", "30",
-                    "-i", device_arg,
-                    "-ss", "0.3",
-                    "-frames:v", "1", "-q:v", "3",
-                    "-pix_fmt", "yuvj420p",
-                    tmp,
-                ]
-                if _ffmpeg_grab(args, tmp):
-                    break
+                for framerate_args in ([], ["-framerate", "30"]):
+                    args = [
+                        "ffmpeg", "-y",
+                        "-f", "avfoundation", *framerate_args,
+                        "-i", device_arg,
+                        "-ss", "0.3",
+                        "-frames:v", "1", "-q:v", "3",
+                        "-pix_fmt", "yuvj420p",
+                        tmp,
+                    ]
+                    if _ffmpeg_grab(args, tmp):
+                        break
+                else:
+                    continue
+                break
             else:
                 if _HAS_CV2:
                     return _capture_cv2(int(index))
