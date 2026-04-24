@@ -236,7 +236,7 @@
     /* ── Preset grid ─────────────────────────────────── */
     #preset-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 10px;
     }
 
@@ -832,7 +832,7 @@
 
   function renderGrid() {
     elGrid.innerHTML = '';
-    for (let n = 1; n <= 9; n++) {
+    for (let n = 0; n <= 11; n++) {
       elGrid.appendChild(buildPresetBtn(n));
     }
   }
@@ -1035,12 +1035,12 @@
 
     const captureErrors = [];
 
-    for (let p = 1; p <= 9; p++) {
+    for (let p = 0; p <= 11; p++) {
       if (cancelScan) break;
 
-      elScanFill.style.width = `${Math.round((p - 1) / 9 * 100)}%`;
-      elScanLbl.textContent  = `Recalling preset ${p} of 9…`;
-      setStatus('busy', `Scanning preset ${p} of 9…`, false);
+      elScanFill.style.width = `${Math.round(p / 12 * 100)}%`;
+      elScanLbl.textContent  = `Recalling preset ${p} of 11…`;
+      setStatus('busy', `Scanning preset ${p} of 11…`, false);
 
       const result = await doRecall(p);
       if (!result.success) console.warn(`Recall ${p}:`, result.message);
@@ -1050,9 +1050,9 @@
       const steps = 20;
       for (let i = 0; i < steps; i++) {
         if (cancelScan) break;
-        const pct = Math.round(((p - 1) + (i + 1) / steps) / 9 * 100);
+        const pct = Math.round((p + (i + 1) / steps) / 12 * 100);
         elScanFill.style.width = pct + '%';
-        elScanLbl.textContent  = `Waiting… preset ${p} of 9`;
+        elScanLbl.textContent  = `Waiting… preset ${p} of 11`;
         await sleep(dwell / steps);
       }
       if (cancelScan) break;

@@ -495,7 +495,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         ip = str(data.get("ip", "")).strip()
         port = int(data.get("port", 52381))
-        preset = max(0, int(data.get("preset", 1)) - 1)
+        preset = max(0, int(data.get("preset", 0)))
         camera = max(1, min(7, int(data.get("camera", 1))))
         if not ip:
             self._json(400, {"success": False, "message": "Camera IP is required"})
