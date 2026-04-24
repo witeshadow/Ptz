@@ -3,12 +3,16 @@
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
+import glob
 import json
 import os
+import platform
 import queue
 import re
 import socket
 import struct
+import subprocess
+import tempfile
 import threading
 import time
 
@@ -17,6 +21,15 @@ try:
     _HAS_PLAYWRIGHT = True
 except ImportError:
     _HAS_PLAYWRIGHT = False
+
+try:
+    import cv2 as _cv2
+    _HAS_CV2 = True
+except ImportError:
+    _cv2 = None  # type: ignore[assignment]
+    _HAS_CV2 = False
+
+_IS_MACOS = platform.system() == "Darwin"
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -28,9 +41,9 @@ SETTINGS_F = os.path.join(DATA_DIR, "settings.json")
 DEFAULT_SETTINGS = {
     "activeCam": 0,
     "cameras": [
-        {"name": "Camera 1", "ip": "", "port": 1259, "viscaAddr": 1, "atemInput": 1},
-        {"name": "Camera 2", "ip": "", "port": 1259, "viscaAddr": 1, "atemInput": 2},
-        {"name": "Camera 3", "ip": "", "port": 1259, "viscaAddr": 1, "atemInput": 3},
+        {"name": "Camera 1", "ip": "", "port": 52381, "viscaAddr": 1, "atemInput": 1, "streamUrl": "", "usbDevice": ""},
+        {"name": "Camera 2", "ip": "", "port": 52381, "viscaAddr": 1, "atemInput": 2, "streamUrl": "", "usbDevice": ""},
+        {"name": "Camera 3", "ip": "", "port": 52381, "viscaAddr": 1, "atemInput": 3, "streamUrl": "", "usbDevice": ""},
     ],
     "labels": {"0:1": "Stage Left", "0:5": "Wide"},
     "dwellMs": 3000,
@@ -300,6 +313,91 @@ def _capture_url(url: str) -> bytes:
         return _pw_page.screenshot(type="jpeg", full_page=False)
 
 
+# ── USB device capture ─────────────────────────────────────────────────────────
+def list_usb_devices() -> list:
+    devices = []
+    if _IS_MACOS:
+        try:
+            r = subprocess.run(
+                ["ffmpeg", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
+                capture_output=True, timeout=5,
+            )
+            in_video = False
+            for line in r.stderr.decode("utf-8", errors="replace").splitlines():
+                if "AVFoundation video devices" in line:
+                    in_video = True
+                    continue
+                if "AVFoundation audio devices" in line:
+                    break
+                if in_video:
+                    m = re.search(r"\[(\d+)\]\s+(.+)", line)
+                    if m:
+                        devices.append({"index": m.group(1), "name": m.group(2).strip()})
+        except Exception:
+            pass
+    else:
+        for dev in sorted(glob.glob("/dev/video*")):
+            idx = dev.replace("/dev/video", "")
+            name = dev
+            try:
+                r = subprocess.run(
+                    ["v4l2-ctl", "--device", dev, "--info"],
+                    capture_output=True, timeout=3,
+                )
+                for line in r.stdout.decode().splitlines():
+                    if "Card type" in line:
+                        name = line.split(":", 1)[1].strip()
+                        break
+            except Exception:
+                pass
+            devices.append({"index": idx, "name": name})
+    return devices
+
+
+def capture_usb_device(index: str) -> bytes:
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+        tmp = f.name
+    try:
+        if _IS_MACOS:
+            args = [
+                "ffmpeg", "-y",
+                "-f", "avfoundation", "-framerate", "30",
+                "-i", f"{index}:none",
+                "-frames:v", "1", "-q:v", "3", tmp,
+            ]
+        else:
+            args = [
+                "ffmpeg", "-y",
+                "-f", "v4l2", "-i", f"/dev/video{index}",
+                "-frames:v", "1", "-q:v", "3", tmp,
+            ]
+        r = subprocess.run(args, capture_output=True, timeout=15)
+        if r.returncode == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0:
+            with open(tmp, "rb") as f:
+                return f.read()
+        # ffmpeg failed — try OpenCV
+        if _HAS_CV2:
+            return _capture_cv2(int(index))
+        raise RuntimeError(r.stderr.decode("utf-8", errors="replace")[-400:])
+    finally:
+        try:
+            os.unlink(tmp)
+        except Exception:
+            pass
+
+
+def _capture_cv2(index: int) -> bytes:
+    cap = _cv2.VideoCapture(index)
+    for _ in range(3):   # first frames often corrupt on cold open
+        cap.read()
+    ret, frame = cap.read()
+    cap.release()
+    if not ret:
+        raise RuntimeError(f"cv2: no frame from device {index}")
+    _, buf = _cv2.imencode(".jpg", frame, [_cv2.IMWRITE_JPEG_QUALITY, 70])
+    return bytes(buf)
+
+
 # ── MIME types ─────────────────────────────────────────────────────────────────
 _MIME = {
     ".html": "text/html; charset=utf-8",
@@ -330,6 +428,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, _get_atem())
         elif path == "/events":
             self._sse()
+        elif path == "/api/devices":
+            self._json(200, list_usb_devices())
         elif m := re.match(r"^/api/image/(\d+)/(\d+)$", path):
             self._get_image(int(m.group(1)), int(m.group(2)))
         else:
@@ -410,28 +510,35 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, {"ok": True})
 
     def _capture_image(self, cam: int, preset: int):
-        if not _HAS_PLAYWRIGHT:
-            self._json(503, {
-                "ok": False,
-                "error": "playwright not installed — run: pip install playwright && playwright install chromium",
-            })
-            return
-        body = self._read_body()
         try:
-            data = json.loads(body)
-            url  = data.get("url", "").strip()
+            req = json.loads(self._read_body())
         except Exception:
-            url = ""
-        if not url:
-            # fall back to streamUrl stored in settings for this camera
-            settings = load_settings()
-            cameras  = settings.get("cameras", [])
-            url = cameras[cam].get("streamUrl", "") if cam < len(cameras) else ""
-        if not url:
-            self._json(400, {"ok": False, "error": "no stream URL configured for this camera"})
-            return
+            req = {}
+
+        usb = req.get("usbDevice", "").strip()
+        url = req.get("url", "").strip()
+
+        # fall back to per-camera settings when client sends nothing
+        if not usb and not url:
+            cams = load_settings().get("cameras", [])
+            if cam < len(cams):
+                usb = cams[cam].get("usbDevice", "").strip()
+                url = cams[cam].get("streamUrl", "").strip()
+
         try:
-            jpeg = _capture_url(url)
+            if usb:
+                jpeg = capture_usb_device(usb)
+            elif url:
+                if not _HAS_PLAYWRIGHT:
+                    self._json(503, {
+                        "ok": False,
+                        "error": "playwright not installed — run: pip install playwright && playwright install chromium",
+                    })
+                    return
+                jpeg = _capture_url(url)
+            else:
+                self._json(400, {"ok": False, "error": "no capture source configured for this camera"})
+                return
             _ensure_dirs()
             fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
             with open(fpath, "wb") as f:
@@ -508,7 +615,7 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         return self.rfile.read(length)
 
-    def _json(self, status: int, data: dict):
+    def _json(self, status: int, data: dict | list):
         body = json.dumps(data).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")

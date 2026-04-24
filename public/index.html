@@ -174,7 +174,8 @@
     #f-visca      { width: 66px; }
     #f-atem-input { width: 66px; }
     #f-webcam     { width: 190px; }
-    #f-stream-url { width: 230px; }
+    #f-usb-device { width: 190px; }
+    #f-stream-url { width: 220px; }
     #f-dwell      { width: 68px; }
 
     .sep {
@@ -426,12 +427,17 @@
   </div>
   <div class="sep"></div>
   <div class="field">
-    <label for="f-webcam">Webcam Source</label>
-    <select id="f-webcam"><option value="">— select —</option></select>
+    <label for="f-usb-device">USB Device (server)</label>
+    <select id="f-usb-device"><option value="">— none —</option></select>
   </div>
   <div class="field">
     <label for="f-stream-url">VDO.ninja / URL</label>
     <input id="f-stream-url" type="text" placeholder="https://vdo.ninja/?view=…" autocomplete="off" spellcheck="false" />
+  </div>
+  <div class="sep"></div>
+  <div class="field">
+    <label for="f-webcam">Browser Preview</label>
+    <select id="f-webcam"><option value="">— select —</option></select>
   </div>
   <div class="field">
     <label for="f-dwell">Dwell (s)</label>
@@ -477,9 +483,9 @@
 
   // ── State ──────────────────────────────────────────────────────────────────
   const DEF_CAMERAS = [
-    { name: 'Camera 1', ip: '', port: 52381, viscaAddr: 1, atemInput: 1, streamUrl: '' },
-    { name: 'Camera 2', ip: '', port: 52381, viscaAddr: 1, atemInput: 2, streamUrl: '' },
-    { name: 'Camera 3', ip: '', port: 52381, viscaAddr: 1, atemInput: 3, streamUrl: '' },
+    { name: 'Camera 1', ip: '', port: 52381, viscaAddr: 1, atemInput: 1, streamUrl: '', usbDevice: '' },
+    { name: 'Camera 2', ip: '', port: 52381, viscaAddr: 1, atemInput: 2, streamUrl: '', usbDevice: '' },
+    { name: 'Camera 3', ip: '', port: 52381, viscaAddr: 1, atemInput: 3, streamUrl: '', usbDevice: '' },
   ];
 
   let state = {
@@ -649,7 +655,7 @@
     elAtemEnabled.checked = !!state.atem.enabled;
     elAtemIp.value        = state.atem.ip || '';
     updateAtemPill(false);
-    // stream URL — restore iframe/mode for this camera
+    elUsbDevice.value = cam.usbDevice || '';
     const url = cam.streamUrl || '';
     elStreamUrl.value = url;
     applyStreamUrl(url);
@@ -661,6 +667,7 @@
     cam.port       = parseInt(elPort.value, 10) || 52381;
     cam.viscaAddr  = parseInt(elVisca.value, 10) || 1;
     cam.atemInput  = parseInt(elAtemInput.value, 10) || 1;
+    cam.usbDevice  = elUsbDevice.value;
     cam.streamUrl  = elStreamUrl.value.trim();
     state.dwellMs  = (parseInt(elDwell.value, 10) || 3) * 1000;
     state.atem.enabled = elAtemEnabled.checked;
@@ -701,6 +708,7 @@
 
   // ── Webcam / stream source ────────────────────────────────────────────────
   const elWebcam      = document.getElementById('f-webcam');
+  const elUsbDevice   = document.getElementById('f-usb-device');
   const elStreamUrl   = document.getElementById('f-stream-url');
   const elPreview     = document.getElementById('webcam-preview');
   const elVideo       = document.getElementById('webcam-video');
@@ -777,22 +785,30 @@
     applyStreamUrl(url);
   });
 
-  // captureFrame: webcam → canvas→blob→POST /api/image
-  //               url    → POST /api/capture (server uses playwright)
+  elUsbDevice.addEventListener('change', () => {
+    state.cameras[state.activeCam].usbDevice = elUsbDevice.value;
+    schedSave();
+  });
+
+  // captureFrame priority: USB device (ffmpeg) > stream URL (playwright) > browser webcam
   async function captureFrame(cam, preset) {
-    if (sourceMode === 'url') {
-      const url = state.cameras[cam].streamUrl || '';
-      if (!url) { setStatus('error', 'No stream URL set for this camera'); return false; }
-      const res = await fetch(`/api/capture/${cam}/${preset}`, {
+    const camera = state.cameras[cam];
+    const usb = camera.usbDevice || '';
+    const url = camera.streamUrl || '';
+
+    if (usb || url) {
+      const body = usb ? { usbDevice: usb } : { url };
+      const res  = await fetch(`/api/capture/${cam}/${preset}`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ url }),
+        body:    JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setStatus('error', data.error || 'Capture failed'); return false; }
       return true;
     }
 
+    // browser webcam fallback
     if (!videoStream || !elVideo.videoWidth) return false;
     const maxW = 640, maxH = 360;
     let sw = elVideo.videoWidth, sh = elVideo.videoHeight;
@@ -1006,11 +1022,10 @@
   async function scanAll() {
     const cam = state.cameras[state.activeCam];
     if (!cam.ip) { setStatus('error', 'Enter the camera IP address first'); return; }
-    if (sourceMode === 'webcam' && !videoStream) {
-      setStatus('error', 'Select a webcam source or enter a VDO.ninja URL'); return;
-    }
-    if (sourceMode === 'url' && !state.cameras[state.activeCam].streamUrl) {
-      setStatus('error', 'Enter a VDO.ninja URL for this camera'); return;
+    const activeCam = state.cameras[state.activeCam];
+    const hasServerSource = activeCam.usbDevice || activeCam.streamUrl;
+    if (!hasServerSource && !videoStream) {
+      setStatus('error', 'Set a USB device, VDO.ninja URL, or browser webcam for this camera'); return;
     }
 
     scanning = true; cancelScan = false;
@@ -1063,7 +1078,20 @@
       const r = await fetch('/atem/status');
       if (r.ok) { const s = await r.json(); updateAtemPill(s.connected); }
     } catch (_) {}
-    // webcam (localStorage, browser-specific)
+    // USB devices from server
+    try {
+      const devs = await fetch('/api/devices').then(r => r.json());
+      devs.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value       = d.index;
+        opt.textContent = d.name;
+        elUsbDevice.appendChild(opt);
+      });
+      const curCam = state.cameras[state.activeCam];
+      if (curCam.usbDevice) elUsbDevice.value = curCam.usbDevice;
+    } catch (_) {}
+
+    // browser webcam preview (localStorage, device-specific)
     await enumerateWebcams();
     const savedDevice = getWebcamDeviceId();
     if (savedDevice) {
