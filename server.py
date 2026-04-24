@@ -378,7 +378,6 @@ def capture_usb_device(index: str) -> bytes:
                         "-i", device_arg,
                         "-ss", "0.3",
                         "-frames:v", "1", "-q:v", "3",
-                        "-pix_fmt", "yuvj420p",
                         tmp,
                     ]
                     if _ffmpeg_grab(args, tmp):
