@@ -1033,6 +1033,8 @@
     btnScan.classList.add('cancel');
     elScanBar.classList.add('visible');
 
+    const captureErrors = [];
+
     for (let p = 1; p <= 9; p++) {
       if (cancelScan) break;
 
@@ -1041,7 +1043,7 @@
       setStatus('busy', `Scanning preset ${p} of 9…`, false);
 
       const result = await doRecall(p);
-      if (!result.success) setStatus('error', `Preset ${p}: ${result.message}`);
+      if (!result.success) console.warn(`Recall ${p}:`, result.message);
       if (cancelScan) break;
 
       const dwell = state.dwellMs;
@@ -1055,7 +1057,12 @@
       }
       if (cancelScan) break;
 
-      await captureFrame(state.activeCam, p);
+      elScanLbl.textContent = `Capturing preset ${p} of 9…`;
+      const ok = await captureFrame(state.activeCam, p);
+      if (!ok) {
+        captureErrors.push(p);
+        console.error(`Capture failed for preset ${p}`);
+      }
       updatePresetBtn(p, state.activeCam);
     }
 
@@ -1063,7 +1070,11 @@
     btnScan.textContent = 'Scan All Presets';
     btnScan.classList.remove('cancel');
     hideScanBar();
-    setStatus('success', cancelScan ? 'Scan cancelled' : 'Scan complete');
+    if (captureErrors.length) {
+      setStatus('error', `Capture failed for preset(s): ${captureErrors.join(', ')} — check server console`);
+    } else {
+      setStatus('success', cancelScan ? 'Scan cancelled' : 'Scan complete');
+    }
     cancelScan = false;
   }
 
