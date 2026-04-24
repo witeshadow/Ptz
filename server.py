@@ -376,7 +376,6 @@ def capture_usb_device(index: str) -> bytes:
                         "ffmpeg", "-y",
                         "-f", "avfoundation", *framerate_args,
                         "-i", device_arg,
-                        "-ss", "0.3",
                         "-frames:v", "1", "-q:v", "3",
                         tmp,
                     ]
