@@ -354,31 +354,54 @@ def list_usb_devices() -> list:
     return devices
 
 
+def _ffmpeg_grab(args: list, tmp: str) -> bool:
+    r = subprocess.run(args, capture_output=True, timeout=15)
+    stderr = r.stderr.decode("utf-8", errors="replace")
+    if r.returncode != 0 or not os.path.exists(tmp) or os.path.getsize(tmp) == 0:
+        print(f"[ffmpeg] exit={r.returncode}\n{stderr[-600:]}")
+        return False
+    return True
+
+
 def capture_usb_device(index: str) -> bytes:
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
         tmp = f.name
     try:
         if _IS_MACOS:
-            args = [
-                "ffmpeg", "-y",
-                "-f", "avfoundation", "-framerate", "30",
-                "-i", f"{index}:none",
-                "-frames:v", "1", "-q:v", "3", tmp,
-            ]
+            # -ss 0.3: skip warm-up frames; try plain index first then index:none
+            for device_arg in (index, f"{index}:none"):
+                args = [
+                    "ffmpeg", "-y",
+                    "-f", "avfoundation", "-framerate", "30",
+                    "-i", device_arg,
+                    "-ss", "0.3",
+                    "-frames:v", "1", "-q:v", "3",
+                    "-pix_fmt", "yuvj420p",
+                    tmp,
+                ]
+                if _ffmpeg_grab(args, tmp):
+                    break
+            else:
+                if _HAS_CV2:
+                    return _capture_cv2(int(index))
+                raise RuntimeError(
+                    f"ffmpeg avfoundation failed for device {index!r}. "
+                    "Check: System Settings > Privacy > Camera — grant access to Terminal/Python."
+                )
         else:
             args = [
                 "ffmpeg", "-y",
                 "-f", "v4l2", "-i", f"/dev/video{index}",
+                "-ss", "0.1",
                 "-frames:v", "1", "-q:v", "3", tmp,
             ]
-        r = subprocess.run(args, capture_output=True, timeout=15)
-        if r.returncode == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0:
-            with open(tmp, "rb") as f:
-                return f.read()
-        # ffmpeg failed — try OpenCV
-        if _HAS_CV2:
-            return _capture_cv2(int(index))
-        raise RuntimeError(r.stderr.decode("utf-8", errors="replace")[-400:])
+            if not _ffmpeg_grab(args, tmp):
+                if _HAS_CV2:
+                    return _capture_cv2(int(index))
+                raise RuntimeError(f"ffmpeg v4l2 failed for /dev/video{index}")
+
+        with open(tmp, "rb") as f:
+            return f.read()
     finally:
         try:
             os.unlink(tmp)
