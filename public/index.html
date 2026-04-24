@@ -169,12 +169,13 @@
     }
     .field input:focus, .field select:focus { border-color: var(--accent); }
 
-    #f-ip    { width: 158px; }
-    #f-port  { width: 86px; }
-    #f-visca { width: 66px; }
+    #f-ip         { width: 158px; }
+    #f-port       { width: 86px; }
+    #f-visca      { width: 66px; }
     #f-atem-input { width: 66px; }
-    #f-webcam{ width: 190px; }
-    #f-dwell { width: 68px; }
+    #f-webcam     { width: 190px; }
+    #f-stream-url { width: 230px; }
+    #f-dwell      { width: 68px; }
 
     .sep {
       width: 1px; height: 36px; background: var(--border);
@@ -204,16 +205,29 @@
 
     #webcam-preview {
       display: none;
+      flex-shrink: 0;
+      flex-direction: column;
+      gap: 4px;
+    }
+    #webcam-preview.visible { display: flex; }
+
+    #preview-frame {
       border-radius: 6px;
       overflow: hidden;
       border: 1px solid var(--border);
-      flex-shrink: 0;
     }
-    #webcam-preview.visible { display: block; }
-    #webcam-video {
+    #webcam-video, #stream-iframe {
       display: block; width: 160px; height: 90px;
       object-fit: cover; background: #000;
     }
+    #stream-iframe { border: none; }
+
+    #btn-screen-cap {
+      display: none;
+      font-size: .72rem; padding: 4px 8px;
+      border-radius: 5px;
+    }
+    #btn-screen-cap.active { border-color: var(--success); color: var(--success); }
 
     /* ── Main ────────────────────────────────────────── */
     main {
@@ -422,11 +436,19 @@
     <select id="f-webcam"><option value="">— select —</option></select>
   </div>
   <div class="field">
+    <label for="f-stream-url">VDO.ninja / URL</label>
+    <input id="f-stream-url" type="text" placeholder="https://vdo.ninja/?view=…" autocomplete="off" spellcheck="false" />
+  </div>
+  <div class="field">
     <label for="f-dwell">Dwell (s)</label>
     <input id="f-dwell" type="number" value="3" min="1" max="60" />
   </div>
   <div id="webcam-preview">
-    <video id="webcam-video" autoplay muted playsinline></video>
+    <div id="preview-frame">
+      <video id="webcam-video" autoplay muted playsinline></video>
+      <iframe id="stream-iframe" src="" allow="camera; microphone; autoplay; fullscreen" style="display:none"></iframe>
+    </div>
+    <button id="btn-screen-cap" class="btn-ghost">▶ Start capture</button>
   </div>
 </div>
 
@@ -680,13 +702,28 @@
     es.onerror = () => {};  // browser auto-reconnects
   })();
 
-  // ── Webcam ─────────────────────────────────────────────────────────────────
-  const elWebcam  = document.getElementById('f-webcam');
-  const elPreview = document.getElementById('webcam-preview');
-  const elVideo   = document.getElementById('webcam-video');
+  // ── Webcam / stream source ────────────────────────────────────────────────
+  const elWebcam      = document.getElementById('f-webcam');
+  const elStreamUrl   = document.getElementById('f-stream-url');
+  const elPreview     = document.getElementById('webcam-preview');
+  const elVideo       = document.getElementById('webcam-video');
+  const elIframe      = document.getElementById('stream-iframe');
+  const btnScreenCap  = document.getElementById('btn-screen-cap');
   const captureCanvas = document.createElement('canvas');
   const captureCtx    = captureCanvas.getContext('2d');
-  let videoStream = null;
+
+  let videoStream   = null;   // getUserMedia stream
+  let displayStream = null;   // getDisplayMedia stream (for iframe/URL mode)
+  let displayVideo  = null;   // hidden <video> for displayStream
+  let sourceMode    = 'webcam'; // 'webcam' | 'url'
+
+  function _setMode(mode) {
+    sourceMode = mode;
+    elVideo.style.display  = mode === 'webcam' ? 'block' : 'none';
+    elIframe.style.display = mode === 'url'    ? 'block' : 'none';
+    btnScreenCap.style.display = mode === 'url' ? 'inline-flex' : 'none';
+    elPreview.classList.toggle('visible', true);
+  }
 
   async function enumerateWebcams() {
     try {
@@ -707,13 +744,12 @@
   async function startWebcam(deviceId) {
     try {
       if (videoStream) videoStream.getTracks().forEach(t => t.stop());
-      const constraints = {
+      videoStream = await navigator.mediaDevices.getUserMedia({
         video: deviceId ? { deviceId: { exact: deviceId } } : true,
         audio: false,
-      };
-      videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+      });
       elVideo.srcObject = videoStream;
-      elPreview.classList.add('visible');
+      _setMode('webcam');
       setWebcamDeviceId(deviceId);
       await enumerateWebcams();
     } catch (e) {
@@ -721,20 +757,82 @@
     }
   }
 
+  function startUrlSource(url) {
+    elIframe.src = url;
+    _setMode('url');
+    btnScreenCap.textContent = '▶ Start capture';
+    btnScreenCap.classList.remove('active');
+    // reset any old display stream
+    if (displayStream) { displayStream.getTracks().forEach(t => t.stop()); displayStream = null; }
+  }
+
   elWebcam.addEventListener('change', () => {
     const id = elWebcam.value;
-    if (id) startWebcam(id);
+    if (id) {
+      elStreamUrl.value = '';
+      startWebcam(id);
+    }
+  });
+
+  elStreamUrl.addEventListener('change', () => {
+    const url = elStreamUrl.value.trim();
+    if (url) {
+      elWebcam.value = '';
+      startUrlSource(url);
+    }
+  });
+
+  btnScreenCap.addEventListener('click', async () => {
+    try {
+      if (displayStream) { displayStream.getTracks().forEach(t => t.stop()); displayStream = null; }
+      displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: 'browser' },
+        preferCurrentTab: true,
+      });
+      if (!displayVideo) {
+        displayVideo = document.createElement('video');
+        displayVideo.muted   = true;
+        displayVideo.autoplay = true;
+      }
+      displayVideo.srcObject = displayStream;
+      await displayVideo.play().catch(() => {});
+      displayStream.getVideoTracks()[0].addEventListener('ended', () => {
+        displayStream = null;
+        btnScreenCap.textContent = '▶ Start capture';
+        btnScreenCap.classList.remove('active');
+      });
+      btnScreenCap.textContent = '● Capturing';
+      btnScreenCap.classList.add('active');
+    } catch (e) {
+      setStatus('error', `Screen capture: ${e.message}`);
+    }
   });
 
   async function captureFrame(cam, preset) {
-    if (!videoStream || !elVideo.videoWidth) return false;
-    const maxW = 640, maxH = 360;
-    let w = elVideo.videoWidth, h = elVideo.videoHeight;
-    if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
-    if (h > maxH) { w = Math.round(w * maxH / h); h = maxH; }
-    captureCanvas.width  = w;
-    captureCanvas.height = h;
-    captureCtx.drawImage(elVideo, 0, 0, w, h);
+    let sw, sh;
+
+    if (sourceMode === 'url') {
+      if (!displayStream || !displayStream.active || !displayVideo?.videoWidth) return false;
+      // crop captured tab image to the iframe's bounding rect
+      const r    = elIframe.getBoundingClientRect();
+      const scaleX = displayVideo.videoWidth  / window.innerWidth;
+      const scaleY = displayVideo.videoHeight / window.innerHeight;
+      captureCanvas.width  = Math.max(1, Math.round(r.width  * scaleX));
+      captureCanvas.height = Math.max(1, Math.round(r.height * scaleY));
+      captureCtx.drawImage(displayVideo,
+        r.left * scaleX, r.top * scaleY, r.width * scaleX, r.height * scaleY,
+        0, 0, captureCanvas.width, captureCanvas.height);
+    } else {
+      if (!videoStream || !elVideo.videoWidth) return false;
+      const maxW = 640, maxH = 360;
+      sw = elVideo.videoWidth; sh = elVideo.videoHeight;
+      if (sw > maxW) { sh = Math.round(sh * maxW / sw); sw = maxW; }
+      if (sh > maxH) { sw = Math.round(sw * maxH / sh); sh = maxH; }
+      captureCanvas.width  = sw;
+      captureCanvas.height = sh;
+      captureCtx.drawImage(elVideo, 0, 0, sw, sh);
+    }
+
     const blob = await new Promise(r => captureCanvas.toBlob(r, 'image/jpeg', 0.65));
     await fetch(`/api/image/${cam}/${preset}`, {
       method:  'POST',
@@ -939,8 +1037,13 @@
 
   async function scanAll() {
     const cam = state.cameras[state.activeCam];
-    if (!cam.ip)     { setStatus('error', 'Enter the camera IP address first'); return; }
-    if (!videoStream){ setStatus('error', 'Select a webcam source to capture snapshots'); return; }
+    if (!cam.ip) { setStatus('error', 'Enter the camera IP address first'); return; }
+    if (sourceMode === 'webcam' && !videoStream) {
+      setStatus('error', 'Select a webcam source or enter a VDO.ninja URL'); return;
+    }
+    if (sourceMode === 'url' && (!displayStream || !displayStream.active)) {
+      setStatus('error', 'Click "Start capture" on the VDO.ninja preview first'); return;
+    }
 
     scanning = true; cancelScan = false;
     btnScan.textContent = 'Cancel';
