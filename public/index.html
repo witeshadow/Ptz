@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PTZ Preset Control — AVIPAS</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d0f16;
+      --surface:   #161923;
+      --surface2:  #1e2233;
+      --border:    #2a2f45;
+      --accent:    #3b82f6;
+      --success:   #10b981;
+      --error:     #ef4444;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --label:     #94a3b8;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-icon {
+      width: 36px; height: 36px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .brand-icon svg { width: 20px; height: 20px; fill: #fff; }
+
+    .brand-text h1 { font-size: 1.05rem; font-weight: 600; color: #fff; }
+    .brand-text p  { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+
+    /* ── Status pill ─────────────────────────────────────────── */
+    #status {
+      margin-left: auto;
+      display: flex; align-items: center; gap: 8px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: 0.8rem;
+      color: var(--label);
+      min-width: 180px;
+      transition: border-color 0.3s;
+    }
+
+    #status.success { border-color: var(--success); color: var(--success); }
+    #status.error   { border-color: var(--error);   color: var(--error);   }
+    #status.busy    { border-color: var(--accent);  color: var(--accent);  }
+
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+
+    #status.success .status-dot { background: var(--success); }
+    #status.error   .status-dot { background: var(--error);   }
+    #status.busy    .status-dot { background: var(--accent); animation: blink 0.8s ease-in-out infinite; }
+
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+    /* ── Settings bar ────────────────────────────────────────── */
+    .settings-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+    }
+
+    .settings-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: flex-end;
+    }
+
+    .field { display: flex; flex-direction: column; gap: 5px; }
+
+    .field label {
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+    }
+
+    .field input,
+    .field select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 7px 10px;
+      font-size: 0.875rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .field input:focus,
+    .field select:focus { border-color: var(--accent); }
+
+    #f-ip     { width: 170px; }
+    #f-port   { width: 90px; }
+    #f-cam    { width: 70px; }
+    #f-count  { width: 80px; }
+
+    /* ── Main content ────────────────────────────────────────── */
+    main {
+      flex: 1;
+      padding: 24px;
+      max-width: 960px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .presets-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .presets-toolbar h2 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      padding: 5px 14px;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-ghost:hover,
+    .btn-ghost.active { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Preset grid ─────────────────────────────────────────── */
+    #preset-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+
+    .preset-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px 10px 14px;
+      cursor: pointer;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      min-height: 84px;
+      transition: border-color 0.15s, background 0.15s, transform 0.1s;
+      user-select: none;
+    }
+
+    .preset-btn:not(.edit-mode):hover {
+      border-color: var(--accent);
+      background: var(--surface2);
+    }
+
+    .preset-btn:not(.edit-mode):active { transform: scale(0.96); }
+
+    .preset-num {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--border);
+      transition: color 0.15s;
+      line-height: 1;
+    }
+
+    .preset-btn:not(.edit-mode):hover .preset-num { color: var(--accent); }
+
+    .preset-name {
+      font-size: 0.72rem;
+      color: var(--muted);
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-height: 14px;
+    }
+
+    /* feedback states */
+    .preset-btn.state-busy   { border-color: var(--accent);  pointer-events: none; }
+    .preset-btn.state-ok     { border-color: var(--success); background: #0a2019; }
+    .preset-btn.state-fail   { border-color: var(--error);   background: #1f0a0a; }
+
+    .preset-btn.state-ok   .preset-num { color: var(--success); }
+    .preset-btn.state-fail .preset-num { color: var(--error);   }
+
+    /* edit-mode: disable hover/click styling */
+    .preset-btn.edit-mode { cursor: default; }
+
+    /* inline label editor */
+    .name-input {
+      font-size: 0.72rem;
+      background: var(--surface2);
+      border: 1px solid var(--accent);
+      border-radius: 4px;
+      color: var(--text);
+      padding: 2px 6px;
+      width: calc(100% - 4px);
+      text-align: center;
+      outline: none;
+    }
+
+    /* ── Footer ──────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--surface);
+      padding: 12px 24px;
+      font-size: 0.7rem;
+      color: var(--border);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="brand-icon">
+    <!-- simple camera SVG -->
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path d="M23 7l-7 5 7 5V7z"/>
+      <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+    </svg>
+  </div>
+  <div class="brand-text">
+    <h1>PTZ Preset Control</h1>
+    <p>AVIPAS Camera &nbsp;&middot;&nbsp; VISCA over IP</p>
+  </div>
+  <div id="status" role="status" aria-live="polite">
+    <div class="status-dot"></div>
+    <span id="status-text">Ready</span>
+  </div>
+</header>
+
+<div class="settings-bar">
+  <div class="settings-row">
+    <div class="field">
+      <label for="f-ip">Camera IP</label>
+      <input id="f-ip" type="text" placeholder="192.168.1.100" autocomplete="off" spellcheck="false" />
+    </div>
+    <div class="field">
+      <label for="f-port">Port</label>
+      <input id="f-port" type="number" value="52381" min="1" max="65535" />
+    </div>
+    <div class="field">
+      <label for="f-cam">Camera #</label>
+      <select id="f-cam">
+        <option>1</option><option>2</option><option>3</option>
+        <option>4</option><option>5</option><option>6</option><option>7</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="f-count">Show</label>
+      <select id="f-count">
+        <option value="8">8</option>
+        <option value="16" selected>16</option>
+        <option value="32">32</option>
+        <option value="64">64</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<main>
+  <div class="presets-toolbar">
+    <h2>Presets</h2>
+    <button class="btn-ghost" id="btn-edit">Edit Labels</button>
+  </div>
+  <div id="preset-grid"></div>
+</main>
+
+<footer>Double-click a preset to rename it &nbsp;&middot;&nbsp; Settings and labels saved in browser</footer>
+
+<script>
+(function () {
+  // ── Persistence ──────────────────────────────────────────────────────────
+  const cfg = JSON.parse(localStorage.getItem('ptz-cfg') || '{}');
+  let   labels = JSON.parse(localStorage.getItem('ptz-labels') || '{}');
+
+  const elIp    = document.getElementById('f-ip');
+  const elPort  = document.getElementById('f-port');
+  const elCam   = document.getElementById('f-cam');
+  const elCount = document.getElementById('f-count');
+
+  elIp.value    = cfg.ip    || '';
+  elPort.value  = cfg.port  || '52381';
+  elCam.value   = cfg.cam   || '1';
+  elCount.value = cfg.count || '16';
+
+  function saveCfg() {
+    localStorage.setItem('ptz-cfg', JSON.stringify({
+      ip: elIp.value, port: elPort.value, cam: elCam.value, count: elCount.value
+    }));
+  }
+
+  [elIp, elPort, elCam].forEach(el => el.addEventListener('change', saveCfg));
+  elCount.addEventListener('change', () => { saveCfg(); renderGrid(); });
+
+  // ── Status bar ───────────────────────────────────────────────────────────
+  const elStatus = document.getElementById('status');
+  const elStatusText = document.getElementById('status-text');
+
+  function setStatus(state, msg) {
+    elStatus.className = state;   // '', 'busy', 'success', 'error'
+    elStatusText.textContent = msg;
+  }
+
+  // ── Edit-label mode ──────────────────────────────────────────────────────
+  let editMode = false;
+  const btnEdit = document.getElementById('btn-edit');
+
+  btnEdit.addEventListener('click', () => {
+    editMode = !editMode;
+    btnEdit.textContent = editMode ? 'Done' : 'Edit Labels';
+    btnEdit.classList.toggle('active', editMode);
+    document.querySelectorAll('.preset-btn').forEach(b =>
+      b.classList.toggle('edit-mode', editMode)
+    );
+  });
+
+  // ── Grid rendering ───────────────────────────────────────────────────────
+  const grid = document.getElementById('preset-grid');
+
+  function renderGrid() {
+    const count = parseInt(elCount.value, 10);
+    grid.style.gridTemplateColumns = count > 16 ? 'repeat(8, 1fr)' : 'repeat(4, 1fr)';
+    grid.innerHTML = '';
+
+    for (let n = 1; n <= count; n++) {
+      const btn = document.createElement('button');
+      btn.className = 'preset-btn' + (editMode ? ' edit-mode' : '');
+      btn.dataset.n = n;
+
+      const numEl = document.createElement('div');
+      numEl.className = 'preset-num';
+      numEl.textContent = n;
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'preset-name';
+      nameEl.textContent = labels[n] || '';
+
+      btn.appendChild(numEl);
+      btn.appendChild(nameEl);
+
+      btn.addEventListener('click', () => {
+        if (!editMode) recallPreset(n, btn);
+      });
+
+      btn.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        openLabelEditor(n, nameEl);
+      });
+
+      grid.appendChild(btn);
+    }
+  }
+
+  // ── Inline label editor ──────────────────────────────────────────────────
+  function openLabelEditor(n, nameEl) {
+    if (nameEl.querySelector('input')) return;
+
+    const prev = labels[n] || '';
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'name-input';
+    inp.value = prev;
+    inp.maxLength = 24;
+    inp.addEventListener('click', e => e.stopPropagation());
+
+    nameEl.innerHTML = '';
+    nameEl.appendChild(inp);
+    inp.focus();
+    inp.select();
+
+    function commit() {
+      const v = inp.value.trim();
+      if (v) labels[n] = v; else delete labels[n];
+      localStorage.setItem('ptz-labels', JSON.stringify(labels));
+      nameEl.innerHTML = '';
+      nameEl.textContent = v;
+    }
+
+    inp.addEventListener('blur', commit);
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter')  inp.blur();
+      if (e.key === 'Escape') { nameEl.innerHTML = ''; nameEl.textContent = prev; }
+    });
+  }
+
+  // ── Preset recall ────────────────────────────────────────────────────────
+  async function recallPreset(n, btn) {
+    const ip = elIp.value.trim();
+    if (!ip) {
+      setStatus('error', 'Enter a camera IP address first');
+      flash(btn, 'fail');
+      return;
+    }
+
+    const port   = parseInt(elPort.value, 10) || 52381;
+    const camera = parseInt(elCam.value, 10)  || 1;
+
+    flash(btn, 'busy');
+    setStatus('busy', `Recalling preset ${n}…`);
+
+    try {
+      const res = await fetch('/recall', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip, port, preset: n, camera })
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        flash(btn, 'ok', 900);
+        setStatus('success', `Preset ${n} recalled — ${data.message}`);
+      } else {
+        flash(btn, 'fail', 1100);
+        setStatus('error', `Preset ${n} failed: ${data.message}`);
+      }
+    } catch (err) {
+      flash(btn, 'fail', 1100);
+      setStatus('error', `Network error: ${err.message}`);
+    }
+  }
+
+  function flash(btn, state, ms = 700) {
+    btn.classList.remove('state-busy', 'state-ok', 'state-fail');
+    btn.classList.add('state-' + state);
+    if (state !== 'busy') {
+      setTimeout(() => btn.classList.remove('state-' + state), ms);
+    }
+  }
+
+  // ── Boot ─────────────────────────────────────────────────────────────────
+  renderGrid();
+})();
+</script>
+</body>
+</html>
