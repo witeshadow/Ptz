@@ -51,8 +51,14 @@
     .brand-text h1  { font-size: 1rem; font-weight: 600; color: #fff; }
     .brand-text p   { font-size: 0.7rem; color: var(--muted); margin-top: 1px; }
 
-    #status {
+    .header-pills {
       margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #status {
       display: flex; align-items: center; gap: 7px;
       background: var(--surf2);
       border: 1px solid var(--border);
@@ -75,6 +81,26 @@
     #status.error   .status-dot { background: var(--error);   }
     #status.busy    .status-dot { background: var(--accent); animation: blink .8s ease-in-out infinite; }
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+    #atem-pill {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--surf2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 5px 11px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      transition: border-color 0.3s, color 0.3s;
+      white-space: nowrap;
+    }
+    #atem-pill.connected { border-color: var(--success); color: var(--success); }
+    #atem-pill.connected .atem-dot { background: var(--success); }
+    #atem-pill.disabled  { opacity: 0.4; }
+
+    .atem-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--muted); flex-shrink: 0;
+    }
 
     /* ── Camera tabs ─────────────────────────────────── */
     #cam-tabs {
@@ -146,6 +172,7 @@
     #f-ip    { width: 158px; }
     #f-port  { width: 86px; }
     #f-visca { width: 66px; }
+    #f-atem-input { width: 66px; }
     #f-webcam{ width: 190px; }
     #f-dwell { width: 68px; }
 
@@ -153,6 +180,27 @@
       width: 1px; height: 36px; background: var(--border);
       align-self: flex-end; margin: 0 2px;
     }
+
+    /* ── ATEM section ────────────────────────────────── */
+    #atem-bar {
+      background: var(--surf);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 20px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 14px;
+      flex-shrink: 0;
+    }
+
+    .atem-toggle-wrap {
+      display: flex; align-items: center; gap: 8px;
+      cursor: pointer; user-select: none;
+    }
+    .atem-toggle-wrap input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); }
+    .atem-toggle-wrap span { font-size: 0.82rem; color: var(--label); }
+
+    #f-atem-ip { width: 158px; }
 
     #webcam-preview {
       display: none;
@@ -197,7 +245,6 @@
     .preset-btn:not(.edit-mode):not(.state-busy):hover { border-color: var(--accent); }
     .preset-btn:not(.edit-mode):not(.state-busy):active { transform: scale(.97); }
 
-    /* no-image state: centred number */
     .preset-num {
       position: absolute;
       inset: 0;
@@ -209,7 +256,6 @@
     .preset-btn:not(.edit-mode):not(.state-busy):hover .preset-num { color: var(--accent); }
     .preset-btn.has-image .preset-num { display: none; }
 
-    /* snapshot image */
     .preset-snapshot {
       position: absolute; inset: 0;
       width: 100%; height: 100%; object-fit: cover;
@@ -217,7 +263,6 @@
     }
     .preset-btn.has-image .preset-snapshot { display: block; }
 
-    /* overlay (visible only when image exists) */
     .preset-overlay {
       position: absolute; bottom: 0; left: 0; right: 0;
       background: linear-gradient(0deg, rgba(0,0,0,.82) 0%, transparent 100%);
@@ -239,7 +284,6 @@
       text-align: right; flex: 1;
     }
 
-    /* clear-image button */
     .preset-clear {
       position: absolute; top: 5px; right: 5px;
       width: 20px; height: 20px;
@@ -253,7 +297,6 @@
     .preset-btn.has-image:hover .preset-clear { display: flex; }
     .preset-clear:hover { background: var(--error); border-color: var(--error); }
 
-    /* inline label editor */
     .name-input {
       font-size: .7rem; background: var(--surf2);
       border: 1px solid var(--accent); border-radius: 3px;
@@ -261,12 +304,10 @@
       text-align: right; outline: none; width: 100%;
     }
 
-    /* feedback states */
     .preset-btn.state-busy  { border-color: var(--accent); pointer-events: none; }
     .preset-btn.state-ok    { border-color: var(--success); }
     .preset-btn.state-fail  { border-color: var(--error); }
 
-    /* edit mode */
     .preset-btn.edit-mode { cursor: default; }
     .preset-btn.edit-mode:hover { border-color: var(--border); }
     .preset-btn.edit-mode:hover .preset-num { color: var(--border); }
@@ -336,9 +377,15 @@
     <h1>PTZ Preset Control</h1>
     <p>AVIPAS Camera &nbsp;&middot;&nbsp; VISCA over IP</p>
   </div>
-  <div id="status" role="status" aria-live="polite">
-    <div class="status-dot"></div>
-    <span id="status-text">Ready</span>
+  <div class="header-pills">
+    <div id="atem-pill" class="disabled">
+      <div class="atem-dot"></div>
+      <span>ATEM</span>
+    </div>
+    <div id="status" role="status" aria-live="polite">
+      <div class="status-dot"></div>
+      <span id="status-text">Ready</span>
+    </div>
   </div>
 </header>
 
@@ -360,6 +407,15 @@
       <option>4</option><option>5</option><option>6</option><option>7</option>
     </select>
   </div>
+  <div class="field">
+    <label for="f-atem-input">ATEM Input</label>
+    <select id="f-atem-input">
+      <option value="1">1</option><option value="2">2</option>
+      <option value="3">3</option><option value="4">4</option>
+      <option value="5">5</option><option value="6">6</option>
+      <option value="7">7</option><option value="8">8</option>
+    </select>
+  </div>
   <div class="sep"></div>
   <div class="field">
     <label for="f-webcam">Webcam Source</label>
@@ -371,6 +427,17 @@
   </div>
   <div id="webcam-preview">
     <video id="webcam-video" autoplay muted playsinline></video>
+  </div>
+</div>
+
+<div id="atem-bar">
+  <label class="atem-toggle-wrap">
+    <input id="f-atem-enabled" type="checkbox" />
+    <span>Follow ATEM Preview</span>
+  </label>
+  <div class="field">
+    <label for="f-atem-ip">ATEM IP</label>
+    <input id="f-atem-ip" type="text" placeholder="192.168.1.200" autocomplete="off" spellcheck="false" />
   </div>
 </div>
 
@@ -393,55 +460,63 @@
 (function () {
   'use strict';
 
-  // ── Default state ──────────────────────────────────────────────────────────
+  // ── State ──────────────────────────────────────────────────────────────────
   const DEF_CAMERAS = [
-    { name: 'Camera 1', ip: '', port: 52381, viscaAddr: 1 },
-    { name: 'Camera 2', ip: '', port: 52381, viscaAddr: 1 },
-    { name: 'Camera 3', ip: '', port: 52381, viscaAddr: 1 },
+    { name: 'Camera 1', ip: '', port: 52381, viscaAddr: 1, atemInput: 1 },
+    { name: 'Camera 2', ip: '', port: 52381, viscaAddr: 1, atemInput: 2 },
+    { name: 'Camera 3', ip: '', port: 52381, viscaAddr: 1, atemInput: 3 },
   ];
 
   let state = {
     activeCam: 0,
     cameras: DEF_CAMERAS.map(c => ({ ...c })),
-    labels: {},     // `${camIdx}:${preset}` → string
+    labels: {},
     dwellMs: 3000,
-    webcamDeviceId: '',
+    atem: { ip: '', enabled: false },
   };
 
-  let images = {};  // `${camIdx}:${preset}` → data URL (stored separately)
+  // webcamDeviceId is browser-specific; stays in localStorage
+  function getWebcamDeviceId()    { return localStorage.getItem('ptz-webcam-device') || ''; }
+  function setWebcamDeviceId(id)  { localStorage.setItem('ptz-webcam-device', id); }
 
-  // ── Persistence ────────────────────────────────────────────────────────────
-  function loadState() {
+  // ── Server persistence ────────────────────────────────────────────────────
+  let saveTimer = null;
+
+  async function loadSettings() {
     try {
-      const s = JSON.parse(localStorage.getItem('ptz-state') || '{}');
-      if (Array.isArray(s.cameras) && s.cameras.length === 3) state.cameras = s.cameras;
-      if (s.activeCam != null) state.activeCam = +s.activeCam;
-      if (s.labels) state.labels = s.labels;
-      if (s.dwellMs) state.dwellMs = +s.dwellMs;
-      if (s.webcamDeviceId) state.webcamDeviceId = s.webcamDeviceId;
+      const res = await fetch('/settings');
+      if (res.ok) {
+        const s = await res.json();
+        if (Array.isArray(s.cameras) && s.cameras.length) {
+          state.cameras  = s.cameras.map(c => ({ ...DEF_CAMERAS[0], ...c }));
+        }
+        if (s.activeCam != null) state.activeCam = +s.activeCam;
+        if (s.labels)   state.labels  = s.labels;
+        if (s.dwellMs)  state.dwellMs = +s.dwellMs;
+        if (s.atem)     state.atem    = { ip: '', enabled: false, ...s.atem };
+      }
     } catch (_) {}
-    try { images = JSON.parse(localStorage.getItem('ptz-images') || '{}'); } catch (_) {}
   }
 
-  function saveState() {
-    localStorage.setItem('ptz-state', JSON.stringify(state));
+  function schedSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(pushSettings, 400);
   }
 
-  function saveImages() {
+  async function pushSettings() {
     try {
-      localStorage.setItem('ptz-images', JSON.stringify(images));
-    } catch (e) {
-      setStatus('error', 'Storage full — some images may not be saved');
-    }
+      await fetch('/settings', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(state),
+      });
+    } catch (_) {}
   }
-
-  function imgKey(cam, preset) { return `${cam}:${preset}`; }
-  function labelKey(cam, preset) { return `${cam}:${preset}`; }
 
   // ── Status pill ────────────────────────────────────────────────────────────
-  const elStatus = document.getElementById('status');
+  const elStatus     = document.getElementById('status');
   const elStatusText = document.getElementById('status-text');
-  let statusTimer = null;
+  let statusTimer    = null;
 
   function setStatus(type, msg, autoClear = true) {
     clearTimeout(statusTimer);
@@ -453,6 +528,17 @@
         elStatusText.textContent = 'Ready';
       }, 4000);
     }
+  }
+
+  // ── ATEM pill ──────────────────────────────────────────────────────────────
+  const elAtemPill = document.getElementById('atem-pill');
+
+  function updateAtemPill(connected) {
+    if (!state.atem.enabled) {
+      elAtemPill.className = 'disabled';
+      return;
+    }
+    elAtemPill.className = connected ? 'connected' : '';
   }
 
   // ── Camera tabs ────────────────────────────────────────────────────────────
@@ -496,7 +582,7 @@
   function switchCamera(idx) {
     saveCameraSettings();
     state.activeCam = idx;
-    saveState();
+    schedSave();
     loadCameraSettings();
     renderTabs();
     renderGrid();
@@ -505,9 +591,9 @@
   function openTabNameEditor(idx, nameEl, nameWrap) {
     if (nameWrap.querySelector('input')) return;
     const prev = state.cameras[idx].name;
-    const inp = document.createElement('input');
+    const inp  = document.createElement('input');
     inp.className = 'cam-name-input';
-    inp.value = prev;
+    inp.value     = prev;
     inp.maxLength = 20;
     inp.addEventListener('click', e => e.stopPropagation());
 
@@ -518,48 +604,81 @@
     function commit() {
       const v = inp.value.trim() || prev;
       state.cameras[idx].name = v;
-      saveState();
-      nameEl.textContent = v;
-      nameEl.style.display = '';
+      schedSave();
+      nameEl.textContent    = v;
+      nameEl.style.display  = '';
       nameWrap.removeChild(inp);
     }
 
     inp.addEventListener('blur', commit);
     inp.addEventListener('keydown', e => {
-      if (e.key === 'Enter') inp.blur();
-      if (e.key === 'Escape') {
-        inp.value = prev;
-        inp.blur();
-      }
+      if (e.key === 'Enter')  inp.blur();
+      if (e.key === 'Escape') { inp.value = prev; inp.blur(); }
     });
   }
 
   // ── Settings bar ───────────────────────────────────────────────────────────
-  const elIp    = document.getElementById('f-ip');
-  const elPort  = document.getElementById('f-port');
-  const elVisca = document.getElementById('f-visca');
-  const elDwell = document.getElementById('f-dwell');
+  const elIp        = document.getElementById('f-ip');
+  const elPort      = document.getElementById('f-port');
+  const elVisca     = document.getElementById('f-visca');
+  const elAtemInput = document.getElementById('f-atem-input');
+  const elDwell     = document.getElementById('f-dwell');
 
   function loadCameraSettings() {
     const cam = state.cameras[state.activeCam];
-    elIp.value    = cam.ip;
-    elPort.value  = cam.port;
-    elVisca.value = cam.viscaAddr;
-    elDwell.value = state.dwellMs / 1000;
+    elIp.value        = cam.ip;
+    elPort.value      = cam.port;
+    elVisca.value     = cam.viscaAddr;
+    elAtemInput.value = cam.atemInput || 1;
+    elDwell.value     = state.dwellMs / 1000;
+    // ATEM fields
+    elAtemEnabled.checked = !!state.atem.enabled;
+    elAtemIp.value        = state.atem.ip || '';
+    updateAtemPill(false);
   }
 
   function saveCameraSettings() {
-    const cam = state.cameras[state.activeCam];
-    cam.ip        = elIp.value.trim();
-    cam.port      = parseInt(elPort.value, 10) || 52381;
-    cam.viscaAddr = parseInt(elVisca.value, 10) || 1;
-    state.dwellMs = (parseInt(elDwell.value, 10) || 3) * 1000;
-    saveState();
+    const cam      = state.cameras[state.activeCam];
+    cam.ip         = elIp.value.trim();
+    cam.port       = parseInt(elPort.value, 10) || 52381;
+    cam.viscaAddr  = parseInt(elVisca.value, 10) || 1;
+    cam.atemInput  = parseInt(elAtemInput.value, 10) || 1;
+    state.dwellMs  = (parseInt(elDwell.value, 10) || 3) * 1000;
+    state.atem.enabled = elAtemEnabled.checked;
+    state.atem.ip      = elAtemIp.value.trim();
   }
 
-  [elIp, elPort, elVisca, elDwell].forEach(el =>
-    el.addEventListener('change', saveCameraSettings)
+  [elIp, elPort, elVisca, elAtemInput, elDwell].forEach(el =>
+    el.addEventListener('change', () => { saveCameraSettings(); schedSave(); })
   );
+
+  // ── ATEM settings ──────────────────────────────────────────────────────────
+  const elAtemEnabled = document.getElementById('f-atem-enabled');
+  const elAtemIp      = document.getElementById('f-atem-ip');
+
+  elAtemEnabled.addEventListener('change', () => {
+    saveCameraSettings();
+    schedSave();
+    updateAtemPill(false);
+  });
+  elAtemIp.addEventListener('change', () => { saveCameraSettings(); schedSave(); });
+
+  // ── SSE ────────────────────────────────────────────────────────────────────
+  (function initSSE() {
+    const es = new EventSource('/events');
+    es.onmessage = (e) => {
+      try {
+        const ev = JSON.parse(e.data);
+        if (ev.type === 'atem') {
+          updateAtemPill(ev.connected);
+        } else if (ev.type === 'preview' && state.atem.enabled) {
+          const idx = state.cameras.findIndex(c => c.atemInput === ev.source);
+          if (idx >= 0 && idx !== state.activeCam) switchCamera(idx);
+        }
+      } catch (_) {}
+    };
+    es.onerror = () => {};  // browser auto-reconnects
+  })();
 
   // ── Webcam ─────────────────────────────────────────────────────────────────
   const elWebcam  = document.getElementById('f-webcam');
@@ -574,11 +693,10 @@
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videos  = devices.filter(d => d.kind === 'videoinput');
       const prev    = elWebcam.value;
-
       while (elWebcam.options.length > 1) elWebcam.remove(1);
       videos.forEach((dev, i) => {
         const opt = document.createElement('option');
-        opt.value = dev.deviceId;
+        opt.value       = dev.deviceId;
         opt.textContent = dev.label || `Camera ${i + 1}`;
         elWebcam.appendChild(opt);
       });
@@ -596,9 +714,8 @@
       videoStream = await navigator.mediaDevices.getUserMedia(constraints);
       elVideo.srcObject = videoStream;
       elPreview.classList.add('visible');
-      state.webcamDeviceId = deviceId;
-      saveState();
-      await enumerateWebcams();  // re-enumerate to pick up device labels
+      setWebcamDeviceId(deviceId);
+      await enumerateWebcams();
     } catch (e) {
       setStatus('error', `Webcam: ${e.message}`);
     }
@@ -609,16 +726,22 @@
     if (id) startWebcam(id);
   });
 
-  function captureFrame() {
-    if (!videoStream || !elVideo.videoWidth) return null;
+  async function captureFrame(cam, preset) {
+    if (!videoStream || !elVideo.videoWidth) return false;
     const maxW = 640, maxH = 360;
     let w = elVideo.videoWidth, h = elVideo.videoHeight;
     if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
     if (h > maxH) { w = Math.round(w * maxH / h); h = maxH; }
-    captureCanvas.width = w;
+    captureCanvas.width  = w;
     captureCanvas.height = h;
     captureCtx.drawImage(elVideo, 0, 0, w, h);
-    return captureCanvas.toDataURL('image/jpeg', 0.65);
+    const blob = await new Promise(r => captureCanvas.toBlob(r, 'image/jpeg', 0.65));
+    await fetch(`/api/image/${cam}/${preset}`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'image/jpeg' },
+      body:    blob,
+    });
+    return true;
   }
 
   // ── Preset grid ────────────────────────────────────────────────────────────
@@ -632,38 +755,42 @@
     }
   }
 
+  function imgUrl(cam, preset) {
+    return `/api/image/${cam}/${preset}?t=${Date.now()}`;
+  }
+
   function buildPresetBtn(n) {
     const cam = state.activeCam;
-    const key = imgKey(cam, n);
-    const img = images[key] || null;
-    const lbl = state.labels[labelKey(cam, n)] || '';
+    const lbl = state.labels[`${cam}:${n}`] || '';
 
     const btn = document.createElement('button');
-    btn.className = 'preset-btn' + (img ? ' has-image' : '') + (editMode ? ' edit-mode' : '');
+    btn.className  = 'preset-btn' + (editMode ? ' edit-mode' : '');
     btn.dataset.preset = n;
 
-    // large number (no-image state)
     const numEl = document.createElement('div');
-    numEl.className = 'preset-num';
+    numEl.className   = 'preset-num';
     numEl.textContent = n;
     btn.appendChild(numEl);
 
-    // snapshot image
     const imgEl = document.createElement('img');
     imgEl.className = 'preset-snapshot';
-    if (img) imgEl.src = img;
+    imgEl.src = imgUrl(cam, n);
+    imgEl.addEventListener('load',  () => btn.classList.add('has-image'));
+    imgEl.addEventListener('error', () => {
+      btn.classList.remove('has-image');
+      imgEl.removeAttribute('src');
+    });
     btn.appendChild(imgEl);
 
-    // gradient overlay
     const ov = document.createElement('div');
     ov.className = 'preset-overlay';
 
-    const ovNum = document.createElement('span');
-    ovNum.className = 'ov-num';
+    const ovNum  = document.createElement('span');
+    ovNum.className   = 'ov-num';
     ovNum.textContent = n;
 
     const ovName = document.createElement('span');
-    ovName.className = 'ov-name';
+    ovName.className   = 'ov-name';
     ovName.textContent = lbl;
     ovName.dataset.forLabel = n;
 
@@ -671,14 +798,15 @@
     ov.appendChild(ovName);
     btn.appendChild(ov);
 
-    // clear button
     const clearBtn = document.createElement('button');
-    clearBtn.className = 'preset-clear';
-    clearBtn.title = 'Clear snapshot';
+    clearBtn.className   = 'preset-clear';
+    clearBtn.title       = 'Clear snapshot';
     clearBtn.textContent = '×';
-    clearBtn.addEventListener('click', e => {
+    clearBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      clearImage(n, btn);
+      await fetch(`/api/image/${cam}/${n}`, { method: 'DELETE' });
+      const fresh = buildPresetBtn(n);
+      elGrid.replaceChild(fresh, btn);
     });
     btn.appendChild(clearBtn);
 
@@ -694,31 +822,26 @@
     return btn;
   }
 
-  function updatePresetBtn(n) {
+  function updatePresetBtn(n, cam) {
     const existing = elGrid.querySelector(`[data-preset="${n}"]`);
     if (!existing) return;
-    const fresh = buildPresetBtn(n);
-    elGrid.replaceChild(fresh, existing);
-  }
-
-  function clearImage(n, btn) {
-    const key = imgKey(state.activeCam, n);
-    delete images[key];
-    saveImages();
-    const fresh = buildPresetBtn(n);
-    elGrid.replaceChild(fresh, btn);
+    // refresh the img src to pick up the new image
+    const imgEl = existing.querySelector('.preset-snapshot');
+    if (imgEl) {
+      imgEl.src = imgUrl(cam, n);
+    }
   }
 
   // ── Label editor ───────────────────────────────────────────────────────────
   function openLabelEditor(n, nameEl) {
     if (nameEl.querySelector('input')) return;
-    const lk   = labelKey(state.activeCam, n);
+    const lk   = `${state.activeCam}:${n}`;
     const prev = state.labels[lk] || '';
 
     const inp = document.createElement('input');
-    inp.type = 'text';
+    inp.type      = 'text';
     inp.className = 'name-input';
-    inp.value = prev;
+    inp.value     = prev;
     inp.maxLength = 24;
     inp.addEventListener('click', e => e.stopPropagation());
 
@@ -729,8 +852,8 @@
     function commit() {
       const v = inp.value.trim();
       if (v) state.labels[lk] = v; else delete state.labels[lk];
-      saveState();
-      nameEl.innerHTML = '';
+      schedSave();
+      nameEl.innerHTML  = '';
       nameEl.textContent = v;
     }
 
@@ -757,9 +880,9 @@
     const cam = state.cameras[state.activeCam];
     try {
       const res = await fetch('/recall', {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body:    JSON.stringify({
           ip: cam.ip, port: cam.port, camera: cam.viscaAddr, preset,
         }),
       });
@@ -777,7 +900,6 @@
     }
     flash(btn, 'busy');
     setStatus('busy', `Recalling preset ${n}…`, false);
-
     const data = await doRecall(n);
     if (data.success) {
       flash(btn, 'ok', 900);
@@ -800,16 +922,10 @@
   const elScanFill = document.getElementById('scan-fill');
   const elScanLbl  = document.getElementById('scan-label');
 
-  let scanning = false;
+  let scanning   = false;
   let cancelScan = false;
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-  function showScanBar(p, text) {
-    elScanBar.classList.add('visible');
-    elScanFill.style.width = `${Math.round((p - 1) / 9 * 100)}%`;
-    elScanLbl.textContent = text;
-  }
 
   function hideScanBar() {
     elScanBar.classList.remove('visible');
@@ -823,28 +939,23 @@
 
   async function scanAll() {
     const cam = state.cameras[state.activeCam];
-    if (!cam.ip) {
-      setStatus('error', 'Enter the camera IP address first'); return;
-    }
-    if (!videoStream) {
-      setStatus('error', 'Select a webcam source to capture snapshots'); return;
-    }
+    if (!cam.ip)     { setStatus('error', 'Enter the camera IP address first'); return; }
+    if (!videoStream){ setStatus('error', 'Select a webcam source to capture snapshots'); return; }
 
     scanning = true; cancelScan = false;
     btnScan.textContent = 'Cancel';
     btnScan.classList.add('cancel');
+    elScanBar.classList.add('visible');
 
     for (let p = 1; p <= 9; p++) {
       if (cancelScan) break;
 
-      showScanBar(p, `Recalling preset ${p} of 9…`);
+      elScanFill.style.width = `${Math.round((p - 1) / 9 * 100)}%`;
+      elScanLbl.textContent  = `Recalling preset ${p} of 9…`;
       setStatus('busy', `Scanning preset ${p} of 9…`, false);
 
       const result = await doRecall(p);
-      if (!result.success) {
-        setStatus('error', `Preset ${p}: ${result.message}`);
-      }
-
+      if (!result.success) setStatus('error', `Preset ${p}: ${result.message}`);
       if (cancelScan) break;
 
       const dwell = state.dwellMs;
@@ -853,38 +964,42 @@
         if (cancelScan) break;
         const pct = Math.round(((p - 1) + (i + 1) / steps) / 9 * 100);
         elScanFill.style.width = pct + '%';
-        elScanLbl.textContent = `Waiting… preset ${p} of 9`;
+        elScanLbl.textContent  = `Waiting… preset ${p} of 9`;
         await sleep(dwell / steps);
       }
-
       if (cancelScan) break;
 
-      const dataUrl = captureFrame();
-      if (dataUrl) {
-        images[imgKey(state.activeCam, p)] = dataUrl;
-        saveImages();
-        updatePresetBtn(p);
-      }
+      await captureFrame(state.activeCam, p);
+      updatePresetBtn(p, state.activeCam);
     }
 
-    scanning = false; cancelScan = false;
+    scanning = false;
     btnScan.textContent = 'Scan All Presets';
     btnScan.classList.remove('cancel');
     hideScanBar();
     setStatus('success', cancelScan ? 'Scan cancelled' : 'Scan complete');
+    cancelScan = false;
   }
 
   // ── Boot ───────────────────────────────────────────────────────────────────
-  loadState();
-  loadCameraSettings();
-  renderTabs();
-  renderGrid();
-  enumerateWebcams().then(() => {
-    if (state.webcamDeviceId) {
-      elWebcam.value = state.webcamDeviceId;
-      startWebcam(state.webcamDeviceId);
+  (async function boot() {
+    await loadSettings();
+    loadCameraSettings();
+    renderTabs();
+    renderGrid();
+    // poll initial ATEM status
+    try {
+      const r = await fetch('/atem/status');
+      if (r.ok) { const s = await r.json(); updateAtemPill(s.connected); }
+    } catch (_) {}
+    // webcam (localStorage, browser-specific)
+    await enumerateWebcams();
+    const savedDevice = getWebcamDeviceId();
+    if (savedDevice) {
+      elWebcam.value = savedDevice;
+      startWebcam(savedDevice);
     }
-  });
+  })();
 })();
 </script>
 </body>
