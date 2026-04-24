@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PTZ Preset Control Server — VISCA over IP for AVIPAS cameras (no external dependencies)."""
+"""PTZ Preset Control Server — VISCA over IP for AVIPAS cameras."""
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
@@ -12,28 +12,36 @@ import struct
 import threading
 import time
 
+try:
+    from playwright.sync_api import sync_playwright as _sync_playwright
+    _HAS_PLAYWRIGHT = True
+except ImportError:
+    _HAS_PLAYWRIGHT = False
+
 # ── Paths ──────────────────────────────────────────────────────────────────────
-_HERE       = os.path.dirname(os.path.abspath(__file__))
-PUBLIC_DIR  = os.path.join(_HERE, "public")
-DATA_DIR    = os.path.join(_HERE, "data")
-IMAGES_DIR  = os.path.join(DATA_DIR, "images")
-SETTINGS_F  = os.path.join(DATA_DIR, "settings.json")
+_HERE = os.path.dirname(os.path.abspath(__file__))
+PUBLIC_DIR = os.path.join(_HERE, "public")
+DATA_DIR = os.path.join(_HERE, "data")
+IMAGES_DIR = os.path.join(DATA_DIR, "images")
+SETTINGS_F = os.path.join(DATA_DIR, "settings.json")
 
 DEFAULT_SETTINGS = {
     "activeCam": 0,
     "cameras": [
-        {"name": "Camera 1", "ip": "", "port": 52381, "viscaAddr": 1, "atemInput": 1},
-        {"name": "Camera 2", "ip": "", "port": 52381, "viscaAddr": 1, "atemInput": 2},
-        {"name": "Camera 3", "ip": "", "port": 52381, "viscaAddr": 1, "atemInput": 3},
+        {"name": "Camera 1", "ip": "", "port": 1259, "viscaAddr": 1, "atemInput": 1},
+        {"name": "Camera 2", "ip": "", "port": 1259, "viscaAddr": 1, "atemInput": 2},
+        {"name": "Camera 3", "ip": "", "port": 1259, "viscaAddr": 1, "atemInput": 3},
     ],
     "labels": {"0:1": "Stage Left", "0:5": "Wide"},
     "dwellMs": 3000,
     "atem": {"ip": "", "enabled": False},
 }
 
+
 # ── Settings ───────────────────────────────────────────────────────────────────
 def _ensure_dirs():
     os.makedirs(IMAGES_DIR, exist_ok=True)
+
 
 def load_settings() -> dict:
     _ensure_dirs()
@@ -43,14 +51,17 @@ def load_settings() -> dict:
     with open(SETTINGS_F) as f:
         return json.load(f)
 
+
 def write_settings(data: dict):
     _ensure_dirs()
     with open(SETTINGS_F, "w") as f:
         json.dump(data, f, indent=2)
 
+
 # ── SSE ────────────────────────────────────────────────────────────────────────
 _sse_clients: list[queue.SimpleQueue] = []
-_sse_lock    = threading.Lock()
+_sse_lock = threading.Lock()
+
 
 def _broadcast(event: dict):
     msg = f"data: {json.dumps(event)}\n\n".encode()
@@ -61,9 +72,11 @@ def _broadcast(event: dict):
             except Exception:
                 pass
 
+
 # ── ATEM state ─────────────────────────────────────────────────────────────────
-_atem_state      = {"connected": False, "preview": 0}
+_atem_state = {"connected": False, "preview": 0}
 _atem_state_lock = threading.Lock()
+
 
 def _set_atem(connected: bool, preview: int | None = None):
     with _atem_state_lock:
@@ -71,37 +84,62 @@ def _set_atem(connected: bool, preview: int | None = None):
         if preview is not None:
             _atem_state["preview"] = preview
 
+
 def _get_atem() -> dict:
     with _atem_state_lock:
         return dict(_atem_state)
 
+
 # ── ATEM UDP client ────────────────────────────────────────────────────────────
-ATEM_PORT  = 9910
-ATEM_HELLO = bytes([
-    0x10, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x26, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-])
+ATEM_PORT = 9910
+ATEM_HELLO = bytes(
+    [
+        0x10,
+        0x14,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x26,
+        0x00,
+        0x00,
+        0x01,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+    ]
+)
+
 
 def _make_ack(session_id: int, remote_id: int) -> bytes:
     return bytes([0x80, 0x0C]) + struct.pack(">HH", session_id, remote_id) + bytes(6)
 
+
 def _parse_header(data: bytes):
-    word0     = struct.unpack(">H", data[0:2])[0]
-    flags     = (word0 >> 11) & 0x1F
+    word0 = struct.unpack(">H", data[0:2])[0]
+    flags = (word0 >> 11) & 0x1F
     remote_id = struct.unpack(">H", data[4:6])[0]
     return flags, remote_id
+
 
 def _parse_commands(payload: bytes):
     pos = 0
     while pos + 8 <= len(payload):
-        cmd_len = struct.unpack(">H", payload[pos:pos+2])[0]
+        cmd_len = struct.unpack(">H", payload[pos : pos + 2])[0]
         if cmd_len < 8 or pos + cmd_len > len(payload):
             break
-        cmd_name = payload[pos+4:pos+8].decode("ascii", errors="replace")
-        cmd_data = payload[pos+8:pos+cmd_len]
+        cmd_name = payload[pos + 4 : pos + 8].decode("ascii", errors="replace")
+        cmd_data = payload[pos + 8 : pos + cmd_len]
         yield cmd_name, cmd_data
         pos += cmd_len
+
 
 def _atem_loop():
     while True:
@@ -110,7 +148,7 @@ def _atem_loop():
             time.sleep(2)
             continue
 
-        ip   = cfg["ip"].strip()
+        ip = cfg["ip"].strip()
         sock = None
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -138,7 +176,7 @@ def _atem_loop():
             _broadcast({"type": "atem", "connected": True})
 
             sock.settimeout(1.0)
-            last_recv      = time.monotonic()
+            last_recv = time.monotonic()
             last_keepalive = time.monotonic()
 
             while True:
@@ -149,12 +187,14 @@ def _atem_loop():
 
                 try:
                     data, _ = sock.recvfrom(2048)
-                    now       = time.monotonic()
+                    now = time.monotonic()
                     last_recv = now
                     flags, remote_id = _parse_header(data)
                     if flags & 0x10:
                         sock.sendto(_make_ack(session_id, remote_id), (ip, ATEM_PORT))
-                    for cmd, cmd_data in _parse_commands(data[12:] if len(data) > 12 else b""):
+                    for cmd, cmd_data in _parse_commands(
+                        data[12:] if len(data) > 12 else b""
+                    ):
                         if cmd == "PrvI" and len(cmd_data) >= 4:
                             source = struct.unpack(">H", cmd_data[2:4])[0]
                             _set_atem(True, source)
@@ -185,20 +225,26 @@ def _atem_loop():
 
         time.sleep(3)
 
+
 # ── VISCA ──────────────────────────────────────────────────────────────────────
 _sequence_number = 1
-_seq_lock        = threading.Lock()
+_seq_lock = threading.Lock()
 
-def send_visca_preset_recall(ip: str, port: int, preset_number: int, camera_address: int = 1):
+
+def send_visca_preset_recall(
+    ip: str, port: int, preset_number: int, camera_address: int = 1
+):
     global _sequence_number
-    camera_byte   = 0x80 | (camera_address & 0x07)
-    visca_payload = bytes([camera_byte, 0x01, 0x04, 0x3F, 0x02, preset_number & 0x7F, 0xFF])
+    camera_byte = 0x80 | (camera_address & 0x07)
+    visca_payload = bytes(
+        [camera_byte, 0x01, 0x04, 0x3F, 0x02, preset_number & 0x7F, 0xFF]
+    )
     with _seq_lock:
         seq = _sequence_number
         _sequence_number = (_sequence_number + 1) & 0xFFFFFFFF
     header = struct.pack(">HHI", 0x0100, len(visca_payload), seq)
     packet = header + visca_payload
-    sock   = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.settimeout(2.0)
     try:
         sock.sendto(packet, (ip, port))
@@ -212,17 +258,60 @@ def send_visca_preset_recall(ip: str, port: int, preset_number: int, camera_addr
     finally:
         sock.close()
 
+
+# ── Playwright capture ─────────────────────────────────────────────────────────
+_pw_lock     = threading.Lock()
+_pw_ctx      = None   # playwright instance
+_pw_browser  = None
+_pw_page     = None
+_pw_page_url = None
+
+
+def _capture_url(url: str) -> bytes:
+    global _pw_ctx, _pw_browser, _pw_page, _pw_page_url
+    with _pw_lock:
+        if _pw_ctx is None:
+            _pw_ctx     = _sync_playwright().start()
+            _pw_browser = _pw_ctx.chromium.launch(
+                headless=True,
+                args=[
+                    "--autoplay-policy=no-user-gesture-required",
+                    "--use-fake-ui-for-media-stream",
+                ],
+            )
+        if _pw_page is None or _pw_page_url != url:
+            if _pw_page:
+                try:
+                    _pw_page.close()
+                except Exception:
+                    pass
+            _pw_page = _pw_browser.new_page()
+            _pw_page.goto(url, wait_until="domcontentloaded")
+            # wait up to 15 s for a video element with decoded data
+            _pw_page.wait_for_function(
+                "() => { const v = document.querySelector('video'); "
+                "return v && v.readyState >= 2 && v.videoWidth > 0; }",
+                timeout=15_000,
+            )
+            _pw_page_url = url
+        video = _pw_page.query_selector("video")
+        if video:
+            return video.screenshot(type="jpeg", quality=70)
+        return _pw_page.screenshot(type="jpeg", full_page=False)
+
+
 # ── MIME types ─────────────────────────────────────────────────────────────────
 _MIME = {
     ".html": "text/html; charset=utf-8",
-    ".js":   "application/javascript",
-    ".css":  "text/css",
-    ".png":  "image/png",
-    ".jpg":  "image/jpeg",
+    ".js": "application/javascript",
+    ".css": "text/css",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
-    ".svg":  "image/svg+xml",
-    ".ico":  "image/x-icon",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
 }
+
 
 # ── HTTP handler ───────────────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
@@ -258,6 +347,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_settings_post()
         elif m := re.match(r"^/api/image/(\d+)/(\d+)$", path):
             self._post_image(int(m.group(1)), int(m.group(2)))
+        elif m := re.match(r"^/api/capture/(\d+)/(\d+)$", path):
+            self._capture_image(int(m.group(1)), int(m.group(2)))
         else:
             self.send_error(404)
 
@@ -276,8 +367,8 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             self._json(400, {"success": False, "message": "Invalid JSON"})
             return
-        ip     = str(data.get("ip", "")).strip()
-        port   = int(data.get("port", 52381))
+        ip = str(data.get("ip", "")).strip()
+        port = int(data.get("port", 52381))
         preset = max(0, int(data.get("preset", 1)) - 1)
         camera = max(1, min(7, int(data.get("camera", 1))))
         if not ip:
@@ -312,11 +403,42 @@ class Handler(BaseHTTPRequestHandler):
 
     def _post_image(self, cam: int, preset: int):
         _ensure_dirs()
-        data  = self._read_body()
+        data = self._read_body()
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
         with open(fpath, "wb") as f:
             f.write(data)
         self._json(200, {"ok": True})
+
+    def _capture_image(self, cam: int, preset: int):
+        if not _HAS_PLAYWRIGHT:
+            self._json(503, {
+                "ok": False,
+                "error": "playwright not installed — run: pip install playwright && playwright install chromium",
+            })
+            return
+        body = self._read_body()
+        try:
+            data = json.loads(body)
+            url  = data.get("url", "").strip()
+        except Exception:
+            url = ""
+        if not url:
+            # fall back to streamUrl stored in settings for this camera
+            settings = load_settings()
+            cameras  = settings.get("cameras", [])
+            url = cameras[cam].get("streamUrl", "") if cam < len(cameras) else ""
+        if not url:
+            self._json(400, {"ok": False, "error": "no stream URL configured for this camera"})
+            return
+        try:
+            jpeg = _capture_url(url)
+            _ensure_dirs()
+            fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
+            with open(fpath, "wb") as f:
+                f.write(jpeg)
+            self._json(200, {"ok": True})
+        except Exception as e:
+            self._json(500, {"ok": False, "error": str(e)})
 
     def _delete_image(self, cam: int, preset: int):
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
@@ -371,7 +493,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             return
-        ext  = os.path.splitext(fpath)[1].lower()
+        ext = os.path.splitext(fpath)[1].lower()
         mime = _MIME.get(ext, "application/octet-stream")
         with open(fpath, "rb") as f:
             body = f.read()
@@ -394,9 +516,11 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+
 # ── Server ─────────────────────────────────────────────────────────────────────
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
+
 
 if __name__ == "__main__":
     load_settings()  # ensure data/ and default settings.json exist

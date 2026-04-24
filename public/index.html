@@ -222,12 +222,6 @@
     }
     #stream-iframe { border: none; }
 
-    #btn-screen-cap {
-      display: none;
-      font-size: .72rem; padding: 4px 8px;
-      border-radius: 5px;
-    }
-    #btn-screen-cap.active { border-color: var(--success); color: var(--success); }
 
     /* ── Main ────────────────────────────────────────── */
     main {
@@ -448,7 +442,6 @@
       <video id="webcam-video" autoplay muted playsinline></video>
       <iframe id="stream-iframe" src="" allow="camera; microphone; autoplay; fullscreen" style="display:none"></iframe>
     </div>
-    <button id="btn-screen-cap" class="btn-ghost">▶ Start capture</button>
   </div>
 </div>
 
@@ -484,9 +477,9 @@
 
   // ── State ──────────────────────────────────────────────────────────────────
   const DEF_CAMERAS = [
-    { name: 'Camera 1', ip: '', port: 52381, viscaAddr: 1, atemInput: 1 },
-    { name: 'Camera 2', ip: '', port: 52381, viscaAddr: 1, atemInput: 2 },
-    { name: 'Camera 3', ip: '', port: 52381, viscaAddr: 1, atemInput: 3 },
+    { name: 'Camera 1', ip: '', port: 52381, viscaAddr: 1, atemInput: 1, streamUrl: '' },
+    { name: 'Camera 2', ip: '', port: 52381, viscaAddr: 1, atemInput: 2, streamUrl: '' },
+    { name: 'Camera 3', ip: '', port: 52381, viscaAddr: 1, atemInput: 3, streamUrl: '' },
   ];
 
   let state = {
@@ -653,10 +646,13 @@
     elVisca.value     = cam.viscaAddr;
     elAtemInput.value = cam.atemInput || 1;
     elDwell.value     = state.dwellMs / 1000;
-    // ATEM fields
     elAtemEnabled.checked = !!state.atem.enabled;
     elAtemIp.value        = state.atem.ip || '';
     updateAtemPill(false);
+    // stream URL — restore iframe/mode for this camera
+    const url = cam.streamUrl || '';
+    elStreamUrl.value = url;
+    applyStreamUrl(url);
   }
 
   function saveCameraSettings() {
@@ -665,6 +661,7 @@
     cam.port       = parseInt(elPort.value, 10) || 52381;
     cam.viscaAddr  = parseInt(elVisca.value, 10) || 1;
     cam.atemInput  = parseInt(elAtemInput.value, 10) || 1;
+    cam.streamUrl  = elStreamUrl.value.trim();
     state.dwellMs  = (parseInt(elDwell.value, 10) || 3) * 1000;
     state.atem.enabled = elAtemEnabled.checked;
     state.atem.ip      = elAtemIp.value.trim();
@@ -708,21 +705,17 @@
   const elPreview     = document.getElementById('webcam-preview');
   const elVideo       = document.getElementById('webcam-video');
   const elIframe      = document.getElementById('stream-iframe');
-  const btnScreenCap  = document.getElementById('btn-screen-cap');
   const captureCanvas = document.createElement('canvas');
   const captureCtx    = captureCanvas.getContext('2d');
 
-  let videoStream   = null;   // getUserMedia stream
-  let displayStream = null;   // getDisplayMedia stream (for iframe/URL mode)
-  let displayVideo  = null;   // hidden <video> for displayStream
-  let sourceMode    = 'webcam'; // 'webcam' | 'url'
+  let videoStream = null;
+  let sourceMode  = 'webcam'; // 'webcam' | 'url'
 
   function _setMode(mode) {
     sourceMode = mode;
     elVideo.style.display  = mode === 'webcam' ? 'block' : 'none';
     elIframe.style.display = mode === 'url'    ? 'block' : 'none';
-    btnScreenCap.style.display = mode === 'url' ? 'inline-flex' : 'none';
-    elPreview.classList.toggle('visible', true);
+    elPreview.classList.add('visible');
   }
 
   async function enumerateWebcams() {
@@ -757,82 +750,57 @@
     }
   }
 
-  function startUrlSource(url) {
-    elIframe.src = url;
-    _setMode('url');
-    btnScreenCap.textContent = '▶ Start capture';
-    btnScreenCap.classList.remove('active');
-    // reset any old display stream
-    if (displayStream) { displayStream.getTracks().forEach(t => t.stop()); displayStream = null; }
+  function applyStreamUrl(url) {
+    if (url) {
+      elIframe.src = url;
+      _setMode('url');
+    } else if (videoStream) {
+      _setMode('webcam');
+    }
   }
 
   elWebcam.addEventListener('change', () => {
     const id = elWebcam.value;
     if (id) {
       elStreamUrl.value = '';
+      state.cameras[state.activeCam].streamUrl = '';
+      schedSave();
       startWebcam(id);
     }
   });
 
   elStreamUrl.addEventListener('change', () => {
     const url = elStreamUrl.value.trim();
-    if (url) {
-      elWebcam.value = '';
-      startUrlSource(url);
-    }
+    state.cameras[state.activeCam].streamUrl = url;
+    schedSave();
+    if (url) elWebcam.value = '';
+    applyStreamUrl(url);
   });
 
-  btnScreenCap.addEventListener('click', async () => {
-    try {
-      if (displayStream) { displayStream.getTracks().forEach(t => t.stop()); displayStream = null; }
-      displayStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { displaySurface: 'browser' },
-        preferCurrentTab: true,
-      });
-      if (!displayVideo) {
-        displayVideo = document.createElement('video');
-        displayVideo.muted   = true;
-        displayVideo.autoplay = true;
-      }
-      displayVideo.srcObject = displayStream;
-      await displayVideo.play().catch(() => {});
-      displayStream.getVideoTracks()[0].addEventListener('ended', () => {
-        displayStream = null;
-        btnScreenCap.textContent = '▶ Start capture';
-        btnScreenCap.classList.remove('active');
-      });
-      btnScreenCap.textContent = '● Capturing';
-      btnScreenCap.classList.add('active');
-    } catch (e) {
-      setStatus('error', `Screen capture: ${e.message}`);
-    }
-  });
-
+  // captureFrame: webcam → canvas→blob→POST /api/image
+  //               url    → POST /api/capture (server uses playwright)
   async function captureFrame(cam, preset) {
-    let sw, sh;
-
     if (sourceMode === 'url') {
-      if (!displayStream || !displayStream.active || !displayVideo?.videoWidth) return false;
-      // crop captured tab image to the iframe's bounding rect
-      const r    = elIframe.getBoundingClientRect();
-      const scaleX = displayVideo.videoWidth  / window.innerWidth;
-      const scaleY = displayVideo.videoHeight / window.innerHeight;
-      captureCanvas.width  = Math.max(1, Math.round(r.width  * scaleX));
-      captureCanvas.height = Math.max(1, Math.round(r.height * scaleY));
-      captureCtx.drawImage(displayVideo,
-        r.left * scaleX, r.top * scaleY, r.width * scaleX, r.height * scaleY,
-        0, 0, captureCanvas.width, captureCanvas.height);
-    } else {
-      if (!videoStream || !elVideo.videoWidth) return false;
-      const maxW = 640, maxH = 360;
-      sw = elVideo.videoWidth; sh = elVideo.videoHeight;
-      if (sw > maxW) { sh = Math.round(sh * maxW / sw); sw = maxW; }
-      if (sh > maxH) { sw = Math.round(sw * maxH / sh); sh = maxH; }
-      captureCanvas.width  = sw;
-      captureCanvas.height = sh;
-      captureCtx.drawImage(elVideo, 0, 0, sw, sh);
+      const url = state.cameras[cam].streamUrl || '';
+      if (!url) { setStatus('error', 'No stream URL set for this camera'); return false; }
+      const res = await fetch(`/api/capture/${cam}/${preset}`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ url }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setStatus('error', data.error || 'Capture failed'); return false; }
+      return true;
     }
 
+    if (!videoStream || !elVideo.videoWidth) return false;
+    const maxW = 640, maxH = 360;
+    let sw = elVideo.videoWidth, sh = elVideo.videoHeight;
+    if (sw > maxW) { sh = Math.round(sh * maxW / sw); sw = maxW; }
+    if (sh > maxH) { sw = Math.round(sw * maxH / sh); sh = maxH; }
+    captureCanvas.width  = sw;
+    captureCanvas.height = sh;
+    captureCtx.drawImage(elVideo, 0, 0, sw, sh);
     const blob = await new Promise(r => captureCanvas.toBlob(r, 'image/jpeg', 0.65));
     await fetch(`/api/image/${cam}/${preset}`, {
       method:  'POST',
@@ -1041,8 +1009,8 @@
     if (sourceMode === 'webcam' && !videoStream) {
       setStatus('error', 'Select a webcam source or enter a VDO.ninja URL'); return;
     }
-    if (sourceMode === 'url' && (!displayStream || !displayStream.active)) {
-      setStatus('error', 'Click "Start capture" on the VDO.ninja preview first'); return;
+    if (sourceMode === 'url' && !state.cameras[state.activeCam].streamUrl) {
+      setStatus('error', 'Enter a VDO.ninja URL for this camera'); return;
     }
 
     scanning = true; cancelScan = false;
