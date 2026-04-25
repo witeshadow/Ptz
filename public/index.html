@@ -517,6 +517,49 @@
 <footer>Click a preset to recall it &nbsp;&middot;&nbsp;
   Double-click to rename &nbsp;&middot;&nbsp; Double-click a camera tab to rename it</footer>
 
+<div id="grid-settings-panel">
+  <div class="gsp-header">
+    <span>Grid Settings</span>
+    <button id="gsp-close">&#x2715;</button>
+  </div>
+  <div class="gsp-body">
+    <div class="field">
+      <label for="gsp-start">Preset Start</label>
+      <input id="gsp-start" type="number" min="0" max="254" />
+    </div>
+    <div class="field">
+      <label for="gsp-end">Preset End</label>
+      <input id="gsp-end" type="number" min="1" max="255" />
+    </div>
+    <div class="field">
+      <label for="gsp-cols">Columns</label>
+      <input id="gsp-cols" type="number" min="1" max="16" />
+    </div>
+    <div class="field">
+      <label for="gsp-rows">Rows</label>
+      <input id="gsp-rows" type="number" min="1" max="16" />
+    </div>
+    <label class="atem-toggle-wrap">
+      <input id="gsp-fill" type="checkbox" />
+      <span>Fill Window</span>
+    </label>
+  </div>
+</div>
+<button id="grid-settings-fab" title="Grid Settings">
+  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61
+             l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54
+             c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54
+             c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87
+             c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94
+             l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22
+             l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84
+             c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96
+             c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6
+             c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+  </svg>
+</button>
+
 <script>
 (function () {
   'use strict';
@@ -767,8 +810,15 @@
   const elGspRows  = document.getElementById('gsp-rows');
   const elGspFill  = document.getElementById('gsp-fill');
 
-  elGspFab.addEventListener('click', () => elGspPanel.classList.toggle('open'));
-  elGspClose.addEventListener('click', () => elGspPanel.classList.remove('open'));
+  if (elGspFab && elGspPanel) {
+    elGspFab.addEventListener('click', () => {
+      console.log('FAB clicked!');
+      elGspPanel.classList.toggle('open');
+    });
+  }
+  if (elGspClose && elGspPanel) {
+    elGspClose.addEventListener('click', () => elGspPanel.classList.remove('open'));
+  }
 
   function loadGridSettings() {
     elGspStart.value  = state.presetStart ?? 0;
@@ -1219,48 +1269,5 @@
   })();
 })();
 </script>
-
-<div id="grid-settings-panel">
-  <div class="gsp-header">
-    <span>Grid Settings</span>
-    <button id="gsp-close">&#x2715;</button>
-  </div>
-  <div class="gsp-body">
-    <div class="field">
-      <label for="gsp-start">Preset Start</label>
-      <input id="gsp-start" type="number" min="0" max="254" />
-    </div>
-    <div class="field">
-      <label for="gsp-end">Preset End</label>
-      <input id="gsp-end" type="number" min="1" max="255" />
-    </div>
-    <div class="field">
-      <label for="gsp-cols">Columns</label>
-      <input id="gsp-cols" type="number" min="1" max="16" />
-    </div>
-    <div class="field">
-      <label for="gsp-rows">Rows</label>
-      <input id="gsp-rows" type="number" min="1" max="16" />
-    </div>
-    <label class="atem-toggle-wrap">
-      <input id="gsp-fill" type="checkbox" />
-      <span>Fill Window</span>
-    </label>
-  </div>
-</div>
-<button id="grid-settings-fab" title="Grid Settings">
-  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-    <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61
-             l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54
-             c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54
-             c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87
-             c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94
-             l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22
-             l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84
-             c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96
-             c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6
-             c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-  </svg>
-</button>
 </body>
 </html>
