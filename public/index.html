@@ -371,6 +371,46 @@
       font-size: .68rem; color: var(--border);
       text-align: center; flex-shrink: 0;
     }
+
+    /* ── Fill-window layout ──────────────────────────────── */
+    body.fill-mode { height: 100vh; overflow: hidden; }
+    body.fill-mode main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    body.fill-mode #preset-grid { flex: 1; }
+    body.fill-mode .preset-btn { aspect-ratio: unset; height: 100%; }
+    body.fill-mode #toolbar { flex-shrink: 0; }
+
+    /* ── Grid-settings FAB ───────────────────────────────── */
+    #grid-settings-fab {
+      position: fixed; bottom: 18px; right: 18px; z-index: 200;
+      width: 44px; height: 44px; border-radius: 50%;
+      background: var(--accent); border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,.4);
+      transition: opacity .2s, transform .2s;
+    }
+    #grid-settings-fab:hover { opacity: .85; transform: scale(1.07); }
+    #grid-settings-fab svg { width: 20px; height: 20px; fill: #fff; }
+
+    /* ── Grid-settings panel ─────────────────────────────── */
+    #grid-settings-panel {
+      position: fixed; bottom: 72px; right: 18px; z-index: 199;
+      width: 220px;
+      background: var(--surf); border: 1px solid var(--border);
+      border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.5);
+      display: none;
+    }
+    #grid-settings-panel.open { display: block; }
+    .gsp-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px 8px; border-bottom: 1px solid var(--border);
+      font-size: .8rem; font-weight: 600; color: var(--label);
+    }
+    #gsp-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1rem; line-height: 1; }
+    #gsp-close:hover { color: var(--text); }
+    .gsp-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+    .gsp-body .field { flex-direction: row; align-items: center; justify-content: space-between; }
+    .gsp-body .field label { font-size: .72rem; }
+    .gsp-body .field input { width: 72px; }
   </style>
 </head>
 <body>
@@ -494,6 +534,11 @@
     labels: {},
     dwellMs: 3000,
     atem: { ip: '', enabled: false },
+    presetStart: 0,
+    presetEnd: 11,
+    gridCols: 4,
+    gridRows: 3,
+    fillWindow: false,
   };
 
   // webcamDeviceId is browser-specific; stays in localStorage
@@ -515,6 +560,11 @@
         if (s.labels)   state.labels  = s.labels;
         if (s.dwellMs)  state.dwellMs = +s.dwellMs;
         if (s.atem)     state.atem    = { ip: '', enabled: false, ...s.atem };
+        if (s.presetStart != null) state.presetStart = +s.presetStart;
+        if (s.presetEnd   != null) state.presetEnd   = +s.presetEnd;
+        if (s.gridCols    != null) state.gridCols    = +s.gridCols;
+        if (s.gridRows    != null) state.gridRows    = +s.gridRows;
+        if (s.fillWindow  != null) state.fillWindow  = !!s.fillWindow;
       }
     } catch (_) {}
   }
@@ -607,6 +657,7 @@
     loadCameraSettings();
     renderTabs();
     renderGrid();
+    applyGridLayout();
   }
 
   function openTabNameEditor(idx, nameEl, nameWrap) {
@@ -698,13 +749,51 @@
         if (ev.type === 'atem') {
           updateAtemPill(ev.connected);
         } else if (ev.type === 'preview' && state.atem.enabled) {
-          const idx = state.cameras.findIndex(c => c.atemInput === ev.source);
+          const idx = state.cameras.findIndex(c => +c.atemInput === +ev.source);
           if (idx >= 0 && idx !== state.activeCam) switchCamera(idx);
         }
       } catch (_) {}
     };
     es.onerror = () => {};  // browser auto-reconnects
   })();
+
+  // ── Grid-settings panel ────────────────────────────────────────────────────
+  const elGspPanel = document.getElementById('grid-settings-panel');
+  const elGspFab   = document.getElementById('grid-settings-fab');
+  const elGspClose = document.getElementById('gsp-close');
+  const elGspStart = document.getElementById('gsp-start');
+  const elGspEnd   = document.getElementById('gsp-end');
+  const elGspCols  = document.getElementById('gsp-cols');
+  const elGspRows  = document.getElementById('gsp-rows');
+  const elGspFill  = document.getElementById('gsp-fill');
+
+  elGspFab.addEventListener('click', () => elGspPanel.classList.toggle('open'));
+  elGspClose.addEventListener('click', () => elGspPanel.classList.remove('open'));
+
+  function loadGridSettings() {
+    elGspStart.value  = state.presetStart ?? 0;
+    elGspEnd.value    = state.presetEnd   ?? 11;
+    elGspCols.value   = state.gridCols    ?? 4;
+    elGspRows.value   = state.gridRows    ?? 3;
+    elGspFill.checked = !!state.fillWindow;
+    applyGridLayout();
+  }
+
+  function saveGridSettings() {
+    state.presetStart = Math.max(0, parseInt(elGspStart.value, 10) || 0);
+    state.presetEnd   = Math.max(state.presetStart + 1, parseInt(elGspEnd.value, 10) || 11);
+    state.gridCols    = Math.max(1, parseInt(elGspCols.value, 10) || 4);
+    state.gridRows    = Math.max(1, parseInt(elGspRows.value, 10) || 3);
+    state.fillWindow  = elGspFill.checked;
+    schedSave();
+    renderGrid();
+    applyGridLayout();
+  }
+
+  [elGspStart, elGspEnd, elGspCols, elGspRows].forEach(el =>
+    el.addEventListener('change', saveGridSettings)
+  );
+  elGspFill.addEventListener('change', saveGridSettings);
 
   // ── Webcam / stream source ────────────────────────────────────────────────
   const elWebcam      = document.getElementById('f-webcam');
@@ -832,8 +921,24 @@
 
   function renderGrid() {
     elGrid.innerHTML = '';
-    for (let n = 0; n <= 11; n++) {
+    for (let n = state.presetStart; n <= state.presetEnd; n++) {
       elGrid.appendChild(buildPresetBtn(n));
+    }
+    elGrid.style.gridTemplateColumns = `repeat(${state.gridCols}, 1fr)`;
+  }
+
+  function applyGridLayout() {
+    const elMain = document.querySelector('main');
+    if (state.fillWindow) {
+      elMain.style.maxWidth = '';
+      elMain.style.padding  = '8px';
+      document.body.classList.add('fill-mode');
+      elGrid.style.gridTemplateRows = `repeat(${state.gridRows}, 1fr)`;
+    } else {
+      elMain.style.maxWidth = '860px';
+      elMain.style.padding  = '20px';
+      document.body.classList.remove('fill-mode');
+      elGrid.style.gridTemplateRows = '';
     }
   }
 
@@ -1082,8 +1187,10 @@
   (async function boot() {
     await loadSettings();
     loadCameraSettings();
+    loadGridSettings();
     renderTabs();
     renderGrid();
+    applyGridLayout();
     // poll initial ATEM status
     try {
       const r = await fetch('/atem/status');
@@ -1112,5 +1219,48 @@
   })();
 })();
 </script>
+
+<div id="grid-settings-panel">
+  <div class="gsp-header">
+    <span>Grid Settings</span>
+    <button id="gsp-close">&#x2715;</button>
+  </div>
+  <div class="gsp-body">
+    <div class="field">
+      <label for="gsp-start">Preset Start</label>
+      <input id="gsp-start" type="number" min="0" max="254" />
+    </div>
+    <div class="field">
+      <label for="gsp-end">Preset End</label>
+      <input id="gsp-end" type="number" min="1" max="255" />
+    </div>
+    <div class="field">
+      <label for="gsp-cols">Columns</label>
+      <input id="gsp-cols" type="number" min="1" max="16" />
+    </div>
+    <div class="field">
+      <label for="gsp-rows">Rows</label>
+      <input id="gsp-rows" type="number" min="1" max="16" />
+    </div>
+    <label class="atem-toggle-wrap">
+      <input id="gsp-fill" type="checkbox" />
+      <span>Fill Window</span>
+    </label>
+  </div>
+</div>
+<button id="grid-settings-fab" title="Grid Settings">
+  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61
+             l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54
+             c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54
+             c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87
+             c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94
+             l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22
+             l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84
+             c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96
+             c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6
+             c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+  </svg>
+</button>
 </body>
 </html>
