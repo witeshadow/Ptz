@@ -143,17 +143,6 @@
     }
 
     /* ── Settings bar ────────────────────────────────── */
-    #settings-bar {
-      background: var(--surf);
-      border-bottom: 1px solid var(--border);
-      padding: 11px 20px;
-      display: none;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 14px;
-      flex-shrink: 0;
-    }
-
     .field { display: flex; flex-direction: column; gap: 4px; }
 
     .field label {
@@ -181,18 +170,6 @@
     .sep {
       width: 1px; height: 36px; background: var(--border);
       align-self: flex-end; margin: 0 2px;
-    }
-
-    /* ── ATEM section ────────────────────────────────── */
-    #atem-bar {
-      background: var(--surf);
-      border-bottom: 1px solid var(--border);
-      padding: 10px 20px;
-      display: none;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 14px;
-      flex-shrink: 0;
     }
 
     .atem-toggle-wrap {
@@ -451,62 +428,6 @@
 </header>
 
 <div id="cam-tabs"><!-- rendered by JS --></div>
-
-<div id="settings-bar">
-  <div class="field">
-    <label for="f-ip">Camera IP</label>
-    <input id="f-ip" type="text" placeholder="192.168.1.100" autocomplete="off" spellcheck="false" />
-  </div>
-  <div class="field">
-    <label for="f-port">Port</label>
-    <input id="f-port" type="number" value="52381" min="1" max="65535" />
-  </div>
-  <div class="field">
-    <label for="f-visca">VISCA Addr</label>
-    <select id="f-visca">
-      <option>1</option><option>2</option><option>3</option>
-      <option>4</option><option>5</option><option>6</option><option>7</option>
-    </select>
-  </div>
-  <div class="field">
-    <label for="f-atem-input">ATEM Input</label>
-    <select id="f-atem-input">
-      <option value="1">1</option><option value="2">2</option>
-      <option value="3">3</option><option value="4">4</option>
-      <option value="5">5</option><option value="6">6</option>
-      <option value="7">7</option><option value="8">8</option>
-    </select>
-  </div>
-  <div class="sep"></div>
-  <div class="field">
-    <label for="f-usb-device">USB Device (server)</label>
-    <select id="f-usb-device"><option value="">— none —</option></select>
-  </div>
-  <div class="field">
-    <label for="f-stream-url">VDO.ninja / URL</label>
-    <input id="f-stream-url" type="text" placeholder="https://vdo.ninja/?view=…" autocomplete="off" spellcheck="false" />
-  </div>
-  <div class="sep"></div>
-  <div class="field">
-    <label for="f-webcam">Browser Preview</label>
-    <select id="f-webcam"><option value="">— select —</option></select>
-  </div>
-  <div class="field">
-    <label for="f-dwell">Dwell (s)</label>
-    <input id="f-dwell" type="number" value="3" min="1" max="60" />
-  </div>
-</div>
-
-<div id="atem-bar">
-  <label class="atem-toggle-wrap">
-    <input id="f-atem-enabled" type="checkbox" />
-    <span>Follow ATEM Preview</span>
-  </label>
-  <div class="field">
-    <label for="f-atem-ip">ATEM IP</label>
-    <input id="f-atem-ip" type="text" placeholder="192.168.1.200" autocomplete="off" spellcheck="false" />
-  </div>
-</div>
 
 <main>
   <div id="preset-grid"><!-- rendered by JS --></div>
