@@ -1,0 +1,18 @@
+{
+    "sourceFile": "data/settings.json",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 0,
+            "patches": [
+                {
+                    "date": 1777040674508,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                }
+            ],
+            "date": 1777040674508,
+            "name": "Commit-0",
+            "content": "{\n  \"activeCam\": 0,\n  \"cameras\": [\n    {\n      \"name\": \"Camera 1\",\n      \"ip\": \"192.168.5.161\",\n      \"port\": 1259,\n      \"viscaAddr\": 1,\n      \"atemInput\": 1\n    },\n    {\n      \"name\": \"Camera 2\",\n      \"ip\": \"\",\n      \"port\": 52381,\n      \"viscaAddr\": 1,\n      \"atemInput\": 2\n    },\n    {\n      \"name\": \"Camera 3\",\n      \"ip\": \"\",\n      \"port\": 52381,\n      \"viscaAddr\": 1,\n      \"atemInput\": 3\n    }\n  ],\n  \"labels\": {\n    \"0:1\": \"Stage Left\",\n    \"0:5\": \"Wide\"\n  },\n  \"dwellMs\": 3000,\n  \"atem\": {\n    \"ip\": \"\",\n    \"enabled\": false\n  }\n}"
+        }
+    ]
+}

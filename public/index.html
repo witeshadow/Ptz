@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PTZ Preset Control — AVIPAS</title>
+  <title>PTZ Preset Control — AVIPAS — TEST123</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -147,7 +147,7 @@
       background: var(--surf);
       border-bottom: 1px solid var(--border);
       padding: 11px 20px;
-      display: flex;
+      display: none;
       flex-wrap: wrap;
       align-items: center;
       gap: 14px;
@@ -188,7 +188,7 @@
       background: var(--surf);
       border-bottom: 1px solid var(--border);
       padding: 10px 20px;
-      display: flex;
+      display: none;
       flex-wrap: wrap;
       align-items: center;
       gap: 14px;
@@ -393,24 +393,36 @@
 
     /* ── Grid-settings panel ─────────────────────────────── */
     #grid-settings-panel {
-      position: fixed; bottom: 72px; right: 18px; z-index: 199;
-      width: 220px;
+      position: fixed; bottom: 18px; right: 18px; z-index: 199;
+      width: 90%; max-width: 800px; max-height: 80vh;
       background: var(--surf); border: 1px solid var(--border);
       border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.5);
-      display: none;
+      display: none; flex-direction: column;
     }
-    #grid-settings-panel.open { display: block; }
+    #grid-settings-panel.open { display: flex; }
     .gsp-header {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 10px 14px 8px; border-bottom: 1px solid var(--border);
-      font-size: .8rem; font-weight: 600; color: var(--label);
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+      font-size: .9rem; font-weight: 600; color: var(--text);
+      flex-shrink: 0;
     }
     #gsp-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1rem; line-height: 1; }
     #gsp-close:hover { color: var(--text); }
-    .gsp-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
-    .gsp-body .field { flex-direction: row; align-items: center; justify-content: space-between; }
-    .gsp-body .field label { font-size: .72rem; }
-    .gsp-body .field input { width: 72px; }
+    .gsp-body {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+      padding: 16px; overflow-y: auto; flex: 1;
+    }
+    .gsp-column { display: flex; flex-direction: column; gap: 12px; }
+    .gsp-section-title { font-size: .75rem; font-weight: 600; color: var(--label); text-transform: uppercase; letter-spacing: 0.5px; }
+    .gsp-body .field { display: flex; flex-direction: column; gap: 4px; }
+    .gsp-body .field label { font-size: .75rem; color: var(--label); font-weight: 500; }
+    .gsp-body .field input, .gsp-body .field select { background: var(--surf2); border: 1px solid var(--border); color: var(--text); padding: 6px 8px; border-radius: 4px; font-size: .8rem; }
+    .gsp-body .atem-toggle-wrap { display: flex; align-items: center; gap: 8px; }
+    .gsp-body .atem-toggle-wrap input { width: 16px; height: 16px; }
+    .gsp-body .atem-toggle-wrap span { font-size: .8rem; color: var(--text); }
+    #webcam-preview-panel { border-top: 1px solid var(--border); padding: 12px; }
+    #preview-frame { width: 100%; max-height: 150px; border-radius: 6px; overflow: hidden; }
+    #preview-frame video, #preview-frame iframe { width: 100%; height: 100%; object-fit: cover; }
   </style>
 </head>
 <body>
@@ -483,12 +495,6 @@
     <label for="f-dwell">Dwell (s)</label>
     <input id="f-dwell" type="number" value="3" min="1" max="60" />
   </div>
-  <div id="webcam-preview">
-    <div id="preview-frame">
-      <video id="webcam-video" autoplay muted playsinline></video>
-      <iframe id="stream-iframe" src="" allow="camera; microphone; autoplay; fullscreen" style="display:none"></iframe>
-    </div>
-  </div>
 </div>
 
 <div id="atem-bar">
@@ -519,30 +525,100 @@
 
 <div id="grid-settings-panel">
   <div class="gsp-header">
-    <span>Grid Settings</span>
+    <span>Settings</span>
     <button id="gsp-close">&#x2715;</button>
   </div>
   <div class="gsp-body">
-    <div class="field">
-      <label for="gsp-start">Preset Start</label>
-      <input id="gsp-start" type="number" min="0" max="254" />
+    <!-- Camera Settings (Col 1) -->
+    <div class="gsp-column">
+      <div class="gsp-section-title">Camera</div>
+      <div class="field">
+        <label for="f-ip">IP</label>
+        <input id="f-ip" type="text" placeholder="192.168.1.100" autocomplete="off" spellcheck="false" />
+      </div>
+      <div class="field">
+        <label for="f-port">Port</label>
+        <input id="f-port" type="number" value="52381" min="1" max="65535" />
+      </div>
+      <div class="field">
+        <label for="f-visca">VISCA Addr</label>
+        <select id="f-visca">
+          <option>1</option><option>2</option><option>3</option>
+          <option>4</option><option>5</option><option>6</option><option>7</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="f-atem-input">ATEM Input</label>
+        <select id="f-atem-input">
+          <option value="1">1</option><option value="2">2</option>
+          <option value="3">3</option><option value="4">4</option>
+          <option value="5">5</option><option value="6">6</option>
+          <option value="7">7</option><option value="8">8</option>
+        </select>
+      </div>
     </div>
-    <div class="field">
-      <label for="gsp-end">Preset End</label>
-      <input id="gsp-end" type="number" min="1" max="255" />
+
+    <!-- Preview & Dwell (Col 2) -->
+    <div class="gsp-column">
+      <div class="gsp-section-title">Preview</div>
+      <div class="field">
+        <label for="f-usb-device">USB Device</label>
+        <select id="f-usb-device"><option value="">— none —</option></select>
+      </div>
+      <div class="field">
+        <label for="f-stream-url">VDO.ninja / URL</label>
+        <input id="f-stream-url" type="text" placeholder="https://vdo.ninja/?view=…" autocomplete="off" spellcheck="false" />
+      </div>
+      <div class="field">
+        <label for="f-webcam">Browser Preview</label>
+        <select id="f-webcam"><option value="">— select —</option></select>
+      </div>
+      <div class="field">
+        <label for="f-dwell">Dwell (s)</label>
+        <input id="f-dwell" type="number" value="3" min="1" max="60" />
+      </div>
+      <label class="atem-toggle-wrap">
+        <input id="f-atem-enabled" type="checkbox" />
+        <span>Follow ATEM</span>
+      </label>
+      <div class="field">
+        <label for="f-atem-ip">ATEM IP</label>
+        <input id="f-atem-ip" type="text" placeholder="192.168.1.200" autocomplete="off" spellcheck="false" />
+      </div>
     </div>
-    <div class="field">
-      <label for="gsp-cols">Columns</label>
-      <input id="gsp-cols" type="number" min="1" max="16" />
+
+    <!-- Grid Layout (Col 3) -->
+    <div class="gsp-column">
+      <div class="gsp-section-title">Grid Layout</div>
+      <div class="field">
+        <label for="gsp-start">Start</label>
+        <input id="gsp-start" type="number" min="0" max="254" />
+      </div>
+      <div class="field">
+        <label for="gsp-end">End</label>
+        <input id="gsp-end" type="number" min="1" max="255" />
+      </div>
+      <div class="field">
+        <label for="gsp-cols">Columns</label>
+        <input id="gsp-cols" type="number" min="1" max="16" />
+      </div>
+      <div class="field">
+        <label for="gsp-rows">Rows</label>
+        <input id="gsp-rows" type="number" min="1" max="16" />
+      </div>
+      <label class="atem-toggle-wrap">
+        <input id="gsp-fill" type="checkbox" />
+        <span>Fill Window</span>
+      </label>
     </div>
-    <div class="field">
-      <label for="gsp-rows">Rows</label>
-      <input id="gsp-rows" type="number" min="1" max="16" />
+  </div>
+
+  <!-- Webcam preview at bottom -->
+  <div id="webcam-preview" class="visible" style="border-top: 1px solid var(--border); padding: 12px;">
+    <div id="preview-frame">
+      <video id="webcam-video" autoplay muted playsinline></video>
+      <iframe id="stream-iframe" src="" allow="camera; microphone; autoplay; fullscreen" style="display:none"></iframe>
     </div>
-    <label class="atem-toggle-wrap">
-      <input id="gsp-fill" type="checkbox" />
-      <span>Fill Window</span>
-    </label>
   </div>
 </div>
 <button id="grid-settings-fab" title="Grid Settings">
