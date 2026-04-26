@@ -174,23 +174,29 @@ def _atem_loop():
             data, _ = sock.recvfrom(2048)
             session_id = struct.unpack(">H", data[2:4])[0]
 
-            # drain init dump until InCm (or timeout)
+            # drain init dump until InCm (or timeout); capture initial PrvI/PrgI
             init_done = False
+            init_preview: int | None = None
+            init_program: int | None = None
             while not init_done:
                 try:
                     data, _ = sock.recvfrom(2048)
                     flags, remote_id = _parse_header(data)
                     if flags & 0x10:  # ATEM wants ACK
                         sock.sendto(_make_ack(session_id, remote_id), (ip, ATEM_PORT))
-                    for cmd, _ in _parse_commands(data[12:] if len(data) > 12 else b""):
+                    for cmd, cmd_data in _parse_commands(data[12:] if len(data) > 12 else b""):
                         if cmd == "InCm":
                             init_done = True
                             break
+                        elif cmd == "PrvI" and len(cmd_data) >= 4:
+                            init_preview = struct.unpack(">H", cmd_data[2:4])[0]
+                        elif cmd == "PrgI" and len(cmd_data) >= 4:
+                            init_program = struct.unpack(">H", cmd_data[2:4])[0]
                 except socket.timeout:
                     break  # proceed even if InCm wasn't seen
 
-            _set_atem(True)
-            _broadcast({"type": "atem", "connected": True})
+            _set_atem(True, preview=init_preview, program=init_program)
+            _broadcast({"type": "atem", **_get_atem()})
 
             sock.settimeout(1.0)
             last_recv = time.monotonic()
