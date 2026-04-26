@@ -41,13 +41,15 @@ SETTINGS_F = os.path.join(DATA_DIR, "settings.json")
 DEFAULT_SETTINGS = {
     "activeCam": 0,
     "cameras": [
-        {"name": "Camera 1", "ip": "", "port": 52381, "viscaAddr": 1, "atemInput": 1, "streamUrl": "", "usbDevice": ""},
-        {"name": "Camera 2", "ip": "", "port": 52381, "viscaAddr": 1, "atemInput": 2, "streamUrl": "", "usbDevice": ""},
-        {"name": "Camera 3", "ip": "", "port": 52381, "viscaAddr": 1, "atemInput": 3, "streamUrl": "", "usbDevice": ""},
+        {"name": "Camera 1", "ip": "", "port": 52381, "viscaAddr": 1, "atemInput": 1, "streamUrl": "", "usbDevice": "", "enabled": True},
+        {"name": "Camera 2", "ip": "", "port": 52381, "viscaAddr": 1, "atemInput": 2, "streamUrl": "", "usbDevice": "", "enabled": True},
+        {"name": "Camera 3", "ip": "", "port": 52381, "viscaAddr": 1, "atemInput": 3, "streamUrl": "", "usbDevice": "", "enabled": True},
     ],
     "labels": {"0:1": "Stage Left", "0:5": "Wide"},
     "dwellMs": 3000,
     "atem": {"ip": "", "enabled": False},
+    "liveMode": True,
+    "atemFollows": "preview",
 }
 
 
@@ -212,6 +214,9 @@ def _atem_loop():
                             source = struct.unpack(">H", cmd_data[2:4])[0]
                             _set_atem(True, source)
                             _broadcast({"type": "preview", "source": source})
+                        elif cmd == "PrgI" and len(cmd_data) >= 4:
+                            source = struct.unpack(">H", cmd_data[2:4])[0]
+                            _broadcast({"type": "program", "source": source})
                 except socket.timeout:
                     pass
 

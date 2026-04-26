@@ -97,6 +97,29 @@
     #atem-pill.connected .atem-dot { background: var(--success); }
     #atem-pill.disabled  { opacity: 0.4; }
 
+    #live-mode-btn {
+      background: var(--surf2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s, background-color 0.2s;
+      user-select: none;
+    }
+    #live-mode-btn:hover { border-color: var(--accent); color: var(--accent); }
+    #live-mode-btn.live {
+      background: var(--success);
+      border-color: var(--success);
+      color: white;
+      font-weight: 700;
+    }
+    #live-mode-btn.live:hover { background: var(--success); opacity: 0.9; }
+
     .atem-dot {
       width: 7px; height: 7px; border-radius: 50%;
       background: var(--muted); flex-shrink: 0;
@@ -127,6 +150,21 @@
     }
     .cam-tab:hover { color: var(--text); }
     .cam-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+    .cam-tab.live { background: rgba(34, 197, 94, 0.1); }
+    .cam-tab.edit { background: rgba(107, 114, 128, 0.05); }
+
+    .cam-badge {
+      display: inline-block;
+      font-size: 0.6rem;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 3px;
+      margin-left: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .cam-badge.live { background: var(--success); color: white; }
+    .cam-badge.edit { background: var(--muted); color: var(--surf); }
 
     .cam-num {
       font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
@@ -416,6 +454,7 @@
     <p>AVIPAS Camera &nbsp;&middot;&nbsp; VISCA over IP</p>
   </div>
   <div class="header-pills">
+    <button id="live-mode-btn" class="live" title="Toggle Live/Edit mode">Live</button>
     <div id="atem-pill" class="disabled">
       <div class="atem-dot"></div>
       <span>ATEM</span>
@@ -531,6 +570,32 @@
         <input id="gsp-fill" type="checkbox" />
         <span>Fill Window</span>
       </label>
+      <div class="field" id="live-preference-field" style="display:none;">
+        <label>Live Mode Follows</label>
+        <select id="f-atem-follows">
+          <option value="preview">Preview</option>
+          <option value="program">Program</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Camera Management -->
+  <div style="border-top: 1px solid var(--border); padding: 12px;">
+    <div class="gsp-section-title">Camera Management</div>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+      <label class="atem-toggle-wrap" style="margin: 4px 0;">
+        <input id="f-cam-0-enabled" type="checkbox" class="cam-enable-cb" data-idx="0" />
+        <span>Camera 1</span>
+      </label>
+      <label class="atem-toggle-wrap" style="margin: 4px 0;">
+        <input id="f-cam-1-enabled" type="checkbox" class="cam-enable-cb" data-idx="1" />
+        <span>Camera 2</span>
+      </label>
+      <label class="atem-toggle-wrap" style="margin: 4px 0;">
+        <input id="f-cam-2-enabled" type="checkbox" class="cam-enable-cb" data-idx="2" />
+        <span>Camera 3</span>
+      </label>
     </div>
   </div>
 
@@ -563,9 +628,9 @@
 
   // ── State ──────────────────────────────────────────────────────────────────
   const DEF_CAMERAS = [
-    { name: 'Camera 1', ip: '', port: 52381, viscaAddr: 1, atemInput: 1, streamUrl: '', usbDevice: '' },
-    { name: 'Camera 2', ip: '', port: 52381, viscaAddr: 1, atemInput: 2, streamUrl: '', usbDevice: '' },
-    { name: 'Camera 3', ip: '', port: 52381, viscaAddr: 1, atemInput: 3, streamUrl: '', usbDevice: '' },
+    { name: 'Camera 1', ip: '', port: 52381, viscaAddr: 1, atemInput: 1, streamUrl: '', usbDevice: '', enabled: true },
+    { name: 'Camera 2', ip: '', port: 52381, viscaAddr: 1, atemInput: 2, streamUrl: '', usbDevice: '', enabled: true },
+    { name: 'Camera 3', ip: '', port: 52381, viscaAddr: 1, atemInput: 3, streamUrl: '', usbDevice: '', enabled: true },
   ];
 
   let state = {
@@ -574,6 +639,9 @@
     labels: {},
     dwellMs: 3000,
     atem: { ip: '', enabled: false },
+    liveMode: true,
+    atemFollows: 'preview',
+    previewSource: null,
     presetStart: 0,
     presetEnd: 11,
     gridCols: 4,
@@ -658,6 +726,9 @@
   function renderTabs() {
     elTabs.innerHTML = '';
     state.cameras.forEach((cam, idx) => {
+      // Skip disabled cameras
+      if (!cam.enabled) return;
+
       const btn = document.createElement('button');
       btn.className = 'cam-tab' + (idx === state.activeCam ? ' active' : '');
       btn.dataset.idx = idx;
@@ -672,6 +743,25 @@
       const nameEl = document.createElement('span');
       nameEl.className = 'cam-name';
       nameEl.textContent = cam.name;
+
+      // Add badge for Live/Edit mode indicator
+      if (state.liveMode && state.previewSource !== null) {
+        // Find camera index from preview source (atemInput)
+        const previewIdx = state.cameras.findIndex(c => +c.atemInput === +state.previewSource);
+        if (previewIdx === idx) {
+          const badge = document.createElement('span');
+          badge.className = 'cam-badge live';
+          badge.textContent = 'LIVE';
+          nameWrap.appendChild(badge);
+          btn.classList.add('live');
+        }
+      } else if (idx === state.activeCam && !state.liveMode) {
+        const badge = document.createElement('span');
+        badge.className = 'cam-badge edit';
+        badge.textContent = 'EDIT';
+        nameWrap.appendChild(badge);
+        btn.classList.add('edit');
+      }
 
       nameWrap.appendChild(nameEl);
       btn.appendChild(numEl);
@@ -777,6 +867,10 @@
     saveCameraSettings();
     schedSave();
     updateAtemPill(false);
+    // Show/hide Live preference field based on ATEM enabled state
+    if (elLivePreferenceField) {
+      elLivePreferenceField.style.display = state.atem.enabled ? 'block' : 'none';
+    }
   });
   elAtemIp.addEventListener('change', () => { saveCameraSettings(); schedSave(); });
 
@@ -788,14 +882,36 @@
         const ev = JSON.parse(e.data);
         if (ev.type === 'atem') {
           updateAtemPill(ev.connected);
-        } else if (ev.type === 'preview' && state.atem.enabled) {
-          const idx = state.cameras.findIndex(c => +c.atemInput === +ev.source);
-          if (idx >= 0 && idx !== state.activeCam) switchCamera(idx);
+        } else if (ev.type === 'preview') {
+          state.previewSource = ev.source;
+          renderTabs();  // Update badges to show live source
+          // Auto-switch in Live mode if following preview
+          if (state.liveMode && state.atem.enabled && state.atemFollows === 'preview') {
+            const idx = state.cameras.findIndex(c => +c.atemInput === +ev.source);
+            if (idx >= 0 && idx !== state.activeCam) switchCamera(idx);
+          }
+        } else if (ev.type === 'program') {
+          // Auto-switch in Live mode if following program
+          if (state.liveMode && state.atem.enabled && state.atemFollows === 'program') {
+            const idx = state.cameras.findIndex(c => +c.atemInput === +ev.source);
+            if (idx >= 0 && idx !== state.activeCam) switchCamera(idx);
+          }
         }
       } catch (_) {}
     };
     es.onerror = () => {};  // browser auto-reconnects
   })();
+
+  // ── Live/Edit mode toggle ──────────────────────────────────────────────────
+  const elLiveBtn = document.getElementById('live-mode-btn');
+  if (elLiveBtn) {
+    elLiveBtn.addEventListener('click', () => {
+      state.liveMode = !state.liveMode;
+      elLiveBtn.textContent = state.liveMode ? 'Live' : 'Edit';
+      elLiveBtn.classList.toggle('live', state.liveMode);
+      schedSave();
+    });
+  }
 
   // ── Grid-settings panel ────────────────────────────────────────────────────
   const elGspPanel = document.getElementById('grid-settings-panel');
@@ -841,6 +957,51 @@
     el.addEventListener('change', saveGridSettings)
   );
   elGspFill.addEventListener('change', saveGridSettings);
+
+  // ── Camera Management & Live Mode Preferences ──────────────────────────────
+  const elAtemFollows = document.getElementById('f-atem-follows');
+  const elLivePreferenceField = document.getElementById('live-preference-field');
+  const camEnableCbs = document.querySelectorAll('.cam-enable-cb');
+
+  function loadCameraManagement() {
+    // Load camera enabled states
+    camEnableCbs.forEach(cb => {
+      const idx = parseInt(cb.dataset.idx, 10);
+      cb.checked = !!state.cameras[idx]?.enabled;
+    });
+    // Load Live preference
+    if (elAtemFollows) {
+      elAtemFollows.value = state.atemFollows || 'preview';
+      // Show preference only if ATEM is enabled
+      if (elLivePreferenceField) {
+        elLivePreferenceField.style.display = state.atem.enabled ? 'block' : 'none';
+      }
+    }
+  }
+
+  function saveCameraManagement() {
+    // Save camera enabled states
+    camEnableCbs.forEach(cb => {
+      const idx = parseInt(cb.dataset.idx, 10);
+      if (state.cameras[idx]) {
+        state.cameras[idx].enabled = cb.checked;
+      }
+    });
+    // Save Live preference
+    if (elAtemFollows) {
+      state.atemFollows = elAtemFollows.value;
+    }
+    renderTabs();  // Refresh tabs to show/hide disabled cameras
+    schedSave();
+  }
+
+  // Attach listeners
+  camEnableCbs.forEach(cb => {
+    cb.addEventListener('change', saveCameraManagement);
+  });
+  if (elAtemFollows) {
+    elAtemFollows.addEventListener('change', saveCameraManagement);
+  }
 
   // ── Webcam / stream source ────────────────────────────────────────────────
   const elWebcam      = document.getElementById('f-webcam');
@@ -1235,6 +1396,7 @@
     await loadSettings();
     loadCameraSettings();
     loadGridSettings();
+    loadCameraManagement();
     renderTabs();
     renderGrid();
     applyGridLayout();
