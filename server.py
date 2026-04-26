@@ -190,7 +190,7 @@ def _atem_loop():
                     data, _ = sock.recvfrom(2048)
                     pkt_count += 1
                     flags, remote_id = _parse_header(data)
-                    if flags & 0x10:  # ATEM wants ACK
+                    if flags & 0x01:  # ATEM wants ACK (RELIABLE flag)
                         sock.sendto(_make_ack(session_id, remote_id), (ip, ATEM_PORT))
                     for cmd, cmd_data in _parse_commands(data[12:] if len(data) > 12 else b""):
                         if cmd == "InCm":
@@ -235,7 +235,7 @@ def _atem_loop():
                     last_recv = now
                     flags, seq_num = _parse_header(data)
                     last_seq = seq_num
-                    if flags & 0x10:
+                    if flags & 0x01:  # ATEM wants ACK (RELIABLE flag)
                         sock.sendto(_make_ack(session_id, seq_num), (ip, ATEM_PORT))
                     for cmd, cmd_data in _parse_commands(
                         data[12:] if len(data) > 12 else b""
