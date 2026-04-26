@@ -190,12 +190,15 @@ def _atem_loop():
                         if cmd == "InCm":
                             init_done = True
                             break
-                        elif cmd == "PrvI" and len(cmd_data) >= 4 and cmd_data[0] == 0:
-                            init_preview = struct.unpack(">H", cmd_data[2:4])[0]
-                            print(f"[ATEM] init PrvI source={init_preview}")
-                        elif cmd == "PrgI" and len(cmd_data) >= 4 and cmd_data[0] == 0:
-                            init_program = struct.unpack(">H", cmd_data[2:4])[0]
-                            print(f"[ATEM] init PrgI source={init_program}")
+                        elif cmd in ("PrvI", "PrgI") and len(cmd_data) >= 4:
+                            me = cmd_data[0]
+                            source = struct.unpack(">H", cmd_data[2:4])[0]
+                            print(f"[ATEM] init {cmd} me={me} source={source} raw={cmd_data.hex()}")
+                            if me == 0:
+                                if cmd == "PrvI":
+                                    init_preview = source
+                                else:
+                                    init_program = source
                 except socket.timeout:
                     break  # proceed even if InCm wasn't seen
 
@@ -211,6 +214,7 @@ def _atem_loop():
                 # re-check config each iteration
                 cur_cfg = load_settings().get("atem", {})
                 if not cur_cfg.get("enabled") or cur_cfg.get("ip", "").strip() != ip:
+                    print(f"[ATEM] Config changed — reconnecting")
                     break
 
                 try:
@@ -224,22 +228,24 @@ def _atem_loop():
                         data[12:] if len(data) > 12 else b""
                     ):
                         # filter to ME1 (cmd_data[0] == 0) for multi-ME switchers
-                        if cmd == "PrvI" and len(cmd_data) >= 4 and cmd_data[0] == 0:
+                        if cmd in ("PrvI", "PrgI") and len(cmd_data) >= 4:
+                            me = cmd_data[0]
                             source = struct.unpack(">H", cmd_data[2:4])[0]
-                            _set_atem(True, preview=source)
-                            _broadcast({"type": "preview", "source": source})
-                            print(f"[ATEM] PrvI source={source}")
-                        elif cmd == "PrgI" and len(cmd_data) >= 4 and cmd_data[0] == 0:
-                            source = struct.unpack(">H", cmd_data[2:4])[0]
-                            _set_atem(True, program=source)
-                            _broadcast({"type": "program", "source": source})
-                            print(f"[ATEM] PrgI source={source}")
+                            print(f"[ATEM] {cmd} me={me} source={source}")
+                            if me == 0:
+                                if cmd == "PrvI":
+                                    _set_atem(True, preview=source)
+                                    _broadcast({"type": "preview", "source": source})
+                                else:
+                                    _set_atem(True, program=source)
+                                    _broadcast({"type": "program", "source": source})
                 except socket.timeout:
                     pass
 
                 now = time.monotonic()
                 if now - last_recv > 5.0:
-                    break  # reconnect
+                    print(f"[ATEM] No data for 5 s — reconnecting")
+                    break
                 if now - last_keepalive >= 0.5:
                     sock.sendto(_make_ack(session_id, 0), (ip, ATEM_PORT))
                     last_keepalive = time.monotonic()
