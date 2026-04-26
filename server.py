@@ -189,11 +189,9 @@ def _atem_loop():
                     data, _ = sock.recvfrom(2048)
                     pkt_count += 1
                     flags, remote_id = _parse_header(data)
-                    print(f"[ATEM] init pkt #{pkt_count} len={len(data)} flags=0x{flags:02x} raw={data[:12].hex()}")
                     if flags & 0x10:  # ATEM wants ACK
                         sock.sendto(_make_ack(session_id, remote_id), (ip, ATEM_PORT))
                     for cmd, cmd_data in _parse_commands(data[12:] if len(data) > 12 else b""):
-                        print(f"[ATEM] init cmd={cmd!r}  data={cmd_data.hex()}")
                         if cmd == "InCm":
                             init_done = True
                             break
