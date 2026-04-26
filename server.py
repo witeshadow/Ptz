@@ -142,8 +142,9 @@ def _make_ack(session_id: int, remote_id: int) -> bytes:
 def _parse_header(data: bytes):
     word0 = struct.unpack(">H", data[0:2])[0]
     flags = (word0 >> 11) & 0x1F
-    remote_id = struct.unpack(">H", data[4:6])[0]
-    return flags, remote_id
+    # bytes 10-11 = ATEM's sequence number for this packet (what we ACK back)
+    seq_num = struct.unpack(">H", data[10:12])[0] if len(data) >= 12 else 0
+    return flags, seq_num
 
 
 def _parse_commands(payload: bytes):
@@ -215,21 +216,27 @@ def _atem_loop():
             sock.settimeout(1.0)
             last_recv = time.monotonic()
             last_keepalive = time.monotonic()
+            last_cfg_check = time.monotonic()
+            last_seq = 0  # last ATEM sequence number received — used for keepalives
 
             while True:
-                # re-check config each iteration
-                cur_cfg = load_settings().get("atem", {})
-                if not cur_cfg.get("enabled") or cur_cfg.get("ip", "").strip() != ip:
-                    print(f"[ATEM] Config changed — reconnecting")
-                    break
+                # re-check config every 5 s instead of every loop iteration
+                now = time.monotonic()
+                if now - last_cfg_check >= 5.0:
+                    cur_cfg = load_settings().get("atem", {})
+                    last_cfg_check = now
+                    if not cur_cfg.get("enabled") or cur_cfg.get("ip", "").strip() != ip:
+                        print(f"[ATEM] Config changed — reconnecting")
+                        break
 
                 try:
                     data, _ = sock.recvfrom(2048)
                     now = time.monotonic()
                     last_recv = now
-                    flags, remote_id = _parse_header(data)
+                    flags, seq_num = _parse_header(data)
+                    last_seq = seq_num
                     if flags & 0x10:
-                        sock.sendto(_make_ack(session_id, remote_id), (ip, ATEM_PORT))
+                        sock.sendto(_make_ack(session_id, seq_num), (ip, ATEM_PORT))
                     for cmd, cmd_data in _parse_commands(
                         data[12:] if len(data) > 12 else b""
                     ):
@@ -253,7 +260,7 @@ def _atem_loop():
                     print(f"[ATEM] No data for 5 s — reconnecting")
                     break
                 if now - last_keepalive >= 0.5:
-                    sock.sendto(_make_ack(session_id, 0), (ip, ATEM_PORT))
+                    sock.sendto(_make_ack(session_id, last_seq), (ip, ATEM_PORT))
                     last_keepalive = time.monotonic()
 
         except Exception as exc:
