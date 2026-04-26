@@ -89,15 +89,17 @@ def _broadcast(event: dict):
 
 
 # ── ATEM state ─────────────────────────────────────────────────────────────────
-_atem_state = {"connected": False, "preview": 0}
+_atem_state = {"connected": False, "preview": 0, "program": 0}
 _atem_state_lock = threading.Lock()
 
 
-def _set_atem(connected: bool, preview: int | None = None):
+def _set_atem(connected: bool, preview: int | None = None, program: int | None = None):
     with _atem_state_lock:
         _atem_state["connected"] = connected
         if preview is not None:
             _atem_state["preview"] = preview
+        if program is not None:
+            _atem_state["program"] = program
 
 
 def _get_atem() -> dict:
@@ -212,10 +214,11 @@ def _atem_loop():
                     ):
                         if cmd == "PrvI" and len(cmd_data) >= 4:
                             source = struct.unpack(">H", cmd_data[2:4])[0]
-                            _set_atem(True, source)
+                            _set_atem(True, preview=source)
                             _broadcast({"type": "preview", "source": source})
                         elif cmd == "PrgI" and len(cmd_data) >= 4:
                             source = struct.unpack(">H", cmd_data[2:4])[0]
+                            _set_atem(True, program=source)
                             _broadcast({"type": "program", "source": source})
                 except socket.timeout:
                     pass

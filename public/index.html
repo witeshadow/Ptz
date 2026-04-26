@@ -643,6 +643,7 @@
     liveMode: true,
     atemFollows: 'preview',
     previewSource: null,
+    programSource: null,
     presetStart: 0,
     presetEnd: 11,
     gridCols: 4,
@@ -674,6 +675,8 @@
         if (s.gridCols    != null) state.gridCols    = +s.gridCols;
         if (s.gridRows    != null) state.gridRows    = +s.gridRows;
         if (s.fillWindow  != null) state.fillWindow  = !!s.fillWindow;
+        if (s.liveMode    != null) state.liveMode    = !!s.liveMode;
+        if (s.atemFollows)         state.atemFollows = s.atemFollows;
       }
     } catch (_) {}
   }
@@ -748,19 +751,19 @@
       // Add badge for mode/ATEM indicator
       let badgeText = '', badgeClass = '';
 
-      if (state.previewSource !== null) {
-        const previewIdx = state.cameras.findIndex(c => +c.atemInput === +state.previewSource);
-        if (previewIdx === idx) {
-          if (state.liveMode && state.atem.enabled && state.atemFollows === 'preview') {
-            badgeText = 'LIVE';
-            badgeClass = 'live';
-            btn.classList.add('live');
-          } else {
-            badgeText = 'PREVIEW';
-            badgeClass = 'preview';
-            btn.classList.add('preview');
-          }
-        }
+      const onProgram = state.programSource !== null &&
+        state.cameras.findIndex(c => +c.atemInput === +state.programSource) === idx;
+      const onPreview = state.previewSource !== null &&
+        state.cameras.findIndex(c => +c.atemInput === +state.previewSource) === idx;
+
+      if (onProgram) {
+        badgeText = 'LIVE';
+        badgeClass = 'live';
+        btn.classList.add('live');
+      } else if (onPreview) {
+        badgeText = 'PREVIEW';
+        badgeClass = 'preview';
+        btn.classList.add('preview');
       }
 
       if (!badgeText && idx === state.activeCam && !state.liveMode) {
@@ -895,15 +898,21 @@
         const ev = JSON.parse(e.data);
         if (ev.type === 'atem') {
           updateAtemPill(ev.connected);
+          // Apply initial preview/program sources sent with the connection event
+          if (ev.preview != null && ev.preview !== 0) state.previewSource = ev.preview;
+          if (ev.program != null && ev.program !== 0) state.programSource = ev.program;
+          renderTabs();
         } else if (ev.type === 'preview') {
           state.previewSource = ev.source;
-          renderTabs();  // Update badges to show live source
+          renderTabs();
           // Auto-switch in Live mode if following preview
           if (state.liveMode && state.atem.enabled && state.atemFollows === 'preview') {
             const idx = state.cameras.findIndex(c => +c.atemInput === +ev.source);
             if (idx >= 0 && idx !== state.activeCam) switchCamera(idx);
           }
         } else if (ev.type === 'program') {
+          state.programSource = ev.source;
+          renderTabs();
           // Auto-switch in Live mode if following program
           if (state.liveMode && state.atem.enabled && state.atemFollows === 'program') {
             const idx = state.cameras.findIndex(c => +c.atemInput === +ev.source);
