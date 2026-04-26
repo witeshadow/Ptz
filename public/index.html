@@ -164,6 +164,7 @@
       letter-spacing: 0.3px;
     }
     .cam-badge.live { background: var(--success); color: white; }
+    .cam-badge.preview { background: var(--accent); color: white; }
     .cam-badge.edit { background: var(--muted); color: var(--surf); }
 
     .cam-num {
@@ -744,23 +745,35 @@
       nameEl.className = 'cam-name';
       nameEl.textContent = cam.name;
 
-      // Add badge for Live/Edit mode indicator
-      if (state.liveMode && state.previewSource !== null) {
-        // Find camera index from preview source (atemInput)
+      // Add badge for mode/ATEM indicator
+      let badgeText = '', badgeClass = '';
+
+      if (state.previewSource !== null) {
         const previewIdx = state.cameras.findIndex(c => +c.atemInput === +state.previewSource);
         if (previewIdx === idx) {
-          const badge = document.createElement('span');
-          badge.className = 'cam-badge live';
-          badge.textContent = 'LIVE';
-          nameWrap.appendChild(badge);
-          btn.classList.add('live');
+          if (state.liveMode && state.atem.enabled && state.atemFollows === 'preview') {
+            badgeText = 'LIVE';
+            badgeClass = 'live';
+            btn.classList.add('live');
+          } else {
+            badgeText = 'PREVIEW';
+            badgeClass = 'preview';
+            btn.classList.add('preview');
+          }
         }
-      } else if (idx === state.activeCam && !state.liveMode) {
-        const badge = document.createElement('span');
-        badge.className = 'cam-badge edit';
-        badge.textContent = 'EDIT';
-        nameWrap.appendChild(badge);
+      }
+
+      if (!badgeText && idx === state.activeCam && !state.liveMode) {
+        badgeText = 'EDIT';
+        badgeClass = 'edit';
         btn.classList.add('edit');
+      }
+
+      if (badgeText) {
+        const badge = document.createElement('span');
+        badge.className = 'cam-badge ' + badgeClass;
+        badge.textContent = badgeText;
+        nameWrap.appendChild(badge);
       }
 
       nameWrap.appendChild(nameEl);
