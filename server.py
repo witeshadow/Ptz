@@ -174,13 +174,13 @@ def _atem_loop():
             sock.settimeout(5.0)
             sock.sendto(ATEM_HELLO, (ip, ATEM_PORT))
             data, _ = sock.recvfrom(2048)
-            session_id = struct.unpack(">H", data[2:4])[0]
-            print(f"[ATEM] HELLO response: session=0x{session_id:04x} raw={data[:12].hex()}")
-            # ACK the HELLO response so the ATEM opens the session and sends the init dump
-            _, hello_remote_id = _parse_header(data)
-            sock.sendto(_make_ack(session_id, hello_remote_id), (ip, ATEM_PORT))
+            print(f"[ATEM] HELLO response raw={data[:12].hex()}")
+            # ACK the HELLO response with session_id=0 (not yet assigned)
+            _, hello_seq = _parse_header(data)
+            sock.sendto(_make_ack(0, hello_seq), (ip, ATEM_PORT))
 
-            # drain init dump until InCm (or timeout); capture initial PrvI/PrgI (ME1 only)
+            # drain init dump; pick up actual session_id from first data packet
+            session_id = 0
             init_done = False
             init_preview: int | None = None
             init_program: int | None = None
@@ -189,9 +189,13 @@ def _atem_loop():
                 try:
                     data, _ = sock.recvfrom(2048)
                     pkt_count += 1
-                    flags, remote_id = _parse_header(data)
+                    # ATEM assigns session_id in data packets (HELLO response has 0)
+                    pkt_sid = struct.unpack(">H", data[2:4])[0]
+                    if pkt_sid != 0:
+                        session_id = pkt_sid
+                    flags, seq_num = _parse_header(data)
                     if flags & 0x01:  # ATEM wants ACK (RELIABLE flag)
-                        sock.sendto(_make_ack(session_id, remote_id), (ip, ATEM_PORT))
+                        sock.sendto(_make_ack(session_id, seq_num), (ip, ATEM_PORT))
                     for cmd, cmd_data in _parse_commands(data[12:] if len(data) > 12 else b""):
                         if cmd == "InCm":
                             init_done = True
@@ -241,17 +245,17 @@ def _atem_loop():
                         data[12:] if len(data) > 12 else b""
                     ):
                         # filter to ME1 (cmd_data[0] == 0) for multi-ME switchers
-                        if cmd in ("PrvI", "PrgI") and len(cmd_data) >= 4:
-                            me = cmd_data[0]
+                        if cmd in ("PrvI", "PrgI") and len(cmd_data) >= 4 and cmd_data[0] == 0:
                             source = struct.unpack(">H", cmd_data[2:4])[0]
-                            print(f"[ATEM] {cmd} me={me} source={source}")
-                            if me == 0:
-                                if cmd == "PrvI":
-                                    _set_atem(True, preview=source)
-                                    _broadcast({"type": "preview", "source": source})
-                                else:
-                                    _set_atem(True, program=source)
-                                    _broadcast({"type": "program", "source": source})
+                            cur = _get_atem()
+                            if cmd == "PrvI" and source != cur["preview"]:
+                                print(f"[ATEM] PrvI source={source}")
+                                _set_atem(True, preview=source)
+                                _broadcast({"type": "preview", "source": source})
+                            elif cmd == "PrgI" and source != cur["program"]:
+                                print(f"[ATEM] PrgI source={source}")
+                                _set_atem(True, program=source)
+                                _broadcast({"type": "program", "source": source})
                 except socket.timeout:
                     pass
 
