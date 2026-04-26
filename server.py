@@ -174,15 +174,22 @@ def _atem_loop():
             sock.sendto(ATEM_HELLO, (ip, ATEM_PORT))
             data, _ = sock.recvfrom(2048)
             session_id = struct.unpack(">H", data[2:4])[0]
+            print(f"[ATEM] HELLO response: session=0x{session_id:04x} raw={data[:12].hex()}")
+            # ACK the HELLO response so the ATEM opens the session and sends the init dump
+            _, hello_remote_id = _parse_header(data)
+            sock.sendto(_make_ack(session_id, hello_remote_id), (ip, ATEM_PORT))
 
             # drain init dump until InCm (or timeout); capture initial PrvI/PrgI (ME1 only)
             init_done = False
             init_preview: int | None = None
             init_program: int | None = None
+            pkt_count = 0
             while not init_done:
                 try:
                     data, _ = sock.recvfrom(2048)
+                    pkt_count += 1
                     flags, remote_id = _parse_header(data)
+                    print(f"[ATEM] init pkt #{pkt_count} len={len(data)} flags=0x{flags:02x} raw={data[:12].hex()}")
                     if flags & 0x10:  # ATEM wants ACK
                         sock.sendto(_make_ack(session_id, remote_id), (ip, ATEM_PORT))
                     for cmd, cmd_data in _parse_commands(data[12:] if len(data) > 12 else b""):
@@ -200,6 +207,7 @@ def _atem_loop():
                                 else:
                                     init_program = source
                 except socket.timeout:
+                    print(f"[ATEM] init drain timeout after {pkt_count} pkts")
                     break  # proceed even if InCm wasn't seen
 
             _set_atem(True, preview=init_preview, program=init_program)
