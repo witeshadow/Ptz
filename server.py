@@ -166,6 +166,7 @@ def _atem_loop():
             continue
 
         ip = cfg["ip"].strip()
+        print(f"[ATEM] Connecting to {ip}:{ATEM_PORT} …")
         sock = None
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -174,7 +175,7 @@ def _atem_loop():
             data, _ = sock.recvfrom(2048)
             session_id = struct.unpack(">H", data[2:4])[0]
 
-            # drain init dump until InCm (or timeout); capture initial PrvI/PrgI
+            # drain init dump until InCm (or timeout); capture initial PrvI/PrgI (ME1 only)
             init_done = False
             init_preview: int | None = None
             init_program: int | None = None
@@ -185,18 +186,22 @@ def _atem_loop():
                     if flags & 0x10:  # ATEM wants ACK
                         sock.sendto(_make_ack(session_id, remote_id), (ip, ATEM_PORT))
                     for cmd, cmd_data in _parse_commands(data[12:] if len(data) > 12 else b""):
+                        print(f"[ATEM] init cmd={cmd!r}  data={cmd_data.hex()}")
                         if cmd == "InCm":
                             init_done = True
                             break
-                        elif cmd == "PrvI" and len(cmd_data) >= 4:
+                        elif cmd == "PrvI" and len(cmd_data) >= 4 and cmd_data[0] == 0:
                             init_preview = struct.unpack(">H", cmd_data[2:4])[0]
-                        elif cmd == "PrgI" and len(cmd_data) >= 4:
+                            print(f"[ATEM] init PrvI source={init_preview}")
+                        elif cmd == "PrgI" and len(cmd_data) >= 4 and cmd_data[0] == 0:
                             init_program = struct.unpack(">H", cmd_data[2:4])[0]
+                            print(f"[ATEM] init PrgI source={init_program}")
                 except socket.timeout:
                     break  # proceed even if InCm wasn't seen
 
             _set_atem(True, preview=init_preview, program=init_program)
             _broadcast({"type": "atem", **_get_atem()})
+            print(f"[ATEM] Connected — init preview={init_preview} program={init_program}")
 
             sock.settimeout(1.0)
             last_recv = time.monotonic()
@@ -218,14 +223,17 @@ def _atem_loop():
                     for cmd, cmd_data in _parse_commands(
                         data[12:] if len(data) > 12 else b""
                     ):
-                        if cmd == "PrvI" and len(cmd_data) >= 4:
+                        # filter to ME1 (cmd_data[0] == 0) for multi-ME switchers
+                        if cmd == "PrvI" and len(cmd_data) >= 4 and cmd_data[0] == 0:
                             source = struct.unpack(">H", cmd_data[2:4])[0]
                             _set_atem(True, preview=source)
                             _broadcast({"type": "preview", "source": source})
-                        elif cmd == "PrgI" and len(cmd_data) >= 4:
+                            print(f"[ATEM] PrvI source={source}")
+                        elif cmd == "PrgI" and len(cmd_data) >= 4 and cmd_data[0] == 0:
                             source = struct.unpack(">H", cmd_data[2:4])[0]
                             _set_atem(True, program=source)
                             _broadcast({"type": "program", "source": source})
+                            print(f"[ATEM] PrgI source={source}")
                 except socket.timeout:
                     pass
 
@@ -236,10 +244,11 @@ def _atem_loop():
                     sock.sendto(_make_ack(session_id, 0), (ip, ATEM_PORT))
                     last_keepalive = time.monotonic()
 
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[ATEM] Error: {exc!r}")
         finally:
             _set_atem(False)
+            print(f"[ATEM] Disconnected — will retry in 3 s")
             try:
                 _broadcast({"type": "atem", "connected": False})
             except Exception:
@@ -466,6 +475,18 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, load_settings())
         elif path == "/atem/status":
             self._json(200, _get_atem())
+        elif path == "/atem/debug":
+            cfg = load_settings().get("atem", {})
+            with _sse_lock:
+                n_clients = len(_sse_clients)
+            self._json(200, {
+                "state": _get_atem(),
+                "sse_clients": n_clients,
+                "settings": {
+                    "ip":      cfg.get("ip", ""),
+                    "enabled": bool(cfg.get("enabled", False)),
+                },
+            })
         elif path == "/events":
             self._sse()
         elif path == "/api/devices":
