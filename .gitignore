@@ -1,0 +1,4 @@
+data/settings.json
+data/images/
+__pycache__/
+.lh/server.py.json

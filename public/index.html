@@ -534,7 +534,7 @@
 </main>
 
 <footer>Tap a preset to recall it &nbsp;&middot;&nbsp;
-  Long-hold to rename &nbsp;&middot;&nbsp; Double-click a camera tab to rename it</footer>
+  Turn on Edit Labels to rename presets &nbsp;&middot;&nbsp; Double-click a camera tab to rename it</footer>
 
 <div id="grid-settings-panel">
   <div class="gsp-header">
@@ -882,7 +882,7 @@
     schedSave();
     loadCameraSettings();
     renderTabs();
-    renderGrid();
+    refreshGridForActiveCamera();
     applyGridLayout();
   }
 
@@ -1265,13 +1265,36 @@
   // ── Preset grid ────────────────────────────────────────────────────────────
   const elGrid = document.getElementById('preset-grid');
   let editMode = false;
+  const imageVersions = Object.create(null);
+
+  function presetKey(cam, preset) {
+    return `${cam}:${preset}`;
+  }
+
+  function bumpImageVersion(cam, preset) {
+    const key = presetKey(cam, preset);
+    imageVersions[key] = (imageVersions[key] || 0) + 1;
+  }
+
+  function presetNumbers() {
+    const nums = [];
+    for (let n = state.presetStart; n <= state.presetEnd; n++) nums.push(n);
+    return nums;
+  }
 
   function renderGrid() {
     elGrid.innerHTML = '';
-    for (let n = state.presetStart; n <= state.presetEnd; n++) {
-      elGrid.appendChild(buildPresetBtn(n));
-    }
+    presetNumbers().forEach(n => elGrid.appendChild(buildPresetBtn(n)));
     elGrid.style.gridTemplateColumns = `repeat(${state.gridCols}, 1fr)`;
+  }
+
+  function refreshGridForActiveCamera() {
+    const nums = presetNumbers();
+    if (elGrid.children.length !== nums.length) {
+      renderGrid();
+      return;
+    }
+    nums.forEach(n => refreshPresetBtn(n, state.activeCam));
   }
 
   function applyGridLayout() {
@@ -1290,16 +1313,55 @@
   }
 
   function imgUrl(cam, preset) {
-    return `/api/image/${cam}/${preset}?t=${Date.now()}`;
+    return `/api/image/${cam}/${preset}?v=${imageVersions[presetKey(cam, preset)] || 0}`;
+  }
+
+  function refreshPresetImage(btn, cam, preset) {
+    const imgEl = btn.querySelector('.preset-snapshot');
+    if (!imgEl) return;
+
+    const nextUrl = imgUrl(cam, preset);
+    if (btn.dataset.currentImageUrl === nextUrl) return;
+
+    const requestId = String((parseInt(btn.dataset.imageRequestId || '0', 10) || 0) + 1);
+    btn.dataset.imageRequestId = requestId;
+
+    const preload = new Image();
+    preload.addEventListener('load', () => {
+      if (btn.dataset.imageRequestId !== requestId) return;
+      imgEl.src = nextUrl;
+      btn.dataset.currentImageUrl = nextUrl;
+      btn.classList.add('has-image');
+    });
+    preload.addEventListener('error', () => {
+      if (btn.dataset.imageRequestId !== requestId) return;
+      btn.dataset.currentImageUrl = '';
+      imgEl.removeAttribute('src');
+      btn.classList.remove('has-image');
+    });
+    preload.src = nextUrl;
+  }
+
+  function refreshPresetBtn(n, cam) {
+    const btn = elGrid.querySelector(`[data-preset="${n}"]`);
+    if (!btn) return;
+
+    btn.dataset.displayCam = cam;
+    const ovName = btn.querySelector('.ov-name');
+    if (ovName && !ovName.querySelector('input')) {
+      ovName.textContent = state.labels[presetKey(cam, n)] || '';
+    }
+    refreshPresetImage(btn, cam, n);
   }
 
   function buildPresetBtn(n) {
     const cam = state.activeCam;
-    const lbl = state.labels[`${cam}:${n}`] || '';
+    const lbl = state.labels[presetKey(cam, n)] || '';
 
     const btn = document.createElement('button');
     btn.className  = 'preset-btn' + (editMode ? ' edit-mode' : '');
     btn.dataset.preset = n;
+    btn.dataset.displayCam = cam;
 
     const numEl = document.createElement('div');
     numEl.className   = 'preset-num';
@@ -1308,12 +1370,6 @@
 
     const imgEl = document.createElement('img');
     imgEl.className = 'preset-snapshot';
-    imgEl.src = imgUrl(cam, n);
-    imgEl.addEventListener('load',  () => btn.classList.add('has-image'));
-    imgEl.addEventListener('error', () => {
-      btn.classList.remove('has-image');
-      imgEl.removeAttribute('src');
-    });
     btn.appendChild(imgEl);
 
     const ov = document.createElement('div');
@@ -1338,44 +1394,29 @@
     clearBtn.textContent = '×';
     clearBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      await fetch(`/api/image/${cam}/${n}`, { method: 'DELETE' });
-      const fresh = buildPresetBtn(n);
-      elGrid.replaceChild(fresh, btn);
+      const activeCam = state.activeCam;
+      const res = await fetch(`/api/image/${activeCam}/${n}`, { method: 'DELETE' });
+      if (!res.ok) return;
+      bumpImageVersion(activeCam, n);
+      refreshPresetBtn(n, activeCam);
     });
     btn.appendChild(clearBtn);
 
     btn.addEventListener('click', () => {
-      if (!editMode) recallPreset(n, btn);
+      if (editMode) openLabelEditor(n, ovName);
+      else recallPreset(n, btn);
     });
 
-    let holdTimer = null;
-    btn.addEventListener('pointerdown', () => {
-      holdTimer = setTimeout(() => {
-        holdTimer = null;
-        openLabelEditor(n, ovName);
-      }, 500);
-    });
-    btn.addEventListener('pointerup',     () => clearTimeout(holdTimer));
-    btn.addEventListener('pointermove',   () => clearTimeout(holdTimer));
-    btn.addEventListener('pointercancel', () => clearTimeout(holdTimer));
+    refreshPresetImage(btn, cam, n);
 
     return btn;
   }
 
-  function updatePresetBtn(n, cam) {
-    const existing = elGrid.querySelector(`[data-preset="${n}"]`);
-    if (!existing) return;
-    // refresh the img src to pick up the new image
-    const imgEl = existing.querySelector('.preset-snapshot');
-    if (imgEl) {
-      imgEl.src = imgUrl(cam, n);
-    }
-  }
-
   // ── Label editor ───────────────────────────────────────────────────────────
   function openLabelEditor(n, nameEl) {
+    if (!editMode) return;
     if (nameEl.querySelector('input')) return;
-    const lk   = `${state.activeCam}:${n}`;
+    const lk   = presetKey(state.activeCam, n);
     const prev = state.labels[lk] || '';
 
     const inp = document.createElement('input');
@@ -1520,8 +1561,10 @@
       if (!ok) {
         captureErrors.push(p);
         console.error(`Capture failed for preset ${p}`);
+      } else {
+        bumpImageVersion(state.activeCam, p);
+        refreshPresetBtn(p, state.activeCam);
       }
-      updatePresetBtn(p, state.activeCam);
     }
 
     scanning = false;
