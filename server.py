@@ -307,11 +307,40 @@ def send_visca_preset_recall(
     sock.settimeout(2.0)
     try:
         sock.sendto(packet, (ip, port))
-        try:
-            response, _ = sock.recvfrom(1024)
-            return True, f"ACK {response.hex()}"
-        except socket.timeout:
-            return True, "Command sent (no ACK)"
+        deadline = time.monotonic() + 2.0
+        ack_payload = None
+        completion_payload = None
+
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            sock.settimeout(remaining)
+            try:
+                response, _ = sock.recvfrom(1024)
+            except socket.timeout:
+                break
+
+            payload = response[8:] if len(response) >= 8 else response
+            if len(payload) < 3 or payload[-1] != 0xFF:
+                continue
+
+            code = payload[1]
+            if code == 0x41:
+                ack_payload = payload
+            elif code == 0x51:
+                completion_payload = payload
+                break
+            elif code & 0xF0 == 0x60:
+                return False, f"VISCA error {payload.hex()}"
+
+        if completion_payload and ack_payload:
+            return True, f"ACK {ack_payload.hex()} • Completion {completion_payload.hex()}"
+        if completion_payload:
+            return True, f"Completion {completion_payload.hex()}"
+        if ack_payload:
+            return True, f"ACK {ack_payload.hex()} (no completion received)"
+        return True, "Command sent (no VISCA response received)"
     except OSError as exc:
         return False, str(exc)
     finally:
