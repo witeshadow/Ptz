@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="/manifest.json" />
   <title>PTZ Preset Control — AVIPAS — TEST123</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -33,22 +36,22 @@
     header {
       background: var(--surf);
       border-bottom: 1px solid var(--border);
-      padding: 12px 20px;
+      padding: 6px 16px;
       display: flex;
       align-items: center;
       flex-shrink: 0;
     }
 
     .brand-icon {
-      width: 34px; height: 34px;
+      width: 28px; height: 28px;
       background: var(--accent);
-      border-radius: 8px;
+      border-radius: 6px;
       display: flex; align-items: center; justify-content: center;
       flex-shrink: 0;
     }
-    .brand-icon svg { width: 18px; height: 18px; fill: #fff; }
-    .brand-text h1  { font-size: 1rem; font-weight: 600; color: #fff; }
-    .brand-text p   { font-size: 0.7rem; color: var(--muted); margin-top: 1px; }
+    .brand-icon svg { width: 15px; height: 15px; fill: #fff; }
+    .brand-text h1  { font-size: 0.9rem; font-weight: 600; color: #fff; }
+    .brand-text p   { font-size: 0.65rem; color: var(--muted); margin-top: 1px; }
 
     .header-pills {
       margin-left: auto;
@@ -61,10 +64,10 @@
       background: var(--surf2);
       border: 1px solid var(--border);
       border-radius: 20px;
-      padding: 5px 13px;
-      font-size: 0.78rem;
+      padding: 4px 10px;
+      font-size: 0.75rem;
       color: var(--label);
-      min-width: 170px;
+      min-width: 140px;
       transition: border-color 0.3s, color 0.3s;
     }
     #status.success { border-color: var(--success); color: var(--success); }
@@ -94,6 +97,19 @@
     #atem-pill.connected { border-color: var(--success); color: var(--success); }
     #atem-pill.connected .atem-dot { background: var(--success); }
     #atem-pill.disabled  { opacity: 0.4; }
+
+    #fullscreen-btn {
+      background: var(--surf2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 10px;
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    #fullscreen-btn:hover { border-color: var(--accent); color: var(--accent); }
 
     #live-mode-btn {
       background: var(--surf2);
@@ -261,6 +277,7 @@
       cursor: pointer;
       transition: border-color .15s, transform .1s;
       user-select: none;
+      touch-action: manipulation;
     }
     /* 16:9 fallback for Safari < 15 (no aspect-ratio support) */
     .preset-btn::before {
@@ -295,22 +312,27 @@
 
     .preset-overlay {
       position: absolute; bottom: 0; left: 0; right: 0;
-      background: linear-gradient(0deg, rgba(0,0,0,.82) 0%, transparent 100%);
-      padding: 10px 8px 6px;
-      display: none;
+      background: linear-gradient(0deg, rgba(0,0,0,.75) 0%, transparent 100%);
+      padding: 14px 8px 6px;
+      display: flex;
       justify-content: space-between;
       align-items: flex-end;
     }
-    .preset-btn.has-image .preset-overlay { display: flex; }
+    .preset-btn:not(.has-image) .preset-overlay {
+      background: rgba(0,0,0,.28);
+      padding: 4px 8px 5px;
+    }
 
     .ov-num {
       font-size: .95rem; font-weight: 700;
       color: rgba(255,255,255,.55); flex-shrink: 0;
+      text-shadow: 0 1px 3px rgba(0,0,0,.9);
     }
     .ov-name {
-      font-size: .7rem; color: rgba(255,255,255,.8);
+      font-size: .8rem; color: rgba(255,255,255,.9);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       text-align: right; flex: 1;
+      text-shadow: 0 1px 3px rgba(0,0,0,.9);
     }
 
     .preset-clear {
@@ -444,15 +466,15 @@
     #preview-frame { width: 100%; max-height: 150px; border-radius: 6px; overflow: hidden; }
     #preview-frame video, #preview-frame iframe { width: 100%; height: 100%; object-fit: cover; }
 
-    /* ── ATEM debug overlay ─────────────────────────────── */
+    /* ── ATEM debug panel display ───────────────────────── */
     #atem-debug {
       display: none;
-      font-size: 0.65rem; color: var(--muted); line-height: 1.6;
-      white-space: nowrap; background: var(--surf2);
-      border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px;
+      font-size: 0.72rem; color: var(--muted); line-height: 1.7;
+      background: var(--surf2);
+      border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px;
     }
     #atem-debug.visible { display: block; }
-    #atem-debug span { color: var(--label); }
+    #atem-debug span { color: var(--label); font-weight: 600; }
 
     /* ── Flex gap fallbacks (Safari < 14.5) ─────────────── */
     header > * + *          { margin-left: 12px; }
@@ -484,15 +506,11 @@
     <p>AVIPAS Camera &nbsp;&middot;&nbsp; VISCA over IP</p>
   </div>
   <div class="header-pills">
+    <button id="fullscreen-btn" title="Toggle fullscreen">&#x26F6;</button>
     <button id="live-mode-btn" class="live" title="Toggle Live/Edit mode">Live</button>
     <div id="atem-pill" class="disabled">
       <div class="atem-dot"></div>
       <span>ATEM</span>
-    </div>
-    <div id="atem-debug">
-      PGM <span id="dbg-pgm">—</span> &nbsp;
-      PVW <span id="dbg-pvw">—</span> &nbsp;
-      <span id="dbg-inputs"></span>
     </div>
     <div id="status" role="status" aria-live="polite">
       <div class="status-dot"></div>
@@ -515,8 +533,8 @@
   </div>
 </main>
 
-<footer>Click a preset to recall it &nbsp;&middot;&nbsp;
-  Double-click to rename &nbsp;&middot;&nbsp; Double-click a camera tab to rename it</footer>
+<footer>Tap a preset to recall it &nbsp;&middot;&nbsp;
+  Long-hold to rename &nbsp;&middot;&nbsp; Double-click a camera tab to rename it</footer>
 
 <div id="grid-settings-panel">
   <div class="gsp-header">
@@ -579,6 +597,15 @@
       <div class="field">
         <label for="f-atem-ip">ATEM IP</label>
         <input id="f-atem-ip" type="text" placeholder="192.168.1.200" autocomplete="off" spellcheck="false" />
+      </div>
+      <label class="atem-toggle-wrap">
+        <input id="gsp-atem-debug" type="checkbox" />
+        <span>Show ATEM Debug</span>
+      </label>
+      <div id="atem-debug">
+        PGM <span id="dbg-pgm">—</span> &nbsp;
+        PVW <span id="dbg-pvw">—</span> &nbsp;
+        <span id="dbg-inputs"></span>
       </div>
     </div>
 
@@ -674,6 +701,7 @@
     labels: {},
     dwellMs: 3000,
     atem: { ip: '', enabled: false },
+    showAtemDebug: false,
     liveMode: true,
     atemFollows: 'preview',
     previewSource: null,
@@ -709,8 +737,9 @@
         if (s.gridCols    != null) state.gridCols    = +s.gridCols;
         if (s.gridRows    != null) state.gridRows    = +s.gridRows;
         if (s.fillWindow  != null) state.fillWindow  = !!s.fillWindow;
-        if (s.liveMode    != null) state.liveMode    = !!s.liveMode;
-        if (s.atemFollows)         state.atemFollows = s.atemFollows;
+        if (s.liveMode      != null) state.liveMode      = !!s.liveMode;
+        if (s.showAtemDebug != null) state.showAtemDebug = !!s.showAtemDebug;
+        if (s.atemFollows)           state.atemFollows   = s.atemFollows;
       }
     } catch (_) {}
   }
@@ -765,7 +794,7 @@
   const elDbgInputs = document.getElementById('dbg-inputs');
 
   function updateAtemDebug() {
-    if (!state.atem.enabled) { elAtemDebug.classList.remove('visible'); return; }
+    if (!state.atem.enabled || !state.showAtemDebug) { elAtemDebug.classList.remove('visible'); return; }
     elAtemDebug.classList.add('visible');
     elDbgPgm.textContent = state.programSource != null ? state.programSource : '—';
     elDbgPvw.textContent = state.previewSource != null ? state.previewSource : '—';
@@ -934,6 +963,7 @@
     saveCameraSettings();
     schedSave();
     updateAtemPill(false);
+    updateAtemDebug();
     // Show/hide Live preference field based on ATEM enabled state
     if (elLivePreferenceField) {
       elLivePreferenceField.style.display = state.atem.enabled ? 'block' : 'none';
@@ -980,6 +1010,11 @@
   })();
 
   // ── Live/Edit mode toggle ──────────────────────────────────────────────────
+  function updateToolbarVisibility() {
+    const btnScanEl = document.getElementById('btn-scan');
+    if (btnScanEl) btnScanEl.style.display = state.liveMode ? 'none' : '';
+  }
+
   const elLiveBtn = document.getElementById('live-mode-btn');
   if (elLiveBtn) {
     elLiveBtn.addEventListener('click', () => {
@@ -987,6 +1022,23 @@
       elLiveBtn.textContent = state.liveMode ? 'Live' : 'Edit';
       elLiveBtn.classList.toggle('live', state.liveMode);
       schedSave();
+      updateToolbarVisibility();
+    });
+  }
+
+  // ── Fullscreen toggle ─────────────────────────────────────────────────────
+  const elFullscreenBtn = document.getElementById('fullscreen-btn');
+  if (elFullscreenBtn) {
+    elFullscreenBtn.addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen();
+      }
+    });
+    document.addEventListener('fullscreenchange', () => {
+      elFullscreenBtn.title = document.fullscreenElement ? 'Exit fullscreen' : 'Toggle fullscreen';
+      elFullscreenBtn.innerHTML = document.fullscreenElement ? '&#x26F6;' : '&#x26F6;';
     });
   }
 
@@ -1010,12 +1062,22 @@
     elGspClose.addEventListener('click', () => elGspPanel.classList.remove('open'));
   }
 
+  const elGspAtemDebug = document.getElementById('gsp-atem-debug');
+  if (elGspAtemDebug) {
+    elGspAtemDebug.addEventListener('change', () => {
+      state.showAtemDebug = elGspAtemDebug.checked;
+      schedSave();
+      updateAtemDebug();
+    });
+  }
+
   function loadGridSettings() {
     elGspStart.value  = state.presetStart ?? 0;
     elGspEnd.value    = state.presetEnd   ?? 11;
     elGspCols.value   = state.gridCols    ?? 4;
     elGspRows.value   = state.gridRows    ?? 3;
     elGspFill.checked = !!state.fillWindow;
+    if (elGspAtemDebug) elGspAtemDebug.checked = !!state.showAtemDebug;
     applyGridLayout();
   }
 
@@ -1286,10 +1348,16 @@
       if (!editMode) recallPreset(n, btn);
     });
 
-    btn.addEventListener('dblclick', e => {
-      e.preventDefault();
-      openLabelEditor(n, ovName);
+    let holdTimer = null;
+    btn.addEventListener('pointerdown', () => {
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        openLabelEditor(n, ovName);
+      }, 500);
     });
+    btn.addEventListener('pointerup',     () => clearTimeout(holdTimer));
+    btn.addEventListener('pointermove',   () => clearTimeout(holdTimer));
+    btn.addEventListener('pointercancel', () => clearTimeout(holdTimer));
 
     return btn;
   }
@@ -1474,6 +1542,7 @@
     loadCameraSettings();
     loadGridSettings();
     loadCameraManagement();
+    updateToolbarVisibility();
     renderTabs();
     renderGrid();
     applyGridLayout();
