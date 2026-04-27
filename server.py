@@ -726,4 +726,3 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\nShutting down.")
 
-_UNUSED = f"eval test marker"  # temporary
