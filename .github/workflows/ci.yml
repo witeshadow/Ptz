@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  python:
+    name: Python lint & syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check server.py
+      - run: python -m py_compile server.py
+
+  frontend:
+    name: HTML structure & JS syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: JS syntax (extracted from HTML)
+        run: |
+          python3 - <<'EOF'
+          import re, sys, subprocess, tempfile, os
+          html = open('public/index.html').read()
+          m = re.search(r'<script>([\s\S]*?)</script>', html)
+          if not m:
+              sys.exit('ERROR: no <script> block found in public/index.html')
+          with tempfile.NamedTemporaryFile(suffix='.js', mode='w', delete=False) as f:
+              f.write(m.group(1))
+              fname = f.name
+          try:
+              r = subprocess.run(['node', '--check', fname], capture_output=True, text=True)
+              if r.returncode != 0:
+                  print(r.stderr, end='')
+                  sys.exit(1)
+              print('JS syntax OK')
+          finally:
+              os.unlink(fname)
+          EOF
+
+      - name: HTML well-formedness
+        run: |
+          python3 - <<'EOF'
+          import sys
+          from html.parser import HTMLParser
+
+          VOID = {
+              'area','base','br','col','embed','hr','img','input',
+              'link','meta','param','source','track','wbr',
+          }
+
+          class Checker(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.stack = []
+                  self.errors = []
+
+              def handle_starttag(self, tag, attrs):
+                  if tag not in VOID:
+                      self.stack.append(tag)
+
+              def handle_endtag(self, tag):
+                  if tag in VOID:
+                      return
+                  if self.stack and self.stack[-1] == tag:
+                      self.stack.pop()
+                  else:
+                      self.errors.append(
+                          f'Unexpected </{tag}>, open tags: {self.stack[-5:]}'
+                      )
+
+          c = Checker()
+          c.feed(open('public/index.html').read())
+          for e in c.errors:
+              print(e)
+          if c.stack:
+              print(f'Unclosed tags: {c.stack}')
+          if c.errors or c.stack:
+              sys.exit(1)
+          print('HTML structure OK')
+          EOF
