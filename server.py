@@ -230,7 +230,7 @@ def _atem_loop():
                     cur_cfg = load_settings().get("atem", {})
                     last_cfg_check = now
                     if not cur_cfg.get("enabled") or cur_cfg.get("ip", "").strip() != ip:
-                        print(f"[ATEM] Config changed — reconnecting")
+                        print("[ATEM] Config changed — reconnecting")
                         break
 
                 try:
@@ -261,7 +261,7 @@ def _atem_loop():
 
                 now = time.monotonic()
                 if now - last_recv > 5.0:
-                    print(f"[ATEM] No data for 5 s — reconnecting")
+                    print("[ATEM] No data for 5 s — reconnecting")
                     break
                 if now - last_keepalive >= 0.5:
                     sock.sendto(_make_ack(session_id, last_seq), (ip, ATEM_PORT))
@@ -271,7 +271,7 @@ def _atem_loop():
             print(f"[ATEM] Error: {exc!r}")
         finally:
             _set_atem(False)
-            print(f"[ATEM] Disconnected — will retry in 3 s")
+            print("[ATEM] Disconnected — will retry in 3 s")
             try:
                 _broadcast({"type": "atem", "connected": False})
             except Exception:
