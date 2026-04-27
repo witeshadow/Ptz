@@ -1382,8 +1382,11 @@
       return;
     }
 
-    const cols = Math.max(1, state.gridCols || 1);
-    const rows = Math.max(1, state.gridRows || 1);
+    const count = presetNumbers().length;
+    if (!count) return;
+
+    const maxCols = Math.max(1, state.gridCols || 1);
+    const maxRows = Math.max(1, state.gridRows || 1);
     const gridStyles = getComputedStyle(elGrid);
     const gap = parseFloat(gridStyles.gap || gridStyles.rowGap || '0') || 0;
     const toolbarStyles = getComputedStyle(elToolbar);
@@ -1394,21 +1397,44 @@
       0,
       elMain.clientHeight - elToolbar.offsetHeight - toolbarMarginTop
     );
-    const widthFromColumns = (availableWidth - gap * (cols - 1)) / cols;
-    const widthFromRows = ((availableHeight - gap * (rows - 1)) / rows) * (16 / 9);
-    const tileWidth = Math.floor(Math.max(0, Math.min(widthFromColumns, widthFromRows)));
 
-    if (!Number.isFinite(tileWidth) || tileWidth <= 0) {
-      elGrid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    function fitLayout(cols, rows) {
+      const widthFromColumns = (availableWidth - gap * (cols - 1)) / cols;
+      const widthFromRows = ((availableHeight - gap * (rows - 1)) / rows) * (16 / 9);
+      const tileWidth = Math.floor(Math.max(0, Math.min(widthFromColumns, widthFromRows)));
+      if (!Number.isFinite(tileWidth) || tileWidth <= 0) return null;
+      return { cols, rows, tileWidth, tileHeight: Math.round(tileWidth * 9 / 16) };
+    }
+
+    let best = null;
+    const searchCols = Math.min(maxCols, count);
+    for (let cols = 1; cols <= searchCols; cols++) {
+      const rows = Math.ceil(count / cols);
+      if (rows > maxRows) continue;
+      const layout = fitLayout(cols, rows);
+      if (!layout) continue;
+      if (!best || layout.tileWidth > best.tileWidth) best = layout;
+    }
+
+    if (!best) {
+      for (let cols = 1; cols <= searchCols; cols++) {
+        const rows = Math.ceil(count / cols);
+        const layout = fitLayout(cols, rows);
+        if (!layout) continue;
+        if (!best || layout.tileWidth > best.tileWidth) best = layout;
+      }
+    }
+
+    if (!best) {
+      elGrid.style.gridTemplateColumns = `repeat(${Math.min(maxCols, count)}, 1fr)`;
       elGrid.style.gridTemplateRows = '';
       return;
     }
 
-    const tileHeight = Math.round(tileWidth * 9 / 16);
     elGrid.style.justifyContent = 'center';
     elGrid.style.alignContent = 'start';
-    elGrid.style.gridTemplateColumns = `repeat(${cols}, ${tileWidth}px)`;
-    elGrid.style.gridTemplateRows = `repeat(${rows}, ${tileHeight}px)`;
+    elGrid.style.gridTemplateColumns = `repeat(${best.cols}, ${best.tileWidth}px)`;
+    elGrid.style.gridTemplateRows = `repeat(${best.rows}, ${best.tileHeight}px)`;
   }
 
   function applyGridLayout() {
