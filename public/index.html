@@ -814,6 +814,7 @@
       if (!cam.enabled) return;
 
       const btn = document.createElement('button');
+      btn.type = 'button';
       btn.className = 'cam-tab' + (idx === state.activeCam ? ' active' : '');
       btn.dataset.idx = idx;
 
@@ -1359,6 +1360,7 @@
     const lbl = state.labels[presetKey(cam, n)] || '';
 
     const btn = document.createElement('button');
+    btn.type = 'button';
     btn.className  = 'preset-btn' + (editMode ? ' edit-mode' : '');
     btn.dataset.preset = n;
     btn.dataset.displayCam = cam;
@@ -1390,6 +1392,7 @@
 
     const clearBtn = document.createElement('button');
     clearBtn.className   = 'preset-clear';
+    clearBtn.type        = 'button';
     clearBtn.title       = 'Clear snapshot';
     clearBtn.textContent = '×';
     clearBtn.addEventListener('click', async (e) => {
@@ -1402,9 +1405,22 @@
     });
     btn.appendChild(clearBtn);
 
-    btn.addEventListener('click', () => {
+    let handledPointerUp = false;
+    function activatePreset() {
       if (editMode) openLabelEditor(n, ovName);
       else recallPreset(n, btn);
+    }
+
+    btn.addEventListener('pointerup', (e) => {
+      if (e.button != null && e.button !== 0) return;
+      handledPointerUp = true;
+      activatePreset();
+      setTimeout(() => { handledPointerUp = false; }, 0);
+    });
+
+    btn.addEventListener('click', (e) => {
+      if (handledPointerUp && e.detail !== 0) return;
+      activatePreset();
     });
 
     refreshPresetImage(btn, cam, n);
