@@ -606,13 +606,15 @@
       </div>
       <label class="atem-toggle-wrap">
         <input id="gsp-atem-debug" type="checkbox" />
-        <span>Show ATEM Debug</span>
+        <span>Show Debug Overlay</span>
       </label>
       <div id="atem-debug">
+        CAM <span id="dbg-cam">—</span> &nbsp;
         PGM <span id="dbg-pgm">—</span> &nbsp;
         PVW <span id="dbg-pvw">—</span> &nbsp;
         PAN <span id="dbg-pan">—</span> &nbsp;
         TILT <span id="dbg-tilt">—</span> &nbsp;
+        VISCA <span id="dbg-visca">—</span> &nbsp;
         <span id="dbg-inputs"></span>
       </div>
     </div>
@@ -797,17 +799,20 @@
 
   // ── ATEM debug overlay ─────────────────────────────────────────────────────
   const elAtemDebug = document.getElementById('atem-debug');
+  const elDbgCam    = document.getElementById('dbg-cam');
   const elDbgPgm    = document.getElementById('dbg-pgm');
   const elDbgPvw    = document.getElementById('dbg-pvw');
   const elDbgPan    = document.getElementById('dbg-pan');
   const elDbgTilt   = document.getElementById('dbg-tilt');
+  const elDbgVisca  = document.getElementById('dbg-visca');
   const elDbgInputs = document.getElementById('dbg-inputs');
   let debugPositionTimer = null;
   let debugPositionRequestId = 0;
 
-  function setDebugPosition(pan = '—', tilt = '—') {
+  function setDebugPosition(pan = '—', tilt = '—', visca = '—') {
     elDbgPan.textContent = pan;
     elDbgTilt.textContent = tilt;
+    elDbgVisca.textContent = visca;
   }
 
   async function fetchDebugPosition() {
@@ -815,7 +820,7 @@
     const camIdx = state.activeCam;
     const cam = state.cameras[camIdx];
     if (!cam?.ip) {
-      setDebugPosition();
+      setDebugPosition('—', '—', 'NO IP');
       return;
     }
 
@@ -825,12 +830,17 @@
       const data = await res.json().catch(() => ({}));
       if (requestId !== debugPositionRequestId) return;
       if (!res.ok || !data.ok) {
-        setDebugPosition('ERR', 'ERR');
+        const msg = (data.error || `${res.status}`).slice(0, 48);
+        setDebugPosition('ERR', 'ERR', msg);
         return;
       }
-      setDebugPosition(data.pan_hex || '—', data.tilt_hex || '—');
+      const visca = data.responder && data.expected_responder &&
+        data.responder !== data.expected_responder
+        ? `${data.responder} != ${data.expected_responder}`
+        : 'OK';
+      setDebugPosition(data.pan_hex || '—', data.tilt_hex || '—', visca);
     } catch (_) {
-      if (requestId === debugPositionRequestId) setDebugPosition('ERR', 'ERR');
+      if (requestId === debugPositionRequestId) setDebugPosition('ERR', 'ERR', 'FETCH ERR');
     }
   }
 
@@ -855,6 +865,7 @@
       return;
     }
     elAtemDebug.classList.add('visible');
+    elDbgCam.textContent = `CAM ${state.activeCam + 1}`;
     elDbgPgm.textContent = state.programSource != null ? state.programSource : '—';
     elDbgPvw.textContent = state.previewSource != null ? state.previewSource : '—';
     elDbgInputs.textContent = state.cameras
