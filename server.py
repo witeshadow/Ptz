@@ -311,6 +311,8 @@ def send_visca_preset_recall(
         deadline = time.monotonic() + 2.0
         ack_payload = None
         completion_payload = None
+        raw_payloads = []
+        responder_note = None
 
         while time.monotonic() < deadline:
             remaining = deadline - time.monotonic()
@@ -325,8 +327,12 @@ def send_visca_preset_recall(
             payload = response[8:] if len(response) >= 8 else response
             if len(payload) < 3 or payload[-1] != 0xFF:
                 continue
-            if payload[0] != expected_reply_byte:
-                continue
+            raw_payloads.append(payload.hex())
+            if payload[0] != expected_reply_byte and responder_note is None:
+                responder_note = (
+                    f"unexpected responder 0x{payload[0]:02x} "
+                    f"(expected 0x{expected_reply_byte:02x})"
+                )
 
             code = payload[1]
             if code == 0x41:
@@ -337,12 +343,15 @@ def send_visca_preset_recall(
             elif code & 0xF0 == 0x60:
                 return False, f"VISCA error {payload.hex()}"
 
+        suffix = f" [{responder_note}]" if responder_note else ""
         if completion_payload and ack_payload:
-            return True, f"ACK {ack_payload.hex()} • Completion {completion_payload.hex()}"
+            return True, f"ACK {ack_payload.hex()} • Completion {completion_payload.hex()}{suffix}"
         if completion_payload:
-            return True, f"Completion {completion_payload.hex()}"
+            return True, f"Completion {completion_payload.hex()}{suffix}"
         if ack_payload:
-            return True, f"ACK {ack_payload.hex()} (no completion received)"
+            return True, f"ACK {ack_payload.hex()} (no completion received){suffix}"
+        if raw_payloads:
+            return True, f"Command sent (unparsed VISCA response: {' | '.join(raw_payloads)})"
         return True, "Command sent (no VISCA response received)"
     except OSError as exc:
         return False, str(exc)
@@ -363,6 +372,7 @@ def inquire_visca_pan_tilt_position(
     try:
         sock.sendto(packet, (ip, port))
         deadline = time.monotonic() + 2.0
+        raw_payloads = []
         while time.monotonic() < deadline:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -376,8 +386,7 @@ def inquire_visca_pan_tilt_position(
             payload = response[8:] if len(response) >= 8 else response
             if len(payload) < 11 or payload[-1] != 0xFF:
                 continue
-            if payload[0] != expected_reply_byte:
-                continue
+            raw_payloads.append(payload.hex())
 
             code = payload[1]
             if code == 0x50:
@@ -389,10 +398,14 @@ def inquire_visca_pan_tilt_position(
                     "pan": int(pan_hex, 16),
                     "tilt": int(tilt_hex, 16),
                     "raw": payload.hex(),
+                    "responder": f"0x{payload[0]:02x}",
+                    "expected_responder": f"0x{expected_reply_byte:02x}",
                 }
             if code & 0xF0 == 0x60:
                 return False, f"VISCA error {payload.hex()}"
 
+        if raw_payloads:
+            return False, f"Unparsed VISCA position response: {' | '.join(raw_payloads)}"
         return False, "No VISCA position response received"
     except OSError as exc:
         return False, str(exc)

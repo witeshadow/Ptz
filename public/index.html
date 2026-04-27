@@ -469,9 +469,15 @@
     /* ── ATEM debug panel display ───────────────────────── */
     #atem-debug {
       display: none;
+      position: fixed;
+      left: 18px;
+      bottom: 18px;
+      z-index: 198;
+      max-width: min(92vw, 640px);
       font-size: 0.72rem; color: var(--muted); line-height: 1.7;
       background: var(--surf2);
       border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.35);
     }
     #atem-debug.visible { display: block; }
     #atem-debug span { color: var(--label); font-weight: 600; }
@@ -664,7 +670,7 @@
   </div>
 
   <!-- Webcam preview at bottom -->
-  <div id="webcam-preview" class="visible" style="border-top: 1px solid var(--border); padding: 12px;">
+  <div id="webcam-preview" style="border-top: 1px solid var(--border); padding: 12px;">
     <div id="preview-frame">
       <video id="webcam-video" autoplay muted playsinline></video>
       <iframe id="stream-iframe" src="" allow="camera; microphone; autoplay; fullscreen" style="display:none"></iframe>
@@ -1256,6 +1262,9 @@
       _setMode('url');
     } else if (videoStream) {
       _setMode('webcam');
+    } else {
+      elIframe.src = '';
+      elPreview.classList.remove('visible');
     }
   }
 
