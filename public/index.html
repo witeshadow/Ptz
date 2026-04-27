@@ -59,6 +59,83 @@
       align-items: center;
     }
 
+    #fill-cam-strip {
+      display: none;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .fill-cam-indicator {
+      appearance: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surf2);
+      color: var(--muted);
+      min-width: 64px;
+      padding: 4px 8px 5px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      line-height: 1.1;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s, background-color 0.2s;
+    }
+
+    .fill-cam-indicator:hover {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+
+    .fill-cam-indicator.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(14,165,233,.22);
+    }
+
+    .fill-cam-indicator.live {
+      background: rgba(34, 197, 94, 0.12);
+    }
+
+    .fill-cam-indicator.preview {
+      background: rgba(14, 165, 233, 0.14);
+    }
+
+    .fill-cam-num {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .fill-cam-state {
+      margin-top: 2px;
+      font-size: 0.58rem;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      border-radius: 999px;
+      padding: 2px 6px;
+      background: rgba(148,163,184,.2);
+      color: var(--label);
+      white-space: nowrap;
+    }
+
+    .fill-cam-state.live {
+      background: var(--success);
+      color: #fff;
+    }
+
+    .fill-cam-state.preview {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .fill-cam-state.idle {
+      background: rgba(148,163,184,.18);
+      color: var(--muted);
+    }
+
     #status {
       display: flex; align-items: center;
       background: var(--surf2);
@@ -345,7 +422,7 @@
       transition: background .15s;
       z-index: 2;
     }
-    .preset-btn.has-image:hover .preset-clear { display: flex; }
+    .preset-btn.edit-mode.has-image:hover .preset-clear { display: flex; }
     .preset-clear:hover { background: var(--error); border-color: var(--error); }
 
     .name-input {
@@ -415,9 +492,25 @@
 
     /* ── Fill-window layout ──────────────────────────────── */
     body.fill-mode { height: 100vh; overflow: hidden; }
+    body.fill-mode header { padding: 4px 8px; }
+    body.fill-mode .brand-icon { width: 24px; height: 24px; border-radius: 5px; }
+    body.fill-mode .brand-icon svg { width: 13px; height: 13px; }
+    body.fill-mode .brand-text h1 { font-size: 0.8rem; }
+    body.fill-mode .brand-text p { display: none; }
+    body.fill-mode #fill-cam-strip { display: inline-flex; }
+    body.fill-mode #fullscreen-btn { padding: 4px 8px; font-size: 0.92rem; }
+    body.fill-mode #live-mode-btn { padding: 4px 9px; font-size: 0.68rem; }
+    body.fill-mode #atem-pill { padding: 4px 8px; font-size: 0.68rem; }
+    body.fill-mode #status { min-width: 112px; padding: 3px 8px; font-size: 0.7rem; }
+    body.fill-mode #cam-tabs { display: none; }
     body.fill-mode main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-    body.fill-mode #preset-grid { flex: 1; align-content: start; justify-content: center; }
+    body.fill-mode #preset-grid { flex: 1; align-content: start; justify-content: center; gap: 6px; }
+    body.fill-mode #toolbar { margin-top: 8px; }
     body.fill-mode #toolbar { flex-shrink: 0; }
+    body.fill-mode .btn-primary { padding: 6px 12px; font-size: 0.76rem; }
+    body.fill-mode .btn-ghost { padding: 5px 10px; font-size: 0.74rem; }
+    body.fill-mode #scan-label { font-size: 0.68rem; }
+    body.fill-mode footer { display: none; }
 
     /* ── Grid-settings FAB ───────────────────────────────── */
     #grid-settings-fab {
@@ -510,6 +603,7 @@
     <p>AVIPAS Camera &nbsp;&middot;&nbsp; VISCA over IP</p>
   </div>
   <div class="header-pills">
+    <div id="fill-cam-strip" aria-label="Camera status controls"></div>
     <button id="fullscreen-btn" title="Toggle fullscreen">&#x26F6;</button>
     <button id="live-mode-btn" class="live" title="Toggle Live/Edit mode">Live</button>
     <div id="atem-pill" class="disabled">
@@ -875,6 +969,62 @@
 
   // ── Camera tabs ────────────────────────────────────────────────────────────
   const elTabs = document.getElementById('cam-tabs');
+  const elFillCamStrip = document.getElementById('fill-cam-strip');
+
+  function getEnabledCameraIndices() {
+    return state.cameras
+      .map((cam, idx) => (cam.enabled !== false ? idx : -1))
+      .filter(idx => idx >= 0);
+  }
+
+  function getCameraBadgeText(idx) {
+    const onProgram = state.programSource !== null &&
+      state.cameras.findIndex(c => +c.atemInput === +state.programSource) === idx;
+    const onPreview = state.previewSource !== null &&
+      state.cameras.findIndex(c => +c.atemInput === +state.previewSource) === idx;
+
+    if (onProgram) return 'LIVE';
+    if (onPreview) return 'PVW';
+    if (idx === state.activeCam && !state.liveMode) return 'EDIT';
+    return '';
+  }
+
+  function getCompactCameraState(idx) {
+    const badge = getCameraBadgeText(idx);
+    if (badge === 'LIVE') return { text: 'LIVE', className: 'live' };
+    if (badge === 'PVW') return { text: 'PVW', className: 'preview' };
+    return { text: 'IDLE', className: 'idle' };
+  }
+
+  function renderFillCamStrip() {
+    if (!elFillCamStrip) return;
+    elFillCamStrip.innerHTML = '';
+
+    getEnabledCameraIndices().forEach(idx => {
+      const stateMeta = getCompactCameraState(idx);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `fill-cam-indicator ${stateMeta.className}${idx === state.activeCam ? ' active' : ''}`;
+      btn.dataset.idx = idx;
+      btn.setAttribute('aria-pressed', idx === state.activeCam ? 'true' : 'false');
+
+      const num = document.createElement('span');
+      num.className = 'fill-cam-num';
+      num.textContent = `CAM ${idx + 1}`;
+
+      const stateEl = document.createElement('span');
+      stateEl.className = `fill-cam-state ${stateMeta.className}`;
+      stateEl.textContent = stateMeta.text;
+
+      btn.appendChild(num);
+      btn.appendChild(stateEl);
+      btn.addEventListener('click', () => {
+        if (idx !== state.activeCam) switchCamera(idx);
+      });
+
+      elFillCamStrip.appendChild(btn);
+    });
+  }
 
   function renderTabs() {
     elTabs.innerHTML = '';
@@ -944,6 +1094,7 @@
 
       elTabs.appendChild(btn);
     });
+    renderFillCamStrip();
   }
 
   function switchCamera(idx) {
@@ -1093,6 +1244,7 @@
       elLiveBtn.textContent = state.liveMode ? 'Live' : 'Edit';
       elLiveBtn.classList.toggle('live', state.liveMode);
       schedSave();
+      renderTabs();
       updateToolbarVisibility();
     });
   }
@@ -1385,8 +1537,6 @@
     const count = presetNumbers().length;
     if (!count) return;
 
-    const maxCols = Math.max(1, state.gridCols || 1);
-    const maxRows = Math.max(1, state.gridRows || 1);
     const gridStyles = getComputedStyle(elGrid);
     const gap = parseFloat(gridStyles.gap || gridStyles.rowGap || '0') || 0;
     const toolbarStyles = getComputedStyle(elToolbar);
@@ -1403,30 +1553,42 @@
       const widthFromRows = ((availableHeight - gap * (rows - 1)) / rows) * (16 / 9);
       const tileWidth = Math.floor(Math.max(0, Math.min(widthFromColumns, widthFromRows)));
       if (!Number.isFinite(tileWidth) || tileWidth <= 0) return null;
-      return { cols, rows, tileWidth, tileHeight: Math.round(tileWidth * 9 / 16) };
+      const tileHeight = Math.round(tileWidth * 9 / 16);
+      const usedWidth = cols * tileWidth + gap * (cols - 1);
+      const usedHeight = rows * tileHeight + gap * (rows - 1);
+      return {
+        cols,
+        rows,
+        tileWidth,
+        tileHeight,
+        usedWidth,
+        usedHeight,
+        usedArea: usedWidth * usedHeight,
+      };
     }
 
     let best = null;
-    const searchCols = Math.min(maxCols, count);
+    const searchCols = count;
     for (let cols = 1; cols <= searchCols; cols++) {
       const rows = Math.ceil(count / cols);
-      if (rows > maxRows) continue;
       const layout = fitLayout(cols, rows);
       if (!layout) continue;
-      if (!best || layout.tileWidth > best.tileWidth) best = layout;
-    }
-
-    if (!best) {
-      for (let cols = 1; cols <= searchCols; cols++) {
-        const rows = Math.ceil(count / cols);
-        const layout = fitLayout(cols, rows);
-        if (!layout) continue;
-        if (!best || layout.tileWidth > best.tileWidth) best = layout;
+      if (
+        !best ||
+        layout.tileWidth > best.tileWidth ||
+        (layout.tileWidth === best.tileWidth && layout.usedArea > best.usedArea) ||
+        (
+          layout.tileWidth === best.tileWidth &&
+          layout.usedArea === best.usedArea &&
+          layout.usedWidth > best.usedWidth
+        )
+      ) {
+        best = layout;
       }
     }
 
     if (!best) {
-      elGrid.style.gridTemplateColumns = `repeat(${Math.min(maxCols, count)}, 1fr)`;
+      elGrid.style.gridTemplateColumns = `repeat(${Math.min(state.gridCols || count, count)}, 1fr)`;
       elGrid.style.gridTemplateRows = '';
       return;
     }
@@ -1440,7 +1602,7 @@
   function applyGridLayout() {
     const elMain = document.querySelector('main');
     if (state.fillWindow) {
-      elMain.style.maxWidth = '';
+      elMain.style.maxWidth = 'none';
       elMain.style.padding  = '8px';
       document.body.classList.add('fill-mode');
     } else {
