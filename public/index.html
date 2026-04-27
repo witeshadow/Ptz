@@ -1575,10 +1575,16 @@
     const data = await doRecall(n);
     if (data.success) {
       flash(btn, 'ok', 900);
-      setStatus('success', `Preset ${n} recalled — ${data.message}`);
+      const msg = state.showAtemDebug
+        ? `Preset ${n} recalled — ${data.message}`
+        : `Preset ${n} recalled`;
+      setStatus('success', msg);
     } else {
       flash(btn, 'fail', 1100);
-      setStatus('error', `Preset ${n} failed: ${data.message}`);
+      const msg = state.showAtemDebug
+        ? `Preset ${n} failed: ${data.message}`
+        : `Preset ${n} failed`;
+      setStatus('error', msg);
     }
   }
 
