@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PTZ Preset Control Server — VISCA over IP for AVIPAS cameras."""
+"""PTZ Preset Control Server — VISCA over IP for AVIPAS cameras (with ATEM integration)."""
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
