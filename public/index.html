@@ -36,7 +36,6 @@
       padding: 12px 20px;
       display: flex;
       align-items: center;
-      gap: 12px;
       flex-shrink: 0;
     }
 
@@ -55,11 +54,10 @@
       margin-left: auto;
       display: flex;
       align-items: center;
-      gap: 8px;
     }
 
     #status {
-      display: flex; align-items: center; gap: 7px;
+      display: flex; align-items: center;
       background: var(--surf2);
       border: 1px solid var(--border);
       border-radius: 20px;
@@ -83,7 +81,7 @@
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
 
     #atem-pill {
-      display: flex; align-items: center; gap: 6px;
+      display: flex; align-items: center;
       background: var(--surf2);
       border: 1px solid var(--border);
       border-radius: 20px;
@@ -131,7 +129,6 @@
       border-bottom: 2px solid var(--border);
       padding: 0 20px;
       display: flex;
-      gap: 2px;
       flex-shrink: 0;
     }
 
@@ -146,7 +143,7 @@
       cursor: pointer;
       transition: color 0.2s, border-color 0.2s;
       user-select: none;
-      display: flex; align-items: center; gap: 8px;
+      display: flex; align-items: center;
     }
     .cam-tab:hover { color: var(--text); }
     .cam-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
@@ -182,7 +179,7 @@
     }
 
     /* ── Settings bar ────────────────────────────────── */
-    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field { display: flex; flex-direction: column; }
 
     .field label {
       font-size: 0.65rem; font-weight: 600;
@@ -212,7 +209,7 @@
     }
 
     .atem-toggle-wrap {
-      display: flex; align-items: center; gap: 8px;
+      display: flex; align-items: center;
       cursor: pointer; user-select: none;
     }
     .atem-toggle-wrap input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); }
@@ -224,7 +221,6 @@
       display: none;
       flex-shrink: 0;
       flex-direction: column;
-      gap: 4px;
     }
     #webcam-preview.visible { display: flex; }
 
@@ -259,7 +255,6 @@
     .preset-btn {
       position: relative;
       overflow: hidden;
-      aspect-ratio: 16/9;
       background: var(--surf);
       border: 2px solid var(--border);
       border-radius: 10px;
@@ -267,12 +262,22 @@
       transition: border-color .15s, transform .1s;
       user-select: none;
     }
+    /* 16:9 fallback for Safari < 15 (no aspect-ratio support) */
+    .preset-btn::before {
+      content: '';
+      display: block;
+      padding-top: 56.25%;
+    }
+    @supports (aspect-ratio: 1) {
+      .preset-btn { aspect-ratio: 16/9; }
+      .preset-btn::before { display: none; }
+    }
     .preset-btn:not(.edit-mode):not(.state-busy):hover { border-color: var(--accent); }
     .preset-btn:not(.edit-mode):not(.state-busy):active { transform: scale(.97); }
 
     .preset-num {
       position: absolute;
-      inset: 0;
+      top: 0; right: 0; bottom: 0; left: 0;
       display: flex; align-items: center; justify-content: center;
       font-size: 2rem; font-weight: 700; color: var(--border);
       transition: color .15s;
@@ -282,7 +287,7 @@
     .preset-btn.has-image .preset-num { display: none; }
 
     .preset-snapshot {
-      position: absolute; inset: 0;
+      position: absolute; top: 0; right: 0; bottom: 0; left: 0;
       width: 100%; height: 100%; object-fit: cover;
       display: none;
     }
@@ -295,7 +300,6 @@
       display: none;
       justify-content: space-between;
       align-items: flex-end;
-      gap: 4px;
     }
     .preset-btn.has-image .preset-overlay { display: flex; }
 
@@ -341,7 +345,6 @@
     #toolbar {
       display: flex;
       align-items: center;
-      gap: 10px;
       margin-top: 16px;
     }
 
@@ -364,7 +367,7 @@
     /* ── Scan bar ────────────────────────────────────── */
     #scan-bar {
       display: none;
-      align-items: center; gap: 12px;
+      align-items: center;
       margin-left: auto;
       flex: 1; max-width: 380px;
     }
@@ -393,6 +396,7 @@
     body.fill-mode main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
     body.fill-mode #preset-grid { flex: 1; }
     body.fill-mode .preset-btn { aspect-ratio: unset; height: 100%; }
+    body.fill-mode .preset-btn::before { display: none; }
     body.fill-mode #toolbar { flex-shrink: 0; }
 
     /* ── Grid-settings FAB ───────────────────────────────── */
@@ -428,12 +432,12 @@
       display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
       padding: 16px; overflow-y: auto; flex: 1;
     }
-    .gsp-column { display: flex; flex-direction: column; gap: 12px; }
+    .gsp-column { display: flex; flex-direction: column; }
     .gsp-section-title { font-size: .75rem; font-weight: 600; color: var(--label); text-transform: uppercase; letter-spacing: 0.5px; }
-    .gsp-body .field { display: flex; flex-direction: column; gap: 4px; }
+    .gsp-body .field { display: flex; flex-direction: column; }
     .gsp-body .field label { font-size: .75rem; color: var(--label); font-weight: 500; }
     .gsp-body .field input, .gsp-body .field select { background: var(--surf2); border: 1px solid var(--border); color: var(--text); padding: 6px 8px; border-radius: 4px; font-size: .8rem; }
-    .gsp-body .atem-toggle-wrap { display: flex; align-items: center; gap: 8px; }
+    .gsp-body .atem-toggle-wrap { display: flex; align-items: center; }
     .gsp-body .atem-toggle-wrap input { width: 16px; height: 16px; }
     .gsp-body .atem-toggle-wrap span { font-size: .8rem; color: var(--text); }
     #webcam-preview-panel { border-top: 1px solid var(--border); padding: 12px; }
@@ -449,6 +453,21 @@
     }
     #atem-debug.visible { display: block; }
     #atem-debug span { color: var(--label); }
+
+    /* ── Flex gap fallbacks (Safari < 14.5) ─────────────── */
+    header > * + *          { margin-left: 12px; }
+    .header-pills > * + *   { margin-left: 8px; }
+    #status > * + *         { margin-left: 7px; }
+    #atem-pill > * + *      { margin-left: 6px; }
+    #cam-tabs > * + *       { margin-left: 2px; }
+    .cam-tab > * + *        { margin-left: 8px; }
+    .atem-toggle-wrap > * + * { margin-left: 8px; }
+    .preset-overlay > * + * { margin-left: 4px; }
+    #toolbar > * + *        { margin-left: 10px; }
+    #scan-bar > * + *       { margin-left: 12px; }
+    .field > * + *          { margin-top: 4px; }
+    #webcam-preview > * + * { margin-top: 4px; }
+    .gsp-column > * + *     { margin-top: 12px; }
   </style>
 </head>
 <body>
