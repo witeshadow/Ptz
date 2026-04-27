@@ -605,6 +605,8 @@
       <div id="atem-debug">
         PGM <span id="dbg-pgm">—</span> &nbsp;
         PVW <span id="dbg-pvw">—</span> &nbsp;
+        PAN <span id="dbg-pan">—</span> &nbsp;
+        TILT <span id="dbg-tilt">—</span> &nbsp;
         <span id="dbg-inputs"></span>
       </div>
     </div>
@@ -791,10 +793,61 @@
   const elAtemDebug = document.getElementById('atem-debug');
   const elDbgPgm    = document.getElementById('dbg-pgm');
   const elDbgPvw    = document.getElementById('dbg-pvw');
+  const elDbgPan    = document.getElementById('dbg-pan');
+  const elDbgTilt   = document.getElementById('dbg-tilt');
   const elDbgInputs = document.getElementById('dbg-inputs');
+  let debugPositionTimer = null;
+  let debugPositionRequestId = 0;
+
+  function setDebugPosition(pan = '—', tilt = '—') {
+    elDbgPan.textContent = pan;
+    elDbgTilt.textContent = tilt;
+  }
+
+  async function fetchDebugPosition() {
+    if (!state.showAtemDebug) return;
+    const camIdx = state.activeCam;
+    const cam = state.cameras[camIdx];
+    if (!cam?.ip) {
+      setDebugPosition();
+      return;
+    }
+
+    const requestId = ++debugPositionRequestId;
+    try {
+      const res = await fetch(`/api/position/${camIdx}`);
+      const data = await res.json().catch(() => ({}));
+      if (requestId !== debugPositionRequestId) return;
+      if (!res.ok || !data.ok) {
+        setDebugPosition('ERR', 'ERR');
+        return;
+      }
+      setDebugPosition(data.pan_hex || '—', data.tilt_hex || '—');
+    } catch (_) {
+      if (requestId === debugPositionRequestId) setDebugPosition('ERR', 'ERR');
+    }
+  }
+
+  function scheduleDebugPositionPolling() {
+    if (debugPositionTimer) {
+      clearInterval(debugPositionTimer);
+      debugPositionTimer = null;
+    }
+    debugPositionRequestId += 1;
+    if (!state.showAtemDebug) {
+      setDebugPosition();
+      return;
+    }
+    fetchDebugPosition();
+    debugPositionTimer = setInterval(fetchDebugPosition, 1000);
+  }
 
   function updateAtemDebug() {
-    if (!state.atem.enabled || !state.showAtemDebug) { elAtemDebug.classList.remove('visible'); return; }
+    if (!state.showAtemDebug) {
+      elAtemDebug.classList.remove('visible');
+      scheduleDebugPositionPolling();
+      return;
+    }
     elAtemDebug.classList.add('visible');
     elDbgPgm.textContent = state.programSource != null ? state.programSource : '—';
     elDbgPvw.textContent = state.previewSource != null ? state.previewSource : '—';
@@ -802,6 +855,7 @@
       .filter(c => c.enabled !== false)
       .map((c, i) => `CAM${i + 1}=${c.atemInput}`)
       .join(' ');
+    scheduleDebugPositionPolling();
   }
 
   // ── Camera tabs ────────────────────────────────────────────────────────────
@@ -885,6 +939,7 @@
     renderTabs();
     refreshGridForActiveCamera();
     applyGridLayout();
+    updateAtemDebug();
   }
 
   function openTabNameEditor(idx, nameEl, nameWrap) {

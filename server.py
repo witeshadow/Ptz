@@ -295,6 +295,7 @@ def send_visca_preset_recall(
 ):
     global _sequence_number
     camera_byte = 0x80 | (camera_address & 0x07)
+    expected_reply_byte = ((camera_address + 8) << 4) & 0xF0
     visca_payload = bytes(
         [camera_byte, 0x01, 0x04, 0x3F, 0x02, preset_number & 0x7F, 0xFF]
     )
@@ -324,6 +325,8 @@ def send_visca_preset_recall(
             payload = response[8:] if len(response) >= 8 else response
             if len(payload) < 3 or payload[-1] != 0xFF:
                 continue
+            if payload[0] != expected_reply_byte:
+                continue
 
             code = payload[1]
             if code == 0x41:
@@ -341,6 +344,56 @@ def send_visca_preset_recall(
         if ack_payload:
             return True, f"ACK {ack_payload.hex()} (no completion received)"
         return True, "Command sent (no VISCA response received)"
+    except OSError as exc:
+        return False, str(exc)
+    finally:
+        sock.close()
+
+
+def inquire_visca_pan_tilt_position(
+    ip: str, port: int, camera_address: int = 1
+) -> tuple[bool, dict | str]:
+    camera_byte = 0x80 | (camera_address & 0x07)
+    expected_reply_byte = ((camera_address + 8) << 4) & 0xF0
+    visca_payload = bytes([camera_byte, 0x09, 0x06, 0x12, 0xFF])
+    header = struct.pack(">HHI", 0x0100, len(visca_payload), 0)
+    packet = header + visca_payload
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(2.0)
+    try:
+        sock.sendto(packet, (ip, port))
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            sock.settimeout(remaining)
+            try:
+                response, _ = sock.recvfrom(1024)
+            except socket.timeout:
+                break
+
+            payload = response[8:] if len(response) >= 8 else response
+            if len(payload) < 11 or payload[-1] != 0xFF:
+                continue
+            if payload[0] != expected_reply_byte:
+                continue
+
+            code = payload[1]
+            if code == 0x50:
+                pan_hex = "".join(f"{b & 0x0F:x}" for b in payload[2:6]).upper()
+                tilt_hex = "".join(f"{b & 0x0F:x}" for b in payload[6:10]).upper()
+                return True, {
+                    "pan_hex": pan_hex,
+                    "tilt_hex": tilt_hex,
+                    "pan": int(pan_hex, 16),
+                    "tilt": int(tilt_hex, 16),
+                    "raw": payload.hex(),
+                }
+            if code & 0xF0 == 0x60:
+                return False, f"VISCA error {payload.hex()}"
+
+        return False, "No VISCA position response received"
     except OSError as exc:
         return False, str(exc)
     finally:
@@ -543,6 +596,8 @@ class Handler(BaseHTTPRequestHandler):
             self._sse()
         elif path == "/api/devices":
             self._json(200, list_usb_devices())
+        elif m := re.match(r"^/api/position/(\d+)$", path):
+            self._get_position(int(m.group(1)))
         elif m := re.match(r"^/api/image/(\d+)/(\d+)$", path):
             self._get_image(int(m.group(1)), int(m.group(2)))
         else:
@@ -613,6 +668,26 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "public, max-age=31536000, immutable")
         self.end_headers()
         self.wfile.write(data)
+
+    def _get_position(self, cam: int):
+        cams = load_settings().get("cameras", [])
+        if cam < 0 or cam >= len(cams):
+            self._json(404, {"ok": False, "error": "Camera not found"})
+            return
+
+        cfg = cams[cam]
+        ip = str(cfg.get("ip", "")).strip()
+        port = int(cfg.get("port", 52381) or 52381)
+        visca_addr = int(cfg.get("viscaAddr", 1) or 1)
+        if not ip:
+            self._json(400, {"ok": False, "error": "Camera IP is not configured"})
+            return
+
+        ok, result = inquire_visca_pan_tilt_position(ip, port, visca_addr)
+        if ok:
+            self._json(200, {"ok": True, **result})
+        else:
+            self._json(502, {"ok": False, "error": result})
 
     def _post_image(self, cam: int, preset: int):
         _ensure_dirs()
