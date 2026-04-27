@@ -416,9 +416,7 @@
     /* ── Fill-window layout ──────────────────────────────── */
     body.fill-mode { height: 100vh; overflow: hidden; }
     body.fill-mode main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-    body.fill-mode #preset-grid { flex: 1; }
-    body.fill-mode .preset-btn { aspect-ratio: unset; height: 100%; }
-    body.fill-mode .preset-btn::before { display: none; }
+    body.fill-mode #preset-grid { flex: 1; align-content: start; justify-content: center; }
     body.fill-mode #toolbar { flex-shrink: 0; }
 
     /* ── Grid-settings FAB ───────────────────────────────── */
@@ -1373,19 +1371,58 @@
     nums.forEach(n => refreshPresetBtn(n, state.activeCam));
   }
 
+  function updateFillGridMetrics() {
+    const elMain = document.querySelector('main');
+    const elToolbar = document.getElementById('toolbar');
+    if (!state.fillWindow || !elMain || !elToolbar) {
+      elGrid.style.justifyContent = '';
+      elGrid.style.alignContent = '';
+      elGrid.style.gridTemplateColumns = `repeat(${state.gridCols}, 1fr)`;
+      elGrid.style.gridTemplateRows = '';
+      return;
+    }
+
+    const cols = Math.max(1, state.gridCols || 1);
+    const rows = Math.max(1, state.gridRows || 1);
+    const gridStyles = getComputedStyle(elGrid);
+    const gap = parseFloat(gridStyles.gap || gridStyles.rowGap || '0') || 0;
+    const toolbarStyles = getComputedStyle(elToolbar);
+    const toolbarMarginTop = parseFloat(toolbarStyles.marginTop || '0') || 0;
+
+    const availableWidth = Math.max(0, elMain.clientWidth);
+    const availableHeight = Math.max(
+      0,
+      elMain.clientHeight - elToolbar.offsetHeight - toolbarMarginTop
+    );
+    const widthFromColumns = (availableWidth - gap * (cols - 1)) / cols;
+    const widthFromRows = ((availableHeight - gap * (rows - 1)) / rows) * (16 / 9);
+    const tileWidth = Math.floor(Math.max(0, Math.min(widthFromColumns, widthFromRows)));
+
+    if (!Number.isFinite(tileWidth) || tileWidth <= 0) {
+      elGrid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+      elGrid.style.gridTemplateRows = '';
+      return;
+    }
+
+    const tileHeight = Math.round(tileWidth * 9 / 16);
+    elGrid.style.justifyContent = 'center';
+    elGrid.style.alignContent = 'start';
+    elGrid.style.gridTemplateColumns = `repeat(${cols}, ${tileWidth}px)`;
+    elGrid.style.gridTemplateRows = `repeat(${rows}, ${tileHeight}px)`;
+  }
+
   function applyGridLayout() {
     const elMain = document.querySelector('main');
     if (state.fillWindow) {
       elMain.style.maxWidth = '';
       elMain.style.padding  = '8px';
       document.body.classList.add('fill-mode');
-      elGrid.style.gridTemplateRows = `repeat(${state.gridRows}, 1fr)`;
     } else {
       elMain.style.maxWidth = '860px';
       elMain.style.padding  = '20px';
       document.body.classList.remove('fill-mode');
-      elGrid.style.gridTemplateRows = '';
     }
+    updateFillGridMetrics();
   }
 
   function imgUrl(cam, preset) {
@@ -1719,6 +1756,10 @@
       startWebcam(savedDevice);
     }
   })();
+
+  window.addEventListener('resize', () => {
+    if (state.fillWindow) updateFillGridMetrics();
+  });
 })();
 </script>
 </body>
