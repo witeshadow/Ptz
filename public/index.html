@@ -1901,7 +1901,7 @@
       }
       if (cancelScan) break;
 
-      elScanLbl.textContent = `Capturing preset ${p} of 9…`;
+      elScanLbl.textContent = `Capturing preset ${p} of 11…`;
       const ok = await captureFrame(state.activeCam, p);
       if (!ok) {
         captureErrors.push(p);
