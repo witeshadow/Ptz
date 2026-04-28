@@ -649,9 +649,13 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"success": False, "message": "Invalid JSON"})
             return
         ip = str(data.get("ip", "")).strip()
-        port = int(data.get("port", 52381))
-        preset = max(0, int(data.get("preset", 0)))
-        camera = max(1, min(7, int(data.get("camera", 1))))
+        try:
+            port = int(data.get("port", 52381))
+            preset = max(0, int(data.get("preset", 0)))
+            camera = max(1, min(7, int(data.get("camera", 1))))
+        except (ValueError, TypeError):
+            self._json(400, {"success": False, "message": "Invalid numeric parameter"})
+            return
         if not ip:
             self._json(400, {"success": False, "message": "Camera IP is required"})
             return
