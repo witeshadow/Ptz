@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """PTZ Preset Control Server — VISCA over IP for AVIPAS cameras (with ATEM integration)."""
 
+from collections.abc import Generator
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 import glob
@@ -54,7 +55,7 @@ DEFAULT_SETTINGS = {
 
 
 # ── Settings ───────────────────────────────────────────────────────────────────
-def _ensure_dirs():
+def _ensure_dirs() -> None:
     os.makedirs(IMAGES_DIR, exist_ok=True)
 
 
@@ -139,7 +140,7 @@ def _make_ack(session_id: int, remote_id: int) -> bytes:
     return bytes([0x80, 0x0C]) + struct.pack(">HH", session_id, remote_id) + bytes(6)
 
 
-def _parse_header(data: bytes):
+def _parse_header(data: bytes) -> tuple[int, int]:
     word0 = struct.unpack(">H", data[0:2])[0]
     flags = (word0 >> 11) & 0x1F
     # bytes 10-11 = ATEM's sequence number for this packet (what we ACK back)
@@ -147,7 +148,7 @@ def _parse_header(data: bytes):
     return flags, seq_num
 
 
-def _parse_commands(payload: bytes):
+def _parse_commands(payload: bytes) -> Generator[tuple[str, bytes], None, None]:
     pos = 0
     while pos + 8 <= len(payload):
         cmd_len = struct.unpack(">H", payload[pos : pos + 2])[0]
@@ -159,7 +160,7 @@ def _parse_commands(payload: bytes):
         pos += cmd_len
 
 
-def _atem_loop():
+def _atem_loop() -> None:
     while True:
         cfg = load_settings().get("atem", {})
         if not cfg.get("enabled") or not cfg.get("ip", "").strip():
@@ -455,7 +456,7 @@ def _capture_url(url: str) -> bytes:
 
 
 # ── USB device capture ─────────────────────────────────────────────────────────
-def list_usb_devices() -> list:
+def list_usb_devices() -> list[dict]:
     devices = []
     if _IS_MACOS:
         try:
