@@ -797,11 +797,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def _serve_static(self, name: str):
         clean = os.path.normpath(name)
-        if clean.startswith(".."):
+        fpath = os.path.join(PUBLIC_DIR, clean)
+        if not os.path.abspath(fpath).startswith(os.path.abspath(PUBLIC_DIR) + os.sep):
             self.send_response(403)
             self.end_headers()
             return
-        fpath = os.path.join(PUBLIC_DIR, clean)
         if not os.path.isfile(fpath):
             self.send_response(404)
             self.end_headers()
