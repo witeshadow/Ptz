@@ -32,6 +32,8 @@ jobs:
               print(f'Missing keys in DEFAULT_SETTINGS: {missing}'); sys.exit(1)
           print('Settings schema OK')
           EOF
+      - name: Unit & integration tests
+        run: python -m unittest discover -s tests/ -v
 
   frontend:
     name: HTML structure & JS syntax
