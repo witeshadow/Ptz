@@ -41,6 +41,27 @@ The project is intentionally small and centered in two files:
 
 There is no middleware layer. Auth, CORS, and validation are all manual.
 
+## Error Response Conventions
+
+All JSON error responses use `{"ok": false, "error": "..."}`. Success responses use
+`{"ok": true, ...rest}`. Do not use `success`/`message` keys — those appear in older
+VISCA-specific code and are not the general pattern.
+
+Exception handling:
+- Catch broad `Exception` in HTTP handlers and return HTTP 500 with `str(e)` in the `error` field.
+- Catch `OSError` specifically in VISCA/ATEM socket code.
+- Use `except Exception: pass` only in cleanup/teardown paths (SSE disconnect, Playwright close, ATEM socket close).
+
+## Adding a Feature End-to-End
+
+A typical feature touches three places in this order:
+
+1. **`server.py` route** — add a branch in `do_GET`/`do_POST`/`do_DELETE`, implement a handler method.
+2. **Settings schema** — if persisting new state, add the key to `DEFAULT_SETTINGS` and ensure `load_settings()` merges it for older saves that predate the key.
+3. **`public/index.html`** — add to `state`, wire a `fetch()` to the new route, call `schedSave()` if the state should persist, call `render()` if the UI needs updating.
+
+Always verify both sides after: `python -m py_compile server.py` and the JS syntax check from the Verification section.
+
 ## State And Persistence
 
 Persistent runtime state lives under `data/`:
@@ -173,14 +194,23 @@ State model:
 Image cache-busting:
 - Images are served `Cache-Control: immutable`. The frontend uses `imageVersions[key]` as a `?v=N` query param. Call `bumpImageVersion(cam, preset)` then `refreshPresetBtn(preset, cam)` after any capture or upload.
 
+## JavaScript Conventions
+
+- `const` for all module-level values and function declarations; `let` for mutable loop/local variables; no `var`.
+- `async`/`await` for all `fetch()` calls; no `.then()` chains.
+- `'use strict'` is active globally — do not re-declare it in nested scopes.
+- Failed fetches silently fall back via `.catch(() => ({}))` — the UI recovers rather than throws. Follow this pattern; do not `alert()` on routine network errors.
+
 ## Verification
 
 Run these locally before pushing:
 
 ```bash
-# Python lint + syntax
+# Python format, lint, syntax, and smoke tests
+ruff format --check server.py
 ruff check server.py
 python -m py_compile server.py
+python -c "import server"
 
 # JS syntax (requires Node 20+)
 python3 - <<'EOF'

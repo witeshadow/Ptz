@@ -2,4 +2,10 @@ data/settings.json
 data/images/
 __pycache__/
 .lh/server.py.json
-.claude/
+# Ignore Claude session/cache data but track agents, hooks, and settings
+.claude/*
+!.claude/agents/
+!.claude/agents/**
+!.claude/hooks/
+!.claude/hooks/**
+!.claude/settings.json
