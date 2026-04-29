@@ -68,3 +68,47 @@ CI currently checks:
 - `python -m py_compile server.py`
 - extracted inline JS syntax from `public/index.html`
 - HTML structure sanity for `public/index.html`
+
+Always run these locally before declaring a change done:
+
+```bash
+ruff check server.py
+python -m py_compile server.py
+```
+
+For frontend changes, also verify JS syntax by extracting the `<script>` block and running `node --check` against it.
+
+## Architecture Constraints
+
+- Do NOT create new `.py` files. All backend logic belongs in `server.py`.
+- Do NOT create separate CSS/JS files. All frontend belongs in `public/index.html`.
+- Python 3.12 is the target. Use `int | None` union syntax, walrus operator (`:=`), f-strings, etc.
+- No test suite exists. Verification is: lint + compile + manual server start.
+
+## Threading Safety
+
+Globals protected by locks — always acquire the lock before reading or writing them:
+
+- `_sse_clients` → `_sse_lock`
+- `_atem_state` → `_atem_state_lock`
+
+The server uses `ThreadingMixIn` — every request runs in its own thread. Any shared mutable state needs a lock.
+
+## Exception Handling
+
+Broad `except Exception` is intentional in network, subprocess, and thread contexts — these must not crash background loops or individual HTTP handlers. Do not narrow them to specific exception types unless you know the full set a given call can raise.
+
+## Settings Schema
+
+Settings keys in `data/settings.json` are referenced by name in both `server.py` and the inline JS in `public/index.html`. Renaming or restructuring a key requires updating both files simultaneously. New keys need a default value added to `DEFAULT_SETTINGS` in `server.py`.
+
+## VISCA Protocol
+
+VISCA commands are binary with specific byte ordering and camera address encoding. When modifying `send_visca_preset_recall` or `inquire_visca_pan_tilt_position`, verify byte layout against the VISCA spec. Wrong bytes may be silently accepted by the camera but produce wrong behavior with no error.
+
+## Common Mistakes (learned)
+
+- Do not add `# type: ignore` comments without a specific reason — ruff will flag unnecessary ones.
+- Do not remove `with _sse_lock:` guards around `_sse_clients` access even if the operation looks atomic.
+- Settings POST at `_handle_settings_post` does a full replace — do not change it to a merge without understanding the frontend's save behavior.
+- Do not split `server.py` or `public/index.html` into multiple files to "clean up" — the single-file constraint is intentional.
