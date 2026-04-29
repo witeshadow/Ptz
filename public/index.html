@@ -462,6 +462,14 @@
       margin-top: 16px;
     }
 
+    #capture-source-toggle { display: flex; gap: 4px; }
+    #capture-source-toggle .csrc-btn {
+      padding: 5px 9px; font-size: .75rem; font-weight: 600;
+    }
+    #capture-source-toggle .csrc-btn.active {
+      border-color: var(--accent); color: var(--accent);
+    }
+
     .btn-primary {
       background: var(--accent); border: none; border-radius: 7px;
       color: #fff; padding: 8px 18px; font-size: .85rem; font-weight: 600;
@@ -639,6 +647,11 @@
   <div id="toolbar">
     <button class="btn-primary" id="btn-scan">Scan All Presets</button>
     <button class="btn-ghost"    id="btn-edit">Edit Labels</button>
+    <div id="capture-source-toggle" style="display:none">
+      <button class="btn-ghost csrc-btn" data-src="active"   title="Capture from active camera">ACT</button>
+      <button class="btn-ghost csrc-btn" data-src="preview"  title="Capture from ATEM preview">PVW</button>
+      <button class="btn-ghost csrc-btn" data-src="program"  title="Capture from ATEM program">PGM</button>
+    </div>
     <div id="scan-bar">
       <div id="scan-track"><div id="scan-fill"></div></div>
       <span id="scan-label"></span>
@@ -823,6 +836,7 @@
     atemFollows: 'preview',
     previewSource: null,
     programSource: null,
+    captureSource: 'active',
     presetStart: 0,
     presetEnd: 11,
     gridCols: 4,
@@ -1270,10 +1284,32 @@
   })();
 
   // ── Live/Edit mode toggle ──────────────────────────────────────────────────
+  const elCaptureToggle = document.getElementById('capture-source-toggle');
+
   function updateToolbarVisibility() {
     const btnScanEl = document.getElementById('btn-scan');
     if (btnScanEl) btnScanEl.style.display = state.liveMode ? 'none' : '';
+    if (elCaptureToggle) {
+      elCaptureToggle.style.display =
+        (!state.liveMode && state.atem.enabled) ? 'flex' : 'none';
+    }
   }
+
+  // Restore capture source preference and wire up toggle buttons
+  (function initCaptureToggle() {
+    const saved = localStorage.getItem('captureSource');
+    if (saved) state.captureSource = saved;
+    elCaptureToggle.querySelectorAll('.csrc-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.src === state.captureSource);
+      btn.addEventListener('click', () => {
+        state.captureSource = btn.dataset.src;
+        localStorage.setItem('captureSource', state.captureSource);
+        elCaptureToggle.querySelectorAll('.csrc-btn').forEach(b =>
+          b.classList.toggle('active', b === btn)
+        );
+      });
+    });
+  })();
 
   const elLiveBtn = document.getElementById('live-mode-btn');
   if (elLiveBtn) {
@@ -1693,12 +1729,28 @@
     refreshPresetImage(btn, cam, n);
   }
 
+  function resolveCaptureCamera() {
+    if (state.captureSource === 'preview' && state.atem.enabled) {
+      const idx = state.cameras.findIndex(c => +c.atemInput === +state.previewSource);
+      if (idx >= 0) return idx;
+    }
+    if (state.captureSource === 'program' && state.atem.enabled) {
+      const idx = state.cameras.findIndex(c => +c.atemInput === +state.programSource);
+      if (idx >= 0) return idx;
+    }
+    return state.activeCam;
+  }
+
   async function capturePreset(n) {
-    const cam = state.activeCam;
+    const cam = resolveCaptureCamera();
     const ok = await captureFrame(cam, n);
     if (ok) {
       bumpImageVersion(cam, n);
-      refreshPresetBtn(n, cam);
+      if (cam === state.activeCam) {
+        refreshPresetBtn(n, cam);
+      } else {
+        setStatus('success', `Captured preset ${n} (camera ${cam + 1})`);
+      }
     }
   }
 
