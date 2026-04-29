@@ -1233,6 +1233,7 @@
     if (!state.atem.enabled) atemConnected = false;
     updateAtemPill();
     updateAtemDebug();
+    updateToolbarVisibility();
     // Show/hide Live preference field based on ATEM enabled state
     if (elLivePreferenceField) {
       elLivePreferenceField.style.display = state.atem.enabled ? 'block' : 'none';
@@ -1809,6 +1810,7 @@
     captureBtn.type      = 'button';
     captureBtn.title     = 'Update screenshot';
     captureBtn.innerHTML = '&#x25CE;';
+    captureBtn.addEventListener('pointerup', (e) => e.stopPropagation());
     captureBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       await capturePreset(n);
