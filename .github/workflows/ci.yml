@@ -14,8 +14,26 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install ruff
+      - run: ruff format --check server.py
       - run: ruff check server.py
       - run: python -m py_compile server.py
+      - name: Import smoke test
+        run: python -c "import server"
+      - name: Settings schema
+        run: |
+          python3 - <<'EOF'
+          import json, sys
+          sys.path.insert(0, '.')
+          import server
+          rt = json.loads(json.dumps(server.DEFAULT_SETTINGS))
+          required = ['activeCam', 'cameras', 'labels', 'dwellMs', 'atem', 'liveMode', 'atemFollows']
+          missing = [k for k in required if k not in rt]
+          if missing:
+              print(f'Missing keys in DEFAULT_SETTINGS: {missing}'); sys.exit(1)
+          print('Settings schema OK')
+          EOF
+      - name: Unit & integration tests
+        run: python -m unittest discover -s tests/ -v
 
   frontend:
     name: HTML structure & JS syntax

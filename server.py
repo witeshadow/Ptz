@@ -18,12 +18,14 @@ import time
 
 try:
     from playwright.sync_api import sync_playwright as _sync_playwright
+
     _HAS_PLAYWRIGHT = True
 except ImportError:
     _HAS_PLAYWRIGHT = False
 
 try:
     import cv2 as _cv2
+
     _HAS_CV2 = True
 except ImportError:
     _cv2 = None  # type: ignore[assignment]
@@ -41,9 +43,36 @@ SETTINGS_F = os.path.join(DATA_DIR, "settings.json")
 DEFAULT_SETTINGS = {
     "activeCam": 0,
     "cameras": [
-        {"name": "Camera 1", "ip": "", "port": 52381, "viscaAddr": 1, "atemInput": 1, "streamUrl": "", "usbDevice": "", "enabled": True},
-        {"name": "Camera 2", "ip": "", "port": 52381, "viscaAddr": 1, "atemInput": 2, "streamUrl": "", "usbDevice": "", "enabled": True},
-        {"name": "Camera 3", "ip": "", "port": 52381, "viscaAddr": 1, "atemInput": 3, "streamUrl": "", "usbDevice": "", "enabled": True},
+        {
+            "name": "Camera 1",
+            "ip": "",
+            "port": 52381,
+            "viscaAddr": 1,
+            "atemInput": 1,
+            "streamUrl": "",
+            "usbDevice": "",
+            "enabled": True,
+        },
+        {
+            "name": "Camera 2",
+            "ip": "",
+            "port": 52381,
+            "viscaAddr": 1,
+            "atemInput": 2,
+            "streamUrl": "",
+            "usbDevice": "",
+            "enabled": True,
+        },
+        {
+            "name": "Camera 3",
+            "ip": "",
+            "port": 52381,
+            "viscaAddr": 1,
+            "atemInput": 3,
+            "streamUrl": "",
+            "usbDevice": "",
+            "enabled": True,
+        },
     ],
     "labels": {"0:1": "Stage Left", "0:5": "Wide"},
     "dwellMs": 3000,
@@ -196,14 +225,18 @@ def _atem_loop():
                     flags, seq_num = _parse_header(data)
                     if flags & 0x01:  # ATEM wants ACK (RELIABLE flag)
                         sock.sendto(_make_ack(session_id, seq_num), (ip, ATEM_PORT))
-                    for cmd, cmd_data in _parse_commands(data[12:] if len(data) > 12 else b""):
+                    for cmd, cmd_data in _parse_commands(
+                        data[12:] if len(data) > 12 else b""
+                    ):
                         if cmd == "InCm":
                             init_done = True
                             break
                         elif cmd in ("PrvI", "PrgI") and len(cmd_data) >= 4:
                             me = cmd_data[0]
                             source = struct.unpack(">H", cmd_data[2:4])[0]
-                            print(f"[ATEM] init {cmd} me={me} source={source} raw={cmd_data.hex()}")
+                            print(
+                                f"[ATEM] init {cmd} me={me} source={source} raw={cmd_data.hex()}"
+                            )
                             if me == 0:
                                 if cmd == "PrvI":
                                     init_preview = source
@@ -215,7 +248,9 @@ def _atem_loop():
 
             _set_atem(True, preview=init_preview, program=init_program)
             _broadcast({"type": "atem", **_get_atem()})
-            print(f"[ATEM] Connected — init preview={init_preview} program={init_program}")
+            print(
+                f"[ATEM] Connected — init preview={init_preview} program={init_program}"
+            )
 
             sock.settimeout(1.0)
             last_recv = time.monotonic()
@@ -229,7 +264,10 @@ def _atem_loop():
                 if now - last_cfg_check >= 5.0:
                     cur_cfg = load_settings().get("atem", {})
                     last_cfg_check = now
-                    if not cur_cfg.get("enabled") or cur_cfg.get("ip", "").strip() != ip:
+                    if (
+                        not cur_cfg.get("enabled")
+                        or cur_cfg.get("ip", "").strip() != ip
+                    ):
                         print("[ATEM] Config changed — reconnecting")
                         break
 
@@ -245,7 +283,11 @@ def _atem_loop():
                         data[12:] if len(data) > 12 else b""
                     ):
                         # filter to ME1 (cmd_data[0] == 0) for multi-ME switchers
-                        if cmd in ("PrvI", "PrgI") and len(cmd_data) >= 4 and cmd_data[0] == 0:
+                        if (
+                            cmd in ("PrvI", "PrgI")
+                            and len(cmd_data) >= 4
+                            and cmd_data[0] == 0
+                        ):
                             source = struct.unpack(">H", cmd_data[2:4])[0]
                             cur = _get_atem()
                             if cmd == "PrvI" and source != cur["preview"]:
@@ -345,13 +387,19 @@ def send_visca_preset_recall(
 
         suffix = f" [{responder_note}]" if responder_note else ""
         if completion_payload and ack_payload:
-            return True, f"ACK {ack_payload.hex()} • Completion {completion_payload.hex()}{suffix}"
+            return (
+                True,
+                f"ACK {ack_payload.hex()} • Completion {completion_payload.hex()}{suffix}",
+            )
         if completion_payload:
             return True, f"Completion {completion_payload.hex()}{suffix}"
         if ack_payload:
             return True, f"ACK {ack_payload.hex()} (no completion received){suffix}"
         if raw_payloads:
-            return True, f"Command sent (unparsed VISCA response: {' | '.join(raw_payloads)})"
+            return (
+                True,
+                f"Command sent (unparsed VISCA response: {' | '.join(raw_payloads)})",
+            )
         return True, "Command sent (no VISCA response received)"
     except OSError as exc:
         return False, str(exc)
@@ -405,7 +453,10 @@ def inquire_visca_pan_tilt_position(
                 return False, f"VISCA error {payload.hex()}"
 
         if raw_payloads:
-            return False, f"Unparsed VISCA position response: {' | '.join(raw_payloads)}"
+            return (
+                False,
+                f"Unparsed VISCA position response: {' | '.join(raw_payloads)}",
+            )
         return False, "No VISCA position response received"
     except OSError as exc:
         return False, str(exc)
@@ -414,10 +465,10 @@ def inquire_visca_pan_tilt_position(
 
 
 # ── Playwright capture ─────────────────────────────────────────────────────────
-_pw_lock     = threading.Lock()
-_pw_ctx      = None   # playwright instance
-_pw_browser  = None
-_pw_page     = None
+_pw_lock = threading.Lock()
+_pw_ctx = None  # playwright instance
+_pw_browser = None
+_pw_page = None
 _pw_page_url = None
 
 
@@ -425,7 +476,7 @@ def _capture_url(url: str) -> bytes:
     global _pw_ctx, _pw_browser, _pw_page, _pw_page_url
     with _pw_lock:
         if _pw_ctx is None:
-            _pw_ctx     = _sync_playwright().start()
+            _pw_ctx = _sync_playwright().start()
             _pw_browser = _pw_ctx.chromium.launch(
                 headless=True,
                 args=[
@@ -461,7 +512,8 @@ def list_usb_devices() -> list:
         try:
             r = subprocess.run(
                 ["ffmpeg", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
-                capture_output=True, timeout=5,
+                capture_output=True,
+                timeout=5,
             )
             in_video = False
             for line in r.stderr.decode("utf-8", errors="replace").splitlines():
@@ -473,7 +525,9 @@ def list_usb_devices() -> list:
                 if in_video:
                     m = re.search(r"\[(\d+)\]\s+(.+)", line)
                     if m:
-                        devices.append({"index": m.group(1), "name": m.group(2).strip()})
+                        devices.append(
+                            {"index": m.group(1), "name": m.group(2).strip()}
+                        )
         except Exception:
             pass
     else:
@@ -483,7 +537,8 @@ def list_usb_devices() -> list:
             try:
                 r = subprocess.run(
                     ["v4l2-ctl", "--device", dev, "--info"],
-                    capture_output=True, timeout=3,
+                    capture_output=True,
+                    timeout=3,
                 )
                 for line in r.stdout.decode().splitlines():
                     if "Card type" in line:
@@ -512,12 +567,24 @@ def capture_usb_device(index: str) -> bytes:
             # Try each device variant without a forced framerate first (lets avfoundation
             # negotiate the native rate), then retry with supported framerates.
             for device_arg in (index, f"{index}:none"):
-                for framerate_args in (["-framerate", "60"], ["-framerate", "59.940180"], ["-framerate", "30"], []):
+                for framerate_args in (
+                    ["-framerate", "60"],
+                    ["-framerate", "59.940180"],
+                    ["-framerate", "30"],
+                    [],
+                ):
                     args = [
-                        "ffmpeg", "-y",
-                        "-f", "avfoundation", *framerate_args,
-                        "-i", device_arg,
-                        "-frames:v", "1", "-q:v", "3",
+                        "ffmpeg",
+                        "-y",
+                        "-f",
+                        "avfoundation",
+                        *framerate_args,
+                        "-i",
+                        device_arg,
+                        "-frames:v",
+                        "1",
+                        "-q:v",
+                        "3",
                         tmp,
                     ]
                     if _ffmpeg_grab(args, tmp):
@@ -534,10 +601,19 @@ def capture_usb_device(index: str) -> bytes:
                 )
         else:
             args = [
-                "ffmpeg", "-y",
-                "-f", "v4l2", "-i", f"/dev/video{index}",
-                "-ss", "0.1",
-                "-frames:v", "1", "-q:v", "3", tmp,
+                "ffmpeg",
+                "-y",
+                "-f",
+                "v4l2",
+                "-i",
+                f"/dev/video{index}",
+                "-ss",
+                "0.1",
+                "-frames:v",
+                "1",
+                "-q:v",
+                "3",
+                tmp,
             ]
             if not _ffmpeg_grab(args, tmp):
                 if _HAS_CV2:
@@ -555,7 +631,7 @@ def capture_usb_device(index: str) -> bytes:
 
 def _capture_cv2(index: int) -> bytes:
     cap = _cv2.VideoCapture(index)
-    for _ in range(3):   # first frames often corrupt on cold open
+    for _ in range(3):  # first frames often corrupt on cold open
         cap.read()
     ret, frame = cap.read()
     cap.release()
@@ -580,7 +656,6 @@ _MIME = {
 
 # ── HTTP handler ───────────────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
-
     def log_message(self, format, *args):  # noqa: A002
         print(f"  {self.address_string()} — {format % args}")
 
@@ -597,14 +672,17 @@ class Handler(BaseHTTPRequestHandler):
             cfg = load_settings().get("atem", {})
             with _sse_lock:
                 n_clients = len(_sse_clients)
-            self._json(200, {
-                "state": _get_atem(),
-                "sse_clients": n_clients,
-                "settings": {
-                    "ip":      cfg.get("ip", ""),
-                    "enabled": bool(cfg.get("enabled", False)),
+            self._json(
+                200,
+                {
+                    "state": _get_atem(),
+                    "sse_clients": n_clients,
+                    "settings": {
+                        "ip": cfg.get("ip", ""),
+                        "enabled": bool(cfg.get("enabled", False)),
+                    },
                 },
-            })
+            )
         elif path == "/events":
             self._sse()
         elif path == "/api/devices":
@@ -731,14 +809,23 @@ class Handler(BaseHTTPRequestHandler):
                 jpeg = capture_usb_device(usb)
             elif url:
                 if not _HAS_PLAYWRIGHT:
-                    self._json(503, {
-                        "ok": False,
-                        "error": "playwright not installed — run: pip install playwright && playwright install chromium",
-                    })
+                    self._json(
+                        503,
+                        {
+                            "ok": False,
+                            "error": "playwright not installed — run: pip install playwright && playwright install chromium",
+                        },
+                    )
                     return
                 jpeg = _capture_url(url)
             else:
-                self._json(400, {"ok": False, "error": "no capture source configured for this camera"})
+                self._json(
+                    400,
+                    {
+                        "ok": False,
+                        "error": "no capture source configured for this camera",
+                    },
+                )
                 return
             _ensure_dirs()
             fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
