@@ -427,6 +427,19 @@
     .preset-btn.edit-mode.has-image:hover .preset-clear { display: flex; }
     .preset-clear:hover { background: var(--error); border-color: var(--error); }
 
+    .preset-capture {
+      position: absolute; top: 5px; left: 5px;
+      width: 20px; height: 20px;
+      background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.25);
+      border-radius: 50%; color: #fff; font-size: .75rem; line-height: 1;
+      cursor: pointer; display: none;
+      align-items: center; justify-content: center;
+      transition: background .15s;
+      z-index: 2;
+    }
+    .preset-btn.edit-mode:hover .preset-capture { display: flex; }
+    .preset-capture:hover { background: var(--accent); border-color: var(--accent); }
+
     .name-input {
       font-size: .7rem; background: var(--surf2);
       border: 1px solid var(--accent); border-radius: 3px;
@@ -1680,6 +1693,15 @@
     refreshPresetImage(btn, cam, n);
   }
 
+  async function capturePreset(n) {
+    const cam = state.activeCam;
+    const ok = await captureFrame(cam, n);
+    if (ok) {
+      bumpImageVersion(cam, n);
+      refreshPresetBtn(n, cam);
+    }
+  }
+
   function buildPresetBtn(n) {
     const cam = state.activeCam;
     const lbl = state.labels[presetKey(cam, n)] || '';
@@ -1729,6 +1751,17 @@
       refreshPresetBtn(n, activeCam);
     });
     btn.appendChild(clearBtn);
+
+    const captureBtn = document.createElement('button');
+    captureBtn.className = 'preset-capture';
+    captureBtn.type      = 'button';
+    captureBtn.title     = 'Update screenshot';
+    captureBtn.innerHTML = '&#x25CE;';
+    captureBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await capturePreset(n);
+    });
+    btn.appendChild(captureBtn);
 
     let handledPointerUp = false;
     function activatePreset() {
