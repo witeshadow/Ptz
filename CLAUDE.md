@@ -246,3 +246,11 @@ print('HTML OK')
 ```
 
 CI runs Python 3.12 / Node 20 on ubuntu-latest. No `pyproject.toml` or `ruff.toml`; ruff uses defaults. Active suppressions: `# noqa: A002` on `Handler.log_message` (built-in name shadow), `# type: ignore[assignment]` on the `cv2 = None` fallback.
+
+## Common Mistakes (learned)
+
+- Do not add `# type: ignore` comments without a specific reason — ruff will flag unnecessary ones.
+- Do not remove `with _sse_lock:` guards around `_sse_clients` access even if the operation looks atomic.
+- Settings POST at `_handle_settings_post` does a full replace — do not change it to a merge without understanding the frontend's save behavior.
+- Do not split `server.py` or `public/index.html` into multiple files to "clean up" — the single-file constraint is intentional.
+- Do not use Flask patterns (`@route`, `request`, `jsonify`) — this project uses stdlib `http.server`; add routes as branches in `do_GET`/`do_POST`/`do_DELETE`.
