@@ -731,7 +731,7 @@ class Handler(BaseHTTPRequestHandler):
             self._get_image(int(m.group(1)), int(m.group(2)))
         else:
             clean = path.lstrip("/")
-            if clean and not clean.startswith(".."):
+            if clean:
                 self._serve_static(clean)
             else:
                 self.send_error(404)
@@ -765,9 +765,15 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"success": False, "message": "Invalid JSON"})
             return
         ip = str(data.get("ip", "")).strip()
-        port = int(data.get("port", 52381))
-        preset = max(0, int(data.get("preset", 0)))
-        camera = max(1, min(7, int(data.get("camera", 1))))
+        try:
+            port = int(data.get("port", 52381))
+            preset = max(0, int(data.get("preset", 0)))
+            camera = max(1, min(7, int(data.get("camera", 1))))
+        except (TypeError, ValueError):
+            self._json(
+                400, {"success": False, "message": "Invalid numeric parameter"}
+            )
+            return
         if not ip:
             self._json(400, {"success": False, "message": "Camera IP is required"})
             return
@@ -917,11 +923,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def _serve_static(self, name: str):
         clean = os.path.normpath(name)
-        if clean.startswith(".."):
+        fpath = os.path.join(PUBLIC_DIR, clean)
+        public_root = os.path.abspath(PUBLIC_DIR)
+        if os.path.abspath(fpath) != public_root and not os.path.abspath(fpath).startswith(
+            public_root + os.sep
+        ):
             self.send_response(403)
             self.end_headers()
             return
-        fpath = os.path.join(PUBLIC_DIR, clean)
         if not os.path.isfile(fpath):
             self.send_response(404)
             self.end_headers()

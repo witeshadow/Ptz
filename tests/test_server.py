@@ -552,6 +552,12 @@ class TestHTTPRoutes(unittest.TestCase):
         status, _ = self.srv.post("/recall", b"not json")
         self.assertEqual(status, 400)
 
+    def test_recall_bad_numeric_returns_400(self):
+        payload = json.dumps({"ip": "10.0.0.1", "port": "bad", "preset": 1}).encode()
+        status, body = self.srv.post("/recall", payload)
+        self.assertEqual(status, 400)
+        self.assertFalse(json.loads(body)["success"])
+
     def test_recall_success_propagates_transport_message(self):
         payload = json.dumps(
             {"ip": "10.0.0.1", "port": 52381, "camera": 1, "preset": 4}
@@ -674,6 +680,10 @@ class TestHTTPRoutes(unittest.TestCase):
     def test_unknown_get_returns_404(self):
         status, _ = self.srv.get("/api/nonexistent")
         self.assertEqual(status, 404)
+
+    def test_static_path_traversal_returns_403(self):
+        status, _ = self.srv.get("/../server.py")
+        self.assertEqual(status, 403)
 
     def test_unknown_delete_returns_404(self):
         status, _ = self.srv.delete("/api/nonexistent")

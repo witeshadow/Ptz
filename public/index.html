@@ -1406,7 +1406,6 @@
   (function initSSE() {
     const es = new EventSource('/events');
     es.onmessage = (e) => {
-      console.log('[SSE]', e.data);
       try {
         const ev = JSON.parse(e.data);
         if (ev.type === 'atem') {
