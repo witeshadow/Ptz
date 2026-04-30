@@ -450,6 +450,15 @@ class _LiveServer:
         c.close()
         return r.status, body
 
+    def get_with_headers(self, path):
+        c = self._conn()
+        c.request("GET", path)
+        r = c.getresponse()
+        body = r.read()
+        headers = dict(r.getheaders())
+        c.close()
+        return r.status, headers, body
+
     def post(self, path, body=b"", content_type="application/json"):
         c = self._conn()
         c.request("POST", path, body, {"Content-Type": content_type, "Content-Length": str(len(body))})
@@ -543,6 +552,38 @@ class TestHTTPRoutes(unittest.TestCase):
         status, _ = self.srv.post("/recall", b"not json")
         self.assertEqual(status, 400)
 
+    def test_recall_success_propagates_transport_message(self):
+        payload = json.dumps(
+            {"ip": "10.0.0.1", "port": 52381, "camera": 1, "preset": 4}
+        ).encode()
+        with patch(
+            "server.send_visca_preset_recall",
+            return_value=(True, "ACK 9041ff • Completion 9051ff"),
+        ) as mock_recall:
+            status, body = self.srv.post("/recall", payload)
+
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["success"])
+        self.assertIn("Completion", data["message"])
+        mock_recall.assert_called_once_with("10.0.0.1", 52381, 4, 1)
+
+    def test_recall_failure_propagates_transport_message(self):
+        payload = json.dumps(
+            {"ip": "10.0.0.1", "port": 52381, "camera": 2, "preset": 6}
+        ).encode()
+        with patch(
+            "server.send_visca_preset_recall",
+            return_value=(False, "VISCA error 906002ff"),
+        ) as mock_recall:
+            status, body = self.srv.post("/recall", payload)
+
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertFalse(data["success"])
+        self.assertIn("VISCA error", data["message"])
+        mock_recall.assert_called_once_with("10.0.0.1", 52381, 6, 2)
+
     # ── image API ──────────────────────────────────────────────────────────────
 
     def test_image_missing_returns_404(self):
@@ -566,6 +607,20 @@ class TestHTTPRoutes(unittest.TestCase):
         status, _ = self.srv.get("/api/image/0/7")
         self.assertEqual(status, 404)
 
+    def test_image_response_is_cacheable(self):
+        fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+        status, _ = self.srv.post("/api/image/1/3", fake_jpeg, "image/jpeg")
+        self.assertEqual(status, 200)
+
+        status, headers, data = self.srv.get_with_headers("/api/image/1/3")
+        self.assertEqual(status, 200)
+        self.assertEqual(data, fake_jpeg)
+        self.assertEqual(
+            headers.get("Cache-Control"),
+            "public, max-age=31536000, immutable",
+        )
+        self.assertEqual(headers.get("Content-Type"), "image/jpeg")
+
     def test_delete_nonexistent_image_still_200(self):
         status, body = self.srv.delete("/api/image/0/88")
         self.assertEqual(status, 200)
@@ -585,6 +640,34 @@ class TestHTTPRoutes(unittest.TestCase):
         status, body = self.srv.get("/api/position/99")
         self.assertEqual(status, 404)
         self.assertFalse(json.loads(body)["ok"])
+
+    def test_position_success_returns_inquiry_payload(self):
+        settings = dict(server.DEFAULT_SETTINGS)
+        settings["cameras"] = [dict(server.DEFAULT_SETTINGS["cameras"][0], ip="10.0.0.9")]
+        server.write_settings(settings)
+
+        with patch(
+            "server.inquire_visca_pan_tilt_position",
+            return_value=(
+                True,
+                {
+                    "pan": 0x1234,
+                    "tilt": 0x5678,
+                    "pan_hex": "1234",
+                    "tilt_hex": "5678",
+                    "responder": "0x90",
+                    "expected_responder": "0x90",
+                },
+            ),
+        ) as mock_inquire:
+            status, body = self.srv.get("/api/position/0")
+
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["pan_hex"], "1234")
+        self.assertEqual(data["tilt_hex"], "5678")
+        mock_inquire.assert_called_once_with("10.0.0.9", 52381, 1)
 
     # ── 404 paths ──────────────────────────────────────────────────────────────
 
