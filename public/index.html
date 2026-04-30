@@ -293,10 +293,18 @@
     }
     .field input:focus, .field select:focus { border-color: var(--accent); }
 
+    .field-note {
+      margin-top: 5px;
+      max-width: 240px;
+      font-size: 0.72rem;
+      line-height: 1.35;
+      color: var(--muted);
+    }
+
     #f-ip         { width: 158px; }
     #f-port       { width: 86px; }
     #f-visca      { width: 66px; }
-    #f-atem-input { width: 66px; }
+    #f-atem-input { width: 110px; }
     #f-webcam     { width: 190px; }
     #f-usb-device { width: 190px; }
     #f-stream-url { width: 220px; }
@@ -731,13 +739,12 @@
         </select>
       </div>
       <div class="field">
-        <label for="f-atem-input">ATEM Input</label>
-        <select id="f-atem-input">
-          <option value="1">1</option><option value="2">2</option>
-          <option value="3">3</option><option value="4">4</option>
-          <option value="5">5</option><option value="6">6</option>
-          <option value="7">7</option><option value="8">8</option>
-        </select>
+        <label for="f-atem-input">ATEM Source Number</label>
+        <input id="f-atem-input" type="number" min="1" placeholder="Optional" />
+        <div class="field-note">
+          Match the ATEM source/input number that carries this camera. Leave blank if this camera is not mapped on the switcher.
+        </div>
+        <div id="f-atem-status" class="field-note">ATEM bus status: Unmapped</div>
       </div>
     </div>
 
@@ -756,6 +763,7 @@
         <label for="f-webcam">Browser Preview</label>
         <select id="f-webcam"><option value="">— select —</option></select>
       </div>
+      <div id="f-capture-source-status" class="field-note">Scan capture source: Not configured</div>
       <div class="field">
         <label for="f-dwell">Dwell (s)</label>
         <input id="f-dwell" type="number" value="3" min="1" max="60" />
@@ -928,6 +936,7 @@
     aux2Source: 0,
     aux3Source: 0,
   };
+  const bootImageVersion = Date.now();
 
   // webcamDeviceId is browser-specific; stays in localStorage
   function getWebcamDeviceId()    { return localStorage.getItem('ptz-webcam-device') || ''; }
@@ -998,6 +1007,35 @@
   const elAtemPill = document.getElementById('atem-pill');
   const elAtemPillText = elAtemPill ? elAtemPill.querySelector('span') : null;
   let atemConnected = false;
+
+  function getCameraAtemInput(camOrIdx) {
+    const cam = typeof camOrIdx === 'number' ? state.cameras[camOrIdx] : camOrIdx;
+    const raw = cam?.atemInput;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  function cameraMatchesAtemSource(idx, source) {
+    if (source == null || source === 0) return false;
+    return getCameraAtemInput(idx) === Number(source);
+  }
+
+  function getCameraAtemBusStatus(idx) {
+    const atemInput = getCameraAtemInput(idx);
+    if (!atemInput) return 'Unmapped';
+    if (cameraMatchesAtemSource(idx, state.programSource)) return 'Program';
+    if (cameraMatchesAtemSource(idx, state.previewSource)) return 'Preview';
+    return 'Neither';
+  }
+
+  function getCameraCaptureSourceSummary(idx) {
+    const cam = state.cameras[idx];
+    if (!cam) return 'Not configured';
+    if (cam.usbDevice) return `USB device ${cam.usbDevice}`;
+    if (cam.streamUrl) return 'VDO.ninja / URL';
+    if (videoStream) return 'Browser preview camera';
+    return 'Not configured';
+  }
 
   function updateAtemPill() {
     if (!elAtemPill || !elAtemPillText) return;
@@ -1095,7 +1133,7 @@
     elDbgPvw.textContent = state.previewSource != null ? state.previewSource : '—';
     elDbgInputs.textContent = state.cameras
       .filter(c => c.enabled !== false)
-      .map((c, i) => `CAM${i + 1}=${c.atemInput}`)
+      .map((c, i) => `CAM${i + 1}=${getCameraAtemInput(c) ?? '—'}`)
       .join(' ');
     scheduleDebugPositionPolling();
   }
@@ -1111,10 +1149,8 @@
   }
 
   function getCameraBadgeText(idx) {
-    const onProgram = state.programSource !== null &&
-      state.cameras.findIndex(c => +c.atemInput === +state.programSource) === idx;
-    const onPreview = state.previewSource !== null &&
-      state.cameras.findIndex(c => +c.atemInput === +state.previewSource) === idx;
+    const onProgram = cameraMatchesAtemSource(idx, state.programSource);
+    const onPreview = cameraMatchesAtemSource(idx, state.previewSource);
 
     if (onProgram) return 'LIVE';
     if (onPreview) return 'PVW';
@@ -1184,10 +1220,8 @@
       // Add badge for mode/ATEM indicator
       let badgeText = '', badgeClass = '';
 
-      const onProgram = state.programSource !== null &&
-        state.cameras.findIndex(c => +c.atemInput === +state.programSource) === idx;
-      const onPreview = state.previewSource !== null &&
-        state.cameras.findIndex(c => +c.atemInput === +state.previewSource) === idx;
+      const onProgram = cameraMatchesAtemSource(idx, state.programSource);
+      const onPreview = cameraMatchesAtemSource(idx, state.previewSource);
 
       if (onProgram) {
         badgeText = 'LIVE';
@@ -1246,6 +1280,10 @@
   }
 
   function switchCamera(idx) {
+    if (scanning && idx !== state.activeCam) {
+      setStatus('busy', 'Finish or cancel the current scan before changing cameras', false);
+      return;
+    }
     saveCameraSettings();
     state.activeCam = idx;
     schedSave();
@@ -1290,14 +1328,30 @@
   const elPort      = document.getElementById('f-port');
   const elVisca     = document.getElementById('f-visca');
   const elAtemInput = document.getElementById('f-atem-input');
+  const elAtemStatus = document.getElementById('f-atem-status');
+  const elCaptureSourceStatus = document.getElementById('f-capture-source-status');
   const elDwell     = document.getElementById('f-dwell');
+
+  function updateCameraStatusHints() {
+    if (elAtemStatus) {
+      const atemInput = getCameraAtemInput(state.activeCam);
+      const busStatus = getCameraAtemBusStatus(state.activeCam);
+      elAtemStatus.textContent = atemInput
+        ? `ATEM bus status: ${busStatus} on source ${atemInput}`
+        : 'ATEM bus status: Unmapped';
+    }
+    if (elCaptureSourceStatus) {
+      elCaptureSourceStatus.textContent = `Scan capture source: ${getCameraCaptureSourceSummary(state.activeCam)}`;
+    }
+  }
 
   function loadCameraSettings() {
     const cam = state.cameras[state.activeCam];
     elIp.value        = cam.ip;
     elPort.value      = cam.port;
     elVisca.value     = cam.viscaAddr;
-    elAtemInput.value = cam.atemInput || 1;
+    const atemInput = getCameraAtemInput(cam);
+    elAtemInput.value = atemInput != null ? String(atemInput) : '';
     elDwell.value     = state.dwellMs / 1000;
     elAtemEnabled.checked = !!state.atem.enabled;
     elAtemIp.value        = state.atem.ip || '';
@@ -1306,6 +1360,7 @@
     const url = cam.streamUrl || '';
     elStreamUrl.value = url;
     applyStreamUrl(url);
+    updateCameraStatusHints();
   }
 
   function saveCameraSettings() {
@@ -1313,12 +1368,13 @@
     cam.ip         = elIp.value.trim();
     cam.port       = parseInt(elPort.value, 10) || 52381;
     cam.viscaAddr  = parseInt(elVisca.value, 10) || 1;
-    cam.atemInput  = parseInt(elAtemInput.value, 10) || 1;
+    cam.atemInput  = getCameraAtemInput({ atemInput: elAtemInput.value });
     cam.usbDevice  = elUsbDevice.value;
     cam.streamUrl  = elStreamUrl.value.trim();
     state.dwellMs  = (parseInt(elDwell.value, 10) || 3) * 1000;
     state.atem.enabled = elAtemEnabled.checked;
     state.atem.ip      = elAtemIp.value.trim();
+    updateCameraStatusHints();
   }
 
   [elIp, elPort, elVisca, elAtemInput, elDwell].forEach(el =>
@@ -1361,6 +1417,7 @@
           if (ev.aux2 != null && ev.aux2 !== 0) state.aux2Source = ev.aux2;
           if (ev.aux3 != null && ev.aux3 !== 0) state.aux3Source = ev.aux3;
           updateAtemPill();
+          updateCameraStatusHints();
           renderTabs();
           updateAtemDebug();
           updateCaptureOutputLabel();
@@ -1369,26 +1426,28 @@
           atemConnected = true;
           state.previewSource = ev.source;
           updateAtemPill();
+          updateCameraStatusHints();
           renderTabs();
           updateAtemDebug();
           updateCaptureOutputLabel();
           renderOutputMapTable();
           // Auto-switch in Live mode if following preview
           if (state.liveMode && state.atem.enabled && state.atemFollows === 'preview') {
-            const idx = state.cameras.findIndex(c => +c.atemInput === +ev.source);
+            const idx = state.cameras.findIndex((_, camIdx) => cameraMatchesAtemSource(camIdx, ev.source));
             if (idx >= 0 && idx !== state.activeCam) switchCamera(idx);
           }
         } else if (ev.type === 'program') {
           atemConnected = true;
           state.programSource = ev.source;
           updateAtemPill();
+          updateCameraStatusHints();
           renderTabs();
           updateAtemDebug();
           updateCaptureOutputLabel();
           renderOutputMapTable();
           // Auto-switch in Live mode if following program
           if (state.liveMode && state.atem.enabled && state.atemFollows === 'program') {
-            const idx = state.cameras.findIndex(c => +c.atemInput === +ev.source);
+            const idx = state.cameras.findIndex((_, camIdx) => cameraMatchesAtemSource(camIdx, ev.source));
             if (idx >= 0 && idx !== state.activeCam) switchCamera(idx);
           }
         } else if (ev.type === 'aux') {
@@ -1723,6 +1782,7 @@
       _setMode('webcam');
       setWebcamDeviceId(deviceId);
       await enumerateWebcams();
+      updateCameraStatusHints();
     } catch (e) {
       setStatus('error', `Webcam: ${e.message}`);
     }
@@ -1738,6 +1798,7 @@
       elIframe.src = '';
       elPreview.classList.remove('visible');
     }
+    updateCameraStatusHints();
   }
 
   elWebcam.addEventListener('change', () => {
@@ -1761,6 +1822,7 @@
   elUsbDevice.addEventListener('change', () => {
     state.cameras[state.activeCam].usbDevice = elUsbDevice.value;
     schedSave();
+    updateCameraStatusHints();
   });
 
   // captureFrame priority: USB device (ffmpeg) > stream URL (playwright) > browser webcam
@@ -1929,7 +1991,7 @@
   }
 
   function imgUrl(cam, preset) {
-    return `/api/image/${cam}/${preset}?v=${imageVersions[presetKey(cam, preset)] || 0}`;
+    return `/api/image/${cam}/${preset}?v=${imageVersions[presetKey(cam, preset)] || bootImageVersion}`;
   }
 
   function refreshPresetImage(btn, cam, preset) {
@@ -2188,8 +2250,8 @@
       if (cancelScan) break;
 
       elScanFill.style.width = `${Math.round(i / total * 100)}%`;
-      elScanLbl.textContent  = `Recalling preset ${i + 1} of ${total}…`;
-      setStatus('busy', `Scanning preset ${i + 1} of ${total}…`, false);
+      elScanLbl.textContent  = `Camera ${scanCamIdx + 1}: recalling preset ${i + 1} of ${total}…`;
+      setStatus('busy', `Scanning Camera ${scanCamIdx + 1} preset ${i + 1} of ${total}…`, false);
 
       const result = await doRecall(p, scanCamIdx);
       if (!result.success) console.warn(`Recall ${p}:`, result.message);
@@ -2201,19 +2263,19 @@
         if (cancelScan) break;
         const pct = Math.round((i + (s + 1) / steps) / total * 100);
         elScanFill.style.width = pct + '%';
-        elScanLbl.textContent  = `Waiting… preset ${i + 1} of ${total}`;
+        elScanLbl.textContent  = `Camera ${scanCamIdx + 1}: waiting on preset ${i + 1} of ${total}`;
         await sleep(dwell / steps);
       }
       if (cancelScan) break;
 
-      elScanLbl.textContent = `Capturing preset ${i + 1} of ${total}…`;
+      elScanLbl.textContent = `Camera ${scanCamIdx + 1}: capturing preset ${i + 1} of ${total}…`;
       const ok = await captureFrame(scanCamIdx, p, lockedSource);
       if (!ok) {
         captureErrors.push(p);
         console.error(`Capture failed for preset ${p}`);
       } else {
         bumpImageVersion(scanCamIdx, p);
-        refreshPresetBtn(p, scanCamIdx);
+        if (scanCamIdx === state.activeCam) refreshPresetBtn(p, scanCamIdx);
       }
     }
 
