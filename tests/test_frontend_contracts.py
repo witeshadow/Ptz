@@ -32,6 +32,11 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("ATEM Wait", self.html)
         self.assertIn("ATEM P${program} V${preview}", self.html)
 
+    def test_explicit_scan_and_atem_mapping_hints_present(self):
+        self.assertIn("ATEM Source Number", self.html)
+        self.assertIn("ATEM bus status:", self.html)
+        self.assertIn("Scan capture source:", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()
