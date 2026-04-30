@@ -1150,7 +1150,22 @@
       btn.appendChild(numEl);
       btn.appendChild(nameWrap);
 
+      // Long-press rename for touch devices (500 ms hold)
+      let longPressTimer = null;
+      let longPressHandled = false;
+      btn.addEventListener('pointerdown', () => {
+        longPressTimer = setTimeout(() => {
+          longPressTimer = null;
+          longPressHandled = true;
+          openTabNameEditor(idx, nameEl, nameWrap);
+        }, 500);
+      });
+      btn.addEventListener('pointerup',    () => clearTimeout(longPressTimer));
+      btn.addEventListener('pointerleave', () => clearTimeout(longPressTimer));
+      btn.addEventListener('pointermove',  () => clearTimeout(longPressTimer));
+
       btn.addEventListener('click', () => {
+        if (longPressHandled) { longPressHandled = false; return; }
         if (idx !== state.activeCam) switchCamera(idx);
       });
 
@@ -1158,18 +1173,6 @@
         e.preventDefault();
         openTabNameEditor(idx, nameEl, nameWrap);
       });
-
-      // Long-press rename for touch devices (500 ms hold)
-      let longPressTimer = null;
-      btn.addEventListener('pointerdown', () => {
-        longPressTimer = setTimeout(() => {
-          longPressTimer = null;
-          openTabNameEditor(idx, nameEl, nameWrap);
-        }, 500);
-      });
-      btn.addEventListener('pointerup',    () => clearTimeout(longPressTimer));
-      btn.addEventListener('pointerleave', () => clearTimeout(longPressTimer));
-      btn.addEventListener('pointermove',  () => clearTimeout(longPressTimer));
 
       elTabs.appendChild(btn);
     });
