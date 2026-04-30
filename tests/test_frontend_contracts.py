@@ -42,7 +42,8 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("SDI Out 4", self.html)
         self.assertIn("Source Label", self.html)
         self.assertIn("e.g. Multiview", self.html)
-        self.assertIn("Used For Scans", self.html)
+        self.assertIn("Scan source:", self.html)
+        self.assertIn("Scan Output", self.html)
 
 
 if __name__ == "__main__":
