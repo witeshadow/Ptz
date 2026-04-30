@@ -623,6 +623,28 @@
       #preset-grid { grid-template-columns: repeat(2, 1fr) !important; }
     }
 
+    /* ── ATEM output-map table ──────────────────────────────── */
+    #output-map-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+    #output-map-table tbody tr { border-top: 1px solid var(--border); }
+    #output-map-table td { padding: 6px 8px; vertical-align: middle; }
+    .output-row-label { font-weight: 600; color: var(--text); white-space: nowrap; }
+    .output-row-source { font-size: .75rem; color: var(--label); white-space: nowrap; }
+    .output-row-source.live    { color: var(--error);   font-weight: 700; }
+    .output-row-source.preview { color: var(--success); font-weight: 700; }
+    #output-map-table select,
+    #output-map-table input[type=text] {
+      background: var(--surf2); border: 1px solid var(--border); border-radius: 4px;
+      color: var(--text); padding: 4px 6px; font-size: .78rem; width: 100%; outline: none;
+    }
+    #output-map-table select:focus,
+    #output-map-table input[type=text]:focus { border-color: var(--accent); }
+    @media (max-width: 700px) {
+      #output-map-table thead { display: none; }
+      #output-map-table tbody tr { display: block; margin-bottom: 8px; padding: 8px; background: var(--surf2); border-radius: 6px; border-top: none; }
+      #output-map-table td { display: block; padding: 2px 0; }
+      #output-map-table td::before { content: attr(data-label); display: block; font-size: .65rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 2px; }
+    }
+
     /* ── Flex gap fallbacks (Safari < 14.5) ─────────────── */
     header > * + *          { margin-left: 12px; }
     .header-pills > * + *   { margin-left: 8px; }
@@ -813,6 +835,35 @@
     </div>
   </div>
 
+  <!-- ATEM Capture Sources (shown only when ATEM enabled) -->
+  <div id="atem-capture-section" style="display:none; border-top:1px solid var(--border); padding:12px;">
+    <div class="gsp-section-title" style="margin-bottom:10px;">Capture Sources</div>
+    <div style="display:flex; align-items:flex-end; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+      <div class="field" style="flex-shrink:0;">
+        <label for="f-capture-output">Scan captures from</label>
+        <select id="f-capture-output">
+          <option value="program">Program</option>
+          <option value="preview">Preview</option>
+          <option value="aux1">AUX 1</option>
+          <option value="aux2">AUX 2</option>
+          <option value="aux3">AUX 3</option>
+        </select>
+      </div>
+      <span id="capture-output-label" style="font-size:.8rem; color:var(--label); padding-bottom:6px;"></span>
+    </div>
+    <table id="output-map-table">
+      <thead>
+        <tr style="color:var(--muted); text-align:left;">
+          <th style="padding:4px 8px; font-weight:600;">Output</th>
+          <th style="padding:4px 8px; font-weight:600;">Showing</th>
+          <th style="padding:4px 8px; font-weight:600;">USB Device</th>
+          <th style="padding:4px 8px; font-weight:600;">Stream URL</th>
+        </tr>
+      </thead>
+      <tbody id="output-map-body"><!-- rendered by JS --></tbody>
+    </table>
+  </div>
+
   <!-- Webcam preview at bottom -->
   <div id="webcam-preview" style="border-top: 1px solid var(--border); padding: 12px;">
     <div id="preview-frame">
@@ -863,6 +914,19 @@
     gridCols: 4,
     gridRows: 3,
     fillWindow: false,
+    // ATEM output → capture source mapping (persisted)
+    atemOutputMap: {
+      program: { webcam: '', streamUrl: '' },
+      preview: { webcam: '', streamUrl: '' },
+      aux1:    { webcam: '', streamUrl: '' },
+      aux2:    { webcam: '', streamUrl: '' },
+      aux3:    { webcam: '', streamUrl: '' },
+    },
+    captureOutput: 'preview',
+    // Runtime ATEM AUX sources (not persisted, updated via SSE)
+    aux1Source: 0,
+    aux2Source: 0,
+    aux3Source: 0,
   };
 
   // webcamDeviceId is browser-specific; stays in localStorage
@@ -892,6 +956,8 @@
         if (s.liveMode      != null) state.liveMode      = !!s.liveMode;
         if (s.showAtemDebug != null) state.showAtemDebug = !!s.showAtemDebug;
         if (s.atemFollows)           state.atemFollows   = s.atemFollows;
+        if (s.atemOutputMap) state.atemOutputMap = { ...state.atemOutputMap, ...s.atemOutputMap };
+        if (s.captureOutput) state.captureOutput = s.captureOutput;
       }
     } catch (_) {}
   }
@@ -1269,10 +1335,13 @@
     if (!state.atem.enabled) atemConnected = false;
     updateAtemPill();
     updateAtemDebug();
-    // Show/hide Live preference field based on ATEM enabled state
+    // Show/hide dependent fields based on ATEM enabled state
     if (elLivePreferenceField) {
       elLivePreferenceField.style.display = state.atem.enabled ? 'block' : 'none';
     }
+    const atemCaptureSection = document.getElementById('atem-capture-section');
+    if (atemCaptureSection) atemCaptureSection.style.display = state.atem.enabled ? 'block' : 'none';
+    updateCaptureOutputLabel();
   });
   elAtemIp.addEventListener('change', () => { saveCameraSettings(); schedSave(); });
 
@@ -1285,18 +1354,25 @@
         const ev = JSON.parse(e.data);
         if (ev.type === 'atem') {
           atemConnected = !!ev.connected;
-          // Apply initial preview/program sources sent with the connection event
+          // Apply initial preview/program/aux sources sent with the connection event
           if (ev.preview != null && ev.preview !== 0) state.previewSource = ev.preview;
           if (ev.program != null && ev.program !== 0) state.programSource = ev.program;
+          if (ev.aux1 != null && ev.aux1 !== 0) state.aux1Source = ev.aux1;
+          if (ev.aux2 != null && ev.aux2 !== 0) state.aux2Source = ev.aux2;
+          if (ev.aux3 != null && ev.aux3 !== 0) state.aux3Source = ev.aux3;
           updateAtemPill();
           renderTabs();
           updateAtemDebug();
+          updateCaptureOutputLabel();
+          renderOutputMapTable();
         } else if (ev.type === 'preview') {
           atemConnected = true;
           state.previewSource = ev.source;
           updateAtemPill();
           renderTabs();
           updateAtemDebug();
+          updateCaptureOutputLabel();
+          renderOutputMapTable();
           // Auto-switch in Live mode if following preview
           if (state.liveMode && state.atem.enabled && state.atemFollows === 'preview') {
             const idx = state.cameras.findIndex(c => +c.atemInput === +ev.source);
@@ -1308,11 +1384,19 @@
           updateAtemPill();
           renderTabs();
           updateAtemDebug();
+          updateCaptureOutputLabel();
+          renderOutputMapTable();
           // Auto-switch in Live mode if following program
           if (state.liveMode && state.atem.enabled && state.atemFollows === 'program') {
             const idx = state.cameras.findIndex(c => +c.atemInput === +ev.source);
             if (idx >= 0 && idx !== state.activeCam) switchCamera(idx);
           }
+        } else if (ev.type === 'aux') {
+          atemConnected = true;
+          const auxKey = `aux${ev.index + 1}Source`;
+          if (auxKey in state) state[auxKey] = ev.source;
+          updateCaptureOutputLabel();
+          renderOutputMapTable();
         }
       } catch (_) {}
     };
@@ -1452,6 +1536,146 @@
     elAtemFollows.addEventListener('change', saveCameraManagement);
   }
 
+  // ── ATEM output-map capture UI ────────────────────────────────────────────
+  let usbDevices = [];  // populated in boot; reused by renderOutputMapTable
+
+  const ATEM_OUTPUT_KEYS = [
+    { key: 'program', label: 'Program' },
+    { key: 'preview', label: 'Preview' },
+    { key: 'aux1',    label: 'AUX 1' },
+    { key: 'aux2',    label: 'AUX 2' },
+    { key: 'aux3',    label: 'AUX 3' },
+  ];
+
+  function getOutputSource(key) {
+    if (key === 'program') return state.programSource || 0;
+    if (key === 'preview') return state.previewSource || 0;
+    return state[`${key}Source`] || 0;
+  }
+
+  function sourceLabel(sourceVal) {
+    if (!sourceVal) return 'Unknown';
+    const idx = state.cameras.findIndex(c => c.enabled !== false && +c.atemInput === +sourceVal);
+    if (idx >= 0) return state.cameras[idx].name;
+    return `Input ${sourceVal}`;
+  }
+
+  function sourceClass(key, sourceVal) {
+    if (!sourceVal) return '';
+    const camIdx = state.cameras.findIndex(c => c.enabled !== false && +c.atemInput === +sourceVal);
+    if (camIdx < 0) return '';
+    const pgm = state.cameras.findIndex(c => +c.atemInput === +(state.programSource || 0));
+    const pvw = state.cameras.findIndex(c => +c.atemInput === +(state.previewSource || 0));
+    if (camIdx === pgm) return 'live';
+    if (camIdx === pvw) return 'preview';
+    return '';
+  }
+
+  function updateCaptureOutputLabel() {
+    const el = document.getElementById('capture-output-label');
+    if (!el) return;
+    const src = getOutputSource(state.captureOutput);
+    const name = sourceLabel(src);
+    const map = state.atemOutputMap[state.captureOutput] || {};
+    const hasDevice = !!(map.webcam || map.streamUrl);
+    if (!src) {
+      el.textContent = `→ source unknown${hasDevice ? '' : ' — no device configured'}`;
+      el.style.color = 'var(--muted)';
+    } else {
+      el.textContent = `→ ${name}${hasDevice ? '' : ' — no device configured'}`;
+      const cls = sourceClass(state.captureOutput, src);
+      el.style.color = cls === 'live' ? 'var(--error)' : cls === 'preview' ? 'var(--success)' : 'var(--label)';
+    }
+  }
+
+  function renderOutputMapTable() {
+    const tbody = document.getElementById('output-map-body');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    ATEM_OUTPUT_KEYS.forEach(({ key, label }) => {
+      const src = getOutputSource(key);
+      const sLabel = sourceLabel(src);
+      const sCls   = sourceClass(key, src);
+      const map    = state.atemOutputMap[key] || { webcam: '', streamUrl: '' };
+
+      const tr = document.createElement('tr');
+
+      // Output name
+      const tdLabel = document.createElement('td');
+      tdLabel.setAttribute('data-label', 'Output');
+      tdLabel.className = 'output-row-label';
+      tdLabel.textContent = label;
+
+      // Current source
+      const tdSrc = document.createElement('td');
+      tdSrc.setAttribute('data-label', 'Showing');
+      const srcSpan = document.createElement('span');
+      srcSpan.className = `output-row-source${sCls ? ' ' + sCls : ''}`;
+      srcSpan.textContent = sLabel;
+      tdSrc.appendChild(srcSpan);
+
+      // USB device select
+      const tdUsb = document.createElement('td');
+      tdUsb.setAttribute('data-label', 'USB Device');
+      const usbSel = document.createElement('select');
+      const noneOpt = document.createElement('option');
+      noneOpt.value = ''; noneOpt.textContent = '— none —';
+      usbSel.appendChild(noneOpt);
+      usbDevices.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.index; opt.textContent = d.name;
+        usbSel.appendChild(opt);
+      });
+      usbSel.value = map.webcam || '';
+      usbSel.addEventListener('change', () => {
+        state.atemOutputMap[key].webcam = usbSel.value;
+        schedSave();
+        updateCaptureOutputLabel();
+      });
+      tdUsb.appendChild(usbSel);
+
+      // Stream URL input
+      const tdUrl = document.createElement('td');
+      tdUrl.setAttribute('data-label', 'Stream URL');
+      const urlInp = document.createElement('input');
+      urlInp.type = 'text';
+      urlInp.placeholder = 'https://vdo.ninja/…';
+      urlInp.value = map.streamUrl || '';
+      urlInp.spellcheck = false;
+      urlInp.autocomplete = 'off';
+      urlInp.addEventListener('change', () => {
+        state.atemOutputMap[key].streamUrl = urlInp.value.trim();
+        schedSave();
+        updateCaptureOutputLabel();
+      });
+      tdUrl.appendChild(urlInp);
+
+      tr.appendChild(tdLabel);
+      tr.appendChild(tdSrc);
+      tr.appendChild(tdUsb);
+      tr.appendChild(tdUrl);
+      tbody.appendChild(tr);
+    });
+  }
+
+  function loadCaptureSection() {
+    const sel = document.getElementById('f-capture-output');
+    if (sel) sel.value = state.captureOutput || 'preview';
+    const section = document.getElementById('atem-capture-section');
+    if (section) section.style.display = state.atem.enabled ? 'block' : 'none';
+    renderOutputMapTable();
+    updateCaptureOutputLabel();
+  }
+
+  const elCaptureOutput = document.getElementById('f-capture-output');
+  if (elCaptureOutput) {
+    elCaptureOutput.addEventListener('change', () => {
+      state.captureOutput = elCaptureOutput.value;
+      schedSave();
+      updateCaptureOutputLabel();
+    });
+  }
+
   // ── Webcam / stream source ────────────────────────────────────────────────
   const elWebcam      = document.getElementById('f-webcam');
   const elUsbDevice   = document.getElementById('f-usb-device');
@@ -1540,10 +1764,14 @@
   });
 
   // captureFrame priority: USB device (ffmpeg) > stream URL (playwright) > browser webcam
-  async function captureFrame(cam, preset) {
-    const camera = state.cameras[cam];
-    const usb = camera.usbDevice || '';
-    const url = camera.streamUrl || '';
+  // source = pre-resolved { webcam, streamUrl } object, or null to resolve from state
+  async function captureFrame(cam, preset, source = null) {
+    const resolved = source ?? (state.atem.enabled
+      ? (state.atemOutputMap[state.captureOutput] || {})
+      : { webcam: state.cameras[cam]?.usbDevice || '', streamUrl: state.cameras[cam]?.streamUrl || '' });
+
+    const usb = resolved.webcam || '';
+    const url = resolved.streamUrl || '';
 
     if (usb || url) {
       const body = usb ? { usbDevice: usb } : { url };
@@ -1860,8 +2088,9 @@
   });
 
   // ── Recall ─────────────────────────────────────────────────────────────────
-  async function doRecall(preset) {
-    const cam = state.cameras[state.activeCam];
+  // camIdx defaults to the current active camera; pass explicitly to lock during scan
+  async function doRecall(preset, camIdx = state.activeCam) {
+    const cam = state.cameras[camIdx];
     try {
       const res = await fetch('/recall', {
         method:  'POST',
@@ -1928,12 +2157,21 @@
   });
 
   async function scanAll() {
-    const cam = state.cameras[state.activeCam];
+    // Lock both the PTZ camera and the capture source at scan start so that
+    // switching the active camera in the UI mid-scan doesn't affect either.
+    const scanCamIdx = state.activeCam;
+    const cam = state.cameras[scanCamIdx];
     if (!cam.ip) { setStatus('error', 'Enter the camera IP address first'); return; }
-    const activeCam = state.cameras[state.activeCam];
-    const hasServerSource = activeCam.usbDevice || activeCam.streamUrl;
+
+    const lockedSource = state.atem.enabled
+      ? { ...(state.atemOutputMap[state.captureOutput] || {}) }
+      : { webcam: cam.usbDevice || '', streamUrl: cam.streamUrl || '' };
+    const hasServerSource = lockedSource.webcam || lockedSource.streamUrl;
     if (!hasServerSource && !videoStream) {
-      setStatus('error', 'Set a USB device, VDO.ninja URL, or browser webcam for this camera'); return;
+      const hint = state.atem.enabled
+        ? `Configure a USB device or stream URL for the ${state.captureOutput} output in Settings`
+        : 'Set a USB device, VDO.ninja URL, or browser webcam for this camera';
+      setStatus('error', hint); return;
     }
 
     scanning = true; cancelScan = false;
@@ -1953,7 +2191,7 @@
       elScanLbl.textContent  = `Recalling preset ${i + 1} of ${total}…`;
       setStatus('busy', `Scanning preset ${i + 1} of ${total}…`, false);
 
-      const result = await doRecall(p);
+      const result = await doRecall(p, scanCamIdx);
       if (!result.success) console.warn(`Recall ${p}:`, result.message);
       if (cancelScan) break;
 
@@ -1969,13 +2207,13 @@
       if (cancelScan) break;
 
       elScanLbl.textContent = `Capturing preset ${i + 1} of ${total}…`;
-      const ok = await captureFrame(state.activeCam, p);
+      const ok = await captureFrame(scanCamIdx, p, lockedSource);
       if (!ok) {
         captureErrors.push(p);
         console.error(`Capture failed for preset ${p}`);
       } else {
-        bumpImageVersion(state.activeCam, p);
-        refreshPresetBtn(p, state.activeCam);
+        bumpImageVersion(scanCamIdx, p);
+        refreshPresetBtn(p, scanCamIdx);
       }
     }
 
@@ -2009,14 +2247,18 @@
         atemConnected = !!s.connected;
         if (s.preview != null && s.preview !== 0) state.previewSource = s.preview;
         if (s.program != null && s.program !== 0) state.programSource = s.program;
+        if (s.aux1 != null && s.aux1 !== 0) state.aux1Source = s.aux1;
+        if (s.aux2 != null && s.aux2 !== 0) state.aux2Source = s.aux2;
+        if (s.aux3 != null && s.aux3 !== 0) state.aux3Source = s.aux3;
         updateAtemPill();
         renderTabs();
         updateAtemDebug();
       }
     } catch (_) {}
-    // USB devices from server
+    // USB devices from server — store for use in output-map table
     try {
       const devs = await fetch('/api/devices').then(r => r.json());
+      usbDevices = devs;
       devs.forEach(d => {
         const opt = document.createElement('option');
         opt.value       = d.index;
@@ -2026,6 +2268,7 @@
       const curCam = state.cameras[state.activeCam];
       if (curCam.usbDevice) elUsbDevice.value = curCam.usbDevice;
     } catch (_) {}
+    loadCaptureSection();
 
     // browser webcam preview (localStorage, device-specific)
     await enumerateWebcams();
