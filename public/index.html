@@ -1656,7 +1656,12 @@
 
   if (elGspFab && elGspPanel) {
     elGspFab.addEventListener('click', () => {
+      const willOpen = !elGspPanel.classList.contains('open');
       elGspPanel.classList.toggle('open');
+      if (willOpen) {
+        loadCaptureSection();
+        updateCameraStatusHints();
+      }
     });
   }
   if (elGspClose && elGspPanel) {
@@ -1782,17 +1787,18 @@
   function updateCaptureOutputLabel() {
     const el = document.getElementById('capture-output-label');
     if (!el) return;
+    const outputLabel = getPhysicalOutputLabel(state.captureOutput);
     const src = getOutputSource(state.captureOutput);
     const map = state.atemOutputMap[state.captureOutput] || {};
     const route = describeCaptureRoute(map);
     if (state.captureOutput === 'webcam') {
-      el.textContent = `ATEM does not report the USB Webcam route here • ${route}`;
+      el.textContent = `Scan source: not reported by ATEM on ${outputLabel} • ${route}`;
       el.style.color = route === 'No device configured' ? 'var(--muted)' : 'var(--label)';
     } else if (!src) {
-      el.textContent = `No source detected • ${route}`;
+      el.textContent = `Scan source: no source detected on ${outputLabel} • ${route}`;
       el.style.color = 'var(--muted)';
     } else {
-      el.textContent = `${formatAtemSourceSummary(src)} • ${route}`;
+      el.textContent = `Scan source: ${formatAtemSourceSummary(src)} via ${outputLabel} • ${route}`;
       const cls = sourceClass(state.captureOutput, src);
       el.style.color = cls === 'live' ? 'var(--error)' : cls === 'preview' ? 'var(--success)' : 'var(--label)';
     }
@@ -1822,7 +1828,7 @@
       if (state.captureOutput === key) {
         const badge = document.createElement('span');
         badge.className = 'output-row-badge';
-        badge.textContent = 'Used For Scans';
+        badge.textContent = 'Scan Output';
         labelWrap.appendChild(badge);
       }
       tdLabel.appendChild(labelWrap);
@@ -1835,13 +1841,20 @@
       const srcPrimary = document.createElement('span');
       srcPrimary.className = 'output-row-source-primary';
       srcPrimary.textContent = key === 'webcam'
-        ? 'Not detected from ATEM'
+        ? 'Scan source not reported by ATEM'
         : formatAtemSourcePrimary(src);
       const srcSecondary = document.createElement('span');
       srcSecondary.className = 'output-row-source-secondary';
-      srcSecondary.textContent = key === 'webcam'
-        ? 'Use the capture route below for the ATEM virtual webcam'
-        : formatAtemSourceSecondary(src);
+      if (key === 'webcam') {
+        srcSecondary.textContent = state.captureOutput === key
+          ? 'Selected scan output • use the capture route below for the ATEM virtual webcam'
+          : 'Use the capture route below for the ATEM virtual webcam';
+      } else {
+        const base = formatAtemSourceSecondary(src);
+        srcSecondary.textContent = state.captureOutput === key
+          ? `${base} • current scan source`
+          : base;
+      }
       srcSpan.appendChild(srcPrimary);
       srcSpan.appendChild(srcSecondary);
       tdSrc.appendChild(srcSpan);
@@ -1940,6 +1953,7 @@
       state.captureOutput = elCaptureOutput.value;
       schedSave();
       updateCaptureOutputLabel();
+      renderOutputMapTable();
     });
   }
 
