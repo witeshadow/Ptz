@@ -535,6 +535,7 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertIn("connected", data)
         self.assertIn("preview", data)
         self.assertIn("program", data)
+        self.assertIn("aux4", data)
 
     def test_atem_debug(self):
         status, body = self.srv.get("/atem/debug")

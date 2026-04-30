@@ -80,14 +80,14 @@ DEFAULT_SETTINGS = {
     "liveMode": True,
     "atemFollows": "preview",
     "atemOutputMap": {
-        "program": {"webcam": "", "streamUrl": ""},
-        "preview": {"webcam": "", "streamUrl": ""},
-        "aux1": {"webcam": "", "streamUrl": ""},
-        "aux2": {"webcam": "", "streamUrl": ""},
-        "aux3": {"webcam": "", "streamUrl": ""},
+        "webcam": {"webcam": "", "streamUrl": ""},
+        "sdi1": {"webcam": "", "streamUrl": ""},
+        "sdi2": {"webcam": "", "streamUrl": ""},
+        "sdi3": {"webcam": "", "streamUrl": ""},
+        "sdi4": {"webcam": "", "streamUrl": ""},
     },
     "atemSourceLabels": {},
-    "captureOutput": "preview",
+    "captureOutput": "webcam",
 }
 
 
@@ -134,6 +134,7 @@ _atem_state = {
     "aux1": 0,
     "aux2": 0,
     "aux3": 0,
+    "aux4": 0,
 }
 _atem_state_lock = threading.Lock()
 

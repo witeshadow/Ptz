@@ -890,20 +890,20 @@
   <div id="atem-capture-section" style="display:none; border-top:1px solid var(--border); padding:12px;">
     <div class="gsp-section-title" style="margin-bottom:10px;">ATEM Routing</div>
     <p class="capture-section-note">
-      Map each live ATEM feed to the Mac capture device or URL that carries it. PTZ scans use the route selected below, including the ATEM virtual webcam if it appears as a USB device.
+      Map each physical ATEM output to the Mac capture device or URL that carries it. PTZ scans use the output selected below, including the ATEM virtual webcam if it appears as a USB device.
     </p>
     <div style="display:flex; align-items:flex-end; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
       <div class="field" style="flex-shrink:0;">
         <label for="f-capture-output">PTZ scan uses:</label>
         <select id="f-capture-output">
-          <option value="program">Program</option>
-          <option value="preview">Preview</option>
-          <option value="aux1">AUX 1</option>
-          <option value="aux2">AUX 2</option>
-          <option value="aux3">AUX 3</option>
+          <option value="webcam">USB Webcam</option>
+          <option value="sdi1">SDI Out 1</option>
+          <option value="sdi2">SDI Out 2</option>
+          <option value="sdi3">SDI Out 3</option>
+          <option value="sdi4">SDI Out 4</option>
         </select>
       </div>
-      <span style="font-size:.8rem; color:var(--muted); padding-bottom:6px;">Current ATEM assignment:</span>
+      <span style="font-size:.8rem; color:var(--muted); padding-bottom:6px;">Current routed source:</span>
       <span id="capture-output-label" style="font-size:.8rem; color:var(--label); padding-bottom:6px;"></span>
     </div>
     <table id="output-map-table">
@@ -972,24 +972,77 @@
     fillWindow: false,
     // ATEM output → capture source mapping (persisted)
     atemOutputMap: {
-      program: { webcam: '', streamUrl: '' },
-      preview: { webcam: '', streamUrl: '' },
-      aux1:    { webcam: '', streamUrl: '' },
-      aux2:    { webcam: '', streamUrl: '' },
-      aux3:    { webcam: '', streamUrl: '' },
+      webcam: { webcam: '', streamUrl: '' },
+      sdi1:   { webcam: '', streamUrl: '' },
+      sdi2:   { webcam: '', streamUrl: '' },
+      sdi3:   { webcam: '', streamUrl: '' },
+      sdi4:   { webcam: '', streamUrl: '' },
     },
     atemSourceLabels: {},
-    captureOutput: 'preview',
+    captureOutput: 'webcam',
     // Runtime ATEM AUX sources (not persisted, updated via SSE)
     aux1Source: 0,
     aux2Source: 0,
     aux3Source: 0,
+    aux4Source: 0,
   };
   const bootImageVersion = Date.now();
 
   // webcamDeviceId is browser-specific; stays in localStorage
   function getWebcamDeviceId()    { return localStorage.getItem('ptz-webcam-device') || ''; }
   function setWebcamDeviceId(id)  { localStorage.setItem('ptz-webcam-device', id); }
+
+  function blankOutputRoute() {
+    return { webcam: '', streamUrl: '' };
+  }
+
+  function normalizeAtemOutputMap(raw = {}) {
+    const next = {
+      webcam: blankOutputRoute(),
+      sdi1: blankOutputRoute(),
+      sdi2: blankOutputRoute(),
+      sdi3: blankOutputRoute(),
+      sdi4: blankOutputRoute(),
+    };
+    const use = (fromKey, toKey) => {
+      if (!raw[fromKey]) return;
+      next[toKey] = { ...blankOutputRoute(), ...raw[fromKey] };
+    };
+    use('webcam', 'webcam');
+    use('sdi1', 'sdi1');
+    use('sdi2', 'sdi2');
+    use('sdi3', 'sdi3');
+    use('sdi4', 'sdi4');
+
+    // Legacy bus-based settings: keep AUX mappings, and treat prior Program/Preview
+    // capture routing as the USB webcam path.
+    if (!raw.webcam) {
+      if (raw.preview && (raw.preview.webcam || raw.preview.streamUrl)) use('preview', 'webcam');
+      else if (raw.program && (raw.program.webcam || raw.program.streamUrl)) use('program', 'webcam');
+    }
+    if (!raw.sdi1) use('aux1', 'sdi1');
+    if (!raw.sdi2) use('aux2', 'sdi2');
+    if (!raw.sdi3) use('aux3', 'sdi3');
+    if (!raw.sdi4) use('aux4', 'sdi4');
+    return next;
+  }
+
+  function normalizeCaptureOutput(value) {
+    const map = {
+      webcam: 'webcam',
+      sdi1: 'sdi1',
+      sdi2: 'sdi2',
+      sdi3: 'sdi3',
+      sdi4: 'sdi4',
+      program: 'webcam',
+      preview: 'webcam',
+      aux1: 'sdi1',
+      aux2: 'sdi2',
+      aux3: 'sdi3',
+      aux4: 'sdi4',
+    };
+    return map[value] || 'webcam';
+  }
 
   // ── Server persistence ────────────────────────────────────────────────────
   let saveTimer = null;
@@ -1014,9 +1067,9 @@
         if (s.liveMode      != null) state.liveMode      = !!s.liveMode;
         if (s.showAtemDebug != null) state.showAtemDebug = !!s.showAtemDebug;
         if (s.atemFollows)           state.atemFollows   = s.atemFollows;
-        if (s.atemOutputMap) state.atemOutputMap = { ...state.atemOutputMap, ...s.atemOutputMap };
+        if (s.atemOutputMap) state.atemOutputMap = normalizeAtemOutputMap(s.atemOutputMap);
         if (s.atemSourceLabels) state.atemSourceLabels = { ...s.atemSourceLabels };
-        if (s.captureOutput) state.captureOutput = s.captureOutput;
+        if (s.captureOutput) state.captureOutput = normalizeCaptureOutput(s.captureOutput);
       }
     } catch (_) {}
   }
@@ -1506,11 +1559,12 @@
           atemConnected = !!ev.connected;
           // Apply initial preview/program/aux sources sent with the connection event
           if (ev.preview != null && ev.preview !== 0) state.previewSource = ev.preview;
-          if (ev.program != null && ev.program !== 0) state.programSource = ev.program;
-          if (ev.aux1 != null && ev.aux1 !== 0) state.aux1Source = ev.aux1;
-          if (ev.aux2 != null && ev.aux2 !== 0) state.aux2Source = ev.aux2;
-          if (ev.aux3 != null && ev.aux3 !== 0) state.aux3Source = ev.aux3;
-          updateAtemPill();
+        if (ev.program != null && ev.program !== 0) state.programSource = ev.program;
+        if (ev.aux1 != null && ev.aux1 !== 0) state.aux1Source = ev.aux1;
+        if (ev.aux2 != null && ev.aux2 !== 0) state.aux2Source = ev.aux2;
+        if (ev.aux3 != null && ev.aux3 !== 0) state.aux3Source = ev.aux3;
+        if (ev.aux4 != null && ev.aux4 !== 0) state.aux4Source = ev.aux4;
+        updateAtemPill();
           updateCameraStatusHints();
           renderTabs();
           updateAtemDebug();
@@ -1693,20 +1747,28 @@
   let usbDevices = [];  // populated in boot; reused by renderOutputMapTable
 
   const ATEM_OUTPUT_KEYS = [
-    { key: 'program', label: 'Program' },
-    { key: 'preview', label: 'Preview' },
-    { key: 'aux1',    label: 'AUX 1' },
-    { key: 'aux2',    label: 'AUX 2' },
-    { key: 'aux3',    label: 'AUX 3' },
+    { key: 'webcam', label: 'USB Webcam' },
+    { key: 'sdi1',   label: 'SDI Out 1' },
+    { key: 'sdi2',   label: 'SDI Out 2' },
+    { key: 'sdi3',   label: 'SDI Out 3' },
+    { key: 'sdi4',   label: 'SDI Out 4' },
   ];
 
+  function getPhysicalOutputLabel(key) {
+    const match = ATEM_OUTPUT_KEYS.find(item => item.key === key);
+    return match ? match.label : key;
+  }
+
   function getOutputSource(key) {
-    if (key === 'program') return state.programSource || 0;
-    if (key === 'preview') return state.previewSource || 0;
-    return state[`${key}Source`] || 0;
+    if (key === 'sdi1') return state.aux1Source || 0;
+    if (key === 'sdi2') return state.aux2Source || 0;
+    if (key === 'sdi3') return state.aux3Source || 0;
+    if (key === 'sdi4') return state.aux4Source || 0;
+    return 0;
   }
 
   function sourceClass(key, sourceVal) {
+    if (key === 'webcam') return '';
     if (!sourceVal) return '';
     const camIdx = state.cameras.findIndex(c => c.enabled !== false && +c.atemInput === +sourceVal);
     if (camIdx < 0) return '';
@@ -1723,7 +1785,10 @@
     const src = getOutputSource(state.captureOutput);
     const map = state.atemOutputMap[state.captureOutput] || {};
     const route = describeCaptureRoute(map);
-    if (!src) {
+    if (state.captureOutput === 'webcam') {
+      el.textContent = `ATEM does not report the USB Webcam route here • ${route}`;
+      el.style.color = route === 'No device configured' ? 'var(--muted)' : 'var(--label)';
+    } else if (!src) {
       el.textContent = `No source detected • ${route}`;
       el.style.color = 'var(--muted)';
     } else {
@@ -1769,10 +1834,14 @@
       srcSpan.className = `output-row-source${sCls ? ' ' + sCls : ''}`;
       const srcPrimary = document.createElement('span');
       srcPrimary.className = 'output-row-source-primary';
-      srcPrimary.textContent = formatAtemSourcePrimary(src);
+      srcPrimary.textContent = key === 'webcam'
+        ? 'Not detected from ATEM'
+        : formatAtemSourcePrimary(src);
       const srcSecondary = document.createElement('span');
       srcSecondary.className = 'output-row-source-secondary';
-      srcSecondary.textContent = formatAtemSourceSecondary(src);
+      srcSecondary.textContent = key === 'webcam'
+        ? 'Use the capture route below for the ATEM virtual webcam'
+        : formatAtemSourceSecondary(src);
       srcSpan.appendChild(srcPrimary);
       srcSpan.appendChild(srcSecondary);
       tdSrc.appendChild(srcSpan);
@@ -1784,7 +1853,11 @@
       aliasInp.type = 'text';
       aliasInp.autocomplete = 'off';
       aliasInp.spellcheck = false;
-      if (!src) {
+      if (key === 'webcam') {
+        aliasInp.value = '';
+        aliasInp.placeholder = 'USB webcam route';
+        aliasInp.disabled = true;
+      } else if (!src) {
         aliasInp.value = '';
         aliasInp.placeholder = 'Wait for source';
         aliasInp.disabled = true;
@@ -1854,7 +1927,7 @@
 
   function loadCaptureSection() {
     const sel = document.getElementById('f-capture-output');
-    if (sel) sel.value = state.captureOutput || 'preview';
+    if (sel) sel.value = state.captureOutput || 'webcam';
     const section = document.getElementById('atem-capture-section');
     if (section) section.style.display = state.atem.enabled ? 'block' : 'none';
     renderOutputMapTable();
@@ -2366,7 +2439,7 @@
     const hasServerSource = lockedSource.webcam || lockedSource.streamUrl;
     if (!hasServerSource && !videoStream) {
       const hint = state.atem.enabled
-        ? `Configure a USB device or stream URL for the ${state.captureOutput} output in Settings`
+        ? `Configure a USB device or stream URL for ${getPhysicalOutputLabel(state.captureOutput)} in Settings`
         : 'Set a USB device, VDO.ninja URL, or browser webcam for this camera';
       setStatus('error', hint); return;
     }
@@ -2447,6 +2520,7 @@
         if (s.aux1 != null && s.aux1 !== 0) state.aux1Source = s.aux1;
         if (s.aux2 != null && s.aux2 !== 0) state.aux2Source = s.aux2;
         if (s.aux3 != null && s.aux3 !== 0) state.aux3Source = s.aux3;
+        if (s.aux4 != null && s.aux4 !== 0) state.aux4Source = s.aux4;
         updateAtemPill();
         renderTabs();
         updateAtemDebug();
