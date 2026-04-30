@@ -770,9 +770,7 @@ class Handler(BaseHTTPRequestHandler):
             preset = max(0, int(data.get("preset", 0)))
             camera = max(1, min(7, int(data.get("camera", 1))))
         except (TypeError, ValueError):
-            self._json(
-                400, {"success": False, "message": "Invalid numeric parameter"}
-            )
+            self._json(400, {"success": False, "message": "Invalid numeric parameter"})
             return
         if not ip:
             self._json(400, {"success": False, "message": "Camera IP is required"})
@@ -925,9 +923,9 @@ class Handler(BaseHTTPRequestHandler):
         clean = os.path.normpath(name)
         fpath = os.path.join(PUBLIC_DIR, clean)
         public_root = os.path.abspath(PUBLIC_DIR)
-        if os.path.abspath(fpath) != public_root and not os.path.abspath(fpath).startswith(
-            public_root + os.sep
-        ):
+        if os.path.abspath(fpath) != public_root and not os.path.abspath(
+            fpath
+        ).startswith(public_root + os.sep):
             self.send_response(403)
             self.end_headers()
             return
