@@ -848,7 +848,7 @@
     <div class="gsp-section-title" style="margin-bottom:10px;">Capture Sources</div>
     <div style="display:flex; align-items:flex-end; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
       <div class="field" style="flex-shrink:0;">
-        <label for="f-capture-output">Scan captures from</label>
+        <label for="f-capture-output">Scan capture source:</label>
         <select id="f-capture-output">
           <option value="program">Program</option>
           <option value="preview">Preview</option>
@@ -857,13 +857,14 @@
           <option value="aux3">AUX 3</option>
         </select>
       </div>
+      <span style="font-size:.8rem; color:var(--muted); padding-bottom:6px;">ATEM bus status:</span>
       <span id="capture-output-label" style="font-size:.8rem; color:var(--label); padding-bottom:6px;"></span>
     </div>
     <table id="output-map-table">
       <thead>
         <tr style="color:var(--muted); text-align:left;">
           <th style="padding:4px 8px; font-weight:600;">Output</th>
-          <th style="padding:4px 8px; font-weight:600;">Showing</th>
+          <th style="padding:4px 8px; font-weight:600;">ATEM Source Number</th>
           <th style="padding:4px 8px; font-weight:600;">USB Device</th>
           <th style="padding:4px 8px; font-weight:600;">Stream URL</th>
         </tr>
@@ -1667,7 +1668,7 @@
 
       // Current source
       const tdSrc = document.createElement('td');
-      tdSrc.setAttribute('data-label', 'Showing');
+      tdSrc.setAttribute('data-label', 'ATEM Source Number');
       const srcSpan = document.createElement('span');
       srcSpan.className = `output-row-source${sCls ? ' ' + sCls : ''}`;
       srcSpan.textContent = sLabel;
