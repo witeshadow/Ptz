@@ -36,7 +36,9 @@ class TestFrontendContracts(unittest.TestCase):
     def test_explicit_scan_and_atem_mapping_hints_present(self):
         self.assertIn("ATEM Source Number", self.html)
         self.assertIn("ATEM bus status:", self.html)
-        self.assertIn("Scan capture source:", self.html)
+        self.assertIn("PTZ scan uses:", self.html)
+        self.assertIn("Current ATEM assignment:", self.html)
+        self.assertIn("Used For Scans", self.html)
 
 
 if __name__ == "__main__":

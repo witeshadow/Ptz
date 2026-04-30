@@ -635,10 +635,53 @@
     #output-map-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
     #output-map-table tbody tr { border-top: 1px solid var(--border); }
     #output-map-table td { padding: 6px 8px; vertical-align: middle; }
-    .output-row-label { font-weight: 600; color: var(--text); white-space: nowrap; }
-    .output-row-source { font-size: .75rem; color: var(--label); white-space: nowrap; }
-    .output-row-source.live    { color: var(--error);   font-weight: 700; }
-    .output-row-source.preview { color: var(--success); font-weight: 700; }
+    .capture-section-note {
+      margin: 0 0 12px;
+      font-size: .78rem;
+      color: var(--label);
+      line-height: 1.4;
+    }
+    .output-row-label { color: var(--text); }
+    .output-row-label-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .output-row-label-text { font-weight: 600; white-space: nowrap; }
+    .output-row-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(47, 107, 212, 0.35);
+      background: rgba(47, 107, 212, 0.12);
+      color: var(--accent);
+      font-size: .64rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .output-row-source {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+    .output-row-source-primary {
+      font-size: .8rem;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+    }
+    .output-row-source-secondary {
+      font-size: .68rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .output-row-source.live .output-row-source-primary { color: var(--error); }
+    .output-row-source.preview .output-row-source-primary { color: var(--success); }
     #output-map-table select,
     #output-map-table input[type=text] {
       background: var(--surf2); border: 1px solid var(--border); border-radius: 4px;
@@ -845,10 +888,13 @@
 
   <!-- ATEM Capture Sources (shown only when ATEM enabled) -->
   <div id="atem-capture-section" style="display:none; border-top:1px solid var(--border); padding:12px;">
-    <div class="gsp-section-title" style="margin-bottom:10px;">Capture Sources</div>
+    <div class="gsp-section-title" style="margin-bottom:10px;">ATEM Routing</div>
+    <p class="capture-section-note">
+      Map each live ATEM feed to the Mac capture device or URL that carries it. PTZ scans use the route selected below, including the ATEM virtual webcam if it appears as a USB device.
+    </p>
     <div style="display:flex; align-items:flex-end; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
       <div class="field" style="flex-shrink:0;">
-        <label for="f-capture-output">Scan capture source:</label>
+        <label for="f-capture-output">PTZ scan uses:</label>
         <select id="f-capture-output">
           <option value="program">Program</option>
           <option value="preview">Preview</option>
@@ -857,15 +903,15 @@
           <option value="aux3">AUX 3</option>
         </select>
       </div>
-      <span style="font-size:.8rem; color:var(--muted); padding-bottom:6px;">ATEM bus status:</span>
+      <span style="font-size:.8rem; color:var(--muted); padding-bottom:6px;">Current ATEM assignment:</span>
       <span id="capture-output-label" style="font-size:.8rem; color:var(--label); padding-bottom:6px;"></span>
     </div>
     <table id="output-map-table">
       <thead>
         <tr style="color:var(--muted); text-align:left;">
-          <th style="padding:4px 8px; font-weight:600;">Output</th>
-          <th style="padding:4px 8px; font-weight:600;">ATEM Source Number</th>
-          <th style="padding:4px 8px; font-weight:600;">USB Device</th>
+          <th style="padding:4px 8px; font-weight:600;">Feed</th>
+          <th style="padding:4px 8px; font-weight:600;">Current Assignment</th>
+          <th style="padding:4px 8px; font-weight:600;">Mac Capture Device</th>
           <th style="padding:4px 8px; font-weight:600;">Stream URL</th>
         </tr>
       </thead>
@@ -1021,6 +1067,42 @@
     return getCameraAtemInput(idx) === Number(source);
   }
 
+  function getUsbDeviceName(deviceIndex) {
+    if (deviceIndex == null || deviceIndex === '') return '';
+    const match = usbDevices.find(d => String(d.index) === String(deviceIndex));
+    return match?.name || `USB device ${deviceIndex}`;
+  }
+
+  function findCameraByAtemSource(sourceVal) {
+    if (!sourceVal) return null;
+    return state.cameras.find(c => c.enabled !== false && +c.atemInput === +sourceVal) || null;
+  }
+
+  function formatAtemSourcePrimary(sourceVal) {
+    if (!sourceVal) return 'No source detected';
+    const cam = findCameraByAtemSource(sourceVal);
+    return cam ? cam.name : `Input ${sourceVal}`;
+  }
+
+  function formatAtemSourceSecondary(sourceVal) {
+    return sourceVal ? `ATEM source ${sourceVal}` : 'Waiting for ATEM update';
+  }
+
+  function formatAtemSourceSummary(sourceVal) {
+    if (!sourceVal) return 'No source detected';
+    const cam = findCameraByAtemSource(sourceVal);
+    return cam ? `${cam.name} (Input ${sourceVal})` : `Input ${sourceVal}`;
+  }
+
+  function describeCaptureRoute(map = {}) {
+    const usbName = getUsbDeviceName(map.webcam || '');
+    const hasUrl = !!(map.streamUrl || '').trim();
+    if (usbName && hasUrl) return `${usbName} with URL fallback`;
+    if (usbName) return usbName;
+    if (hasUrl) return 'VDO.ninja / URL';
+    return 'No device configured';
+  }
+
   function getCameraAtemBusStatus(idx) {
     const atemInput = getCameraAtemInput(idx);
     if (!atemInput) return 'Unmapped';
@@ -1032,7 +1114,7 @@
   function getCameraCaptureSourceSummary(idx) {
     const cam = state.cameras[idx];
     if (!cam) return 'Not configured';
-    if (cam.usbDevice) return `USB device ${cam.usbDevice}`;
+    if (cam.usbDevice) return getUsbDeviceName(cam.usbDevice);
     if (cam.streamUrl) return 'VDO.ninja / URL';
     if (videoStream) return 'Browser preview camera';
     return 'Not configured';
@@ -1338,7 +1420,7 @@
       const atemInput = getCameraAtemInput(state.activeCam);
       const busStatus = getCameraAtemBusStatus(state.activeCam);
       elAtemStatus.textContent = atemInput
-        ? `ATEM bus status: ${busStatus} on source ${atemInput}`
+        ? `ATEM bus status: ${busStatus} on ${formatAtemSourceSummary(atemInput)}`
         : 'ATEM bus status: Unmapped';
     }
     if (elCaptureSourceStatus) {
@@ -1612,13 +1694,6 @@
     return state[`${key}Source`] || 0;
   }
 
-  function sourceLabel(sourceVal) {
-    if (!sourceVal) return 'Unknown';
-    const idx = state.cameras.findIndex(c => c.enabled !== false && +c.atemInput === +sourceVal);
-    if (idx >= 0) return state.cameras[idx].name;
-    return `Input ${sourceVal}`;
-  }
-
   function sourceClass(key, sourceVal) {
     if (!sourceVal) return '';
     const camIdx = state.cameras.findIndex(c => c.enabled !== false && +c.atemInput === +sourceVal);
@@ -1634,14 +1709,13 @@
     const el = document.getElementById('capture-output-label');
     if (!el) return;
     const src = getOutputSource(state.captureOutput);
-    const name = sourceLabel(src);
     const map = state.atemOutputMap[state.captureOutput] || {};
-    const hasDevice = !!(map.webcam || map.streamUrl);
+    const route = describeCaptureRoute(map);
     if (!src) {
-      el.textContent = `→ source unknown${hasDevice ? '' : ' — no device configured'}`;
+      el.textContent = `No source detected • ${route}`;
       el.style.color = 'var(--muted)';
     } else {
-      el.textContent = `→ ${name}${hasDevice ? '' : ' — no device configured'}`;
+      el.textContent = `${formatAtemSourceSummary(src)} • ${route}`;
       const cls = sourceClass(state.captureOutput, src);
       el.style.color = cls === 'live' ? 'var(--error)' : cls === 'preview' ? 'var(--success)' : 'var(--label)';
     }
@@ -1653,7 +1727,6 @@
     tbody.innerHTML = '';
     ATEM_OUTPUT_KEYS.forEach(({ key, label }) => {
       const src = getOutputSource(key);
-      const sLabel = sourceLabel(src);
       const sCls   = sourceClass(key, src);
       const map    = state.atemOutputMap[key] || { webcam: '', streamUrl: '' };
 
@@ -1661,21 +1734,40 @@
 
       // Output name
       const tdLabel = document.createElement('td');
-      tdLabel.setAttribute('data-label', 'Output');
+      tdLabel.setAttribute('data-label', 'Feed');
       tdLabel.className = 'output-row-label';
-      tdLabel.textContent = label;
+      const labelWrap = document.createElement('div');
+      labelWrap.className = 'output-row-label-wrap';
+      const labelText = document.createElement('span');
+      labelText.className = 'output-row-label-text';
+      labelText.textContent = label;
+      labelWrap.appendChild(labelText);
+      if (state.captureOutput === key) {
+        const badge = document.createElement('span');
+        badge.className = 'output-row-badge';
+        badge.textContent = 'Used For Scans';
+        labelWrap.appendChild(badge);
+      }
+      tdLabel.appendChild(labelWrap);
 
       // Current source
       const tdSrc = document.createElement('td');
-      tdSrc.setAttribute('data-label', 'ATEM Source Number');
-      const srcSpan = document.createElement('span');
+      tdSrc.setAttribute('data-label', 'Current Assignment');
+      const srcSpan = document.createElement('div');
       srcSpan.className = `output-row-source${sCls ? ' ' + sCls : ''}`;
-      srcSpan.textContent = sLabel;
+      const srcPrimary = document.createElement('span');
+      srcPrimary.className = 'output-row-source-primary';
+      srcPrimary.textContent = formatAtemSourcePrimary(src);
+      const srcSecondary = document.createElement('span');
+      srcSecondary.className = 'output-row-source-secondary';
+      srcSecondary.textContent = formatAtemSourceSecondary(src);
+      srcSpan.appendChild(srcPrimary);
+      srcSpan.appendChild(srcSecondary);
       tdSrc.appendChild(srcSpan);
 
       // USB device select
       const tdUsb = document.createElement('td');
-      tdUsb.setAttribute('data-label', 'USB Device');
+      tdUsb.setAttribute('data-label', 'Mac Capture Device');
       const usbSel = document.createElement('select');
       const noneOpt = document.createElement('option');
       noneOpt.value = ''; noneOpt.textContent = '— none —';
