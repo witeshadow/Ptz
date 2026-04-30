@@ -86,6 +86,7 @@ DEFAULT_SETTINGS = {
         "aux2": {"webcam": "", "streamUrl": ""},
         "aux3": {"webcam": "", "streamUrl": ""},
     },
+    "atemSourceLabels": {},
     "captureOutput": "preview",
 }
 

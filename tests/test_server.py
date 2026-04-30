@@ -220,6 +220,7 @@ class TestDefaultSettings(unittest.TestCase):
         "atem",
         "liveMode",
         "atemFollows",
+        "atemSourceLabels",
     }
 
     def test_required_keys_present(self):
@@ -235,6 +236,9 @@ class TestDefaultSettings(unittest.TestCase):
         atem = server.DEFAULT_SETTINGS["atem"]
         self.assertIn("ip", atem)
         self.assertIn("enabled", atem)
+
+    def test_atem_source_labels_shape(self):
+        self.assertIsInstance(server.DEFAULT_SETTINGS["atemSourceLabels"], dict)
 
     def test_labels_key_format(self):
         labels = server.DEFAULT_SETTINGS["labels"]

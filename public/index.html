@@ -911,6 +911,7 @@
         <tr style="color:var(--muted); text-align:left;">
           <th style="padding:4px 8px; font-weight:600;">Feed</th>
           <th style="padding:4px 8px; font-weight:600;">Current Assignment</th>
+          <th style="padding:4px 8px; font-weight:600;">Source Label</th>
           <th style="padding:4px 8px; font-weight:600;">Mac Capture Device</th>
           <th style="padding:4px 8px; font-weight:600;">Stream URL</th>
         </tr>
@@ -977,6 +978,7 @@
       aux2:    { webcam: '', streamUrl: '' },
       aux3:    { webcam: '', streamUrl: '' },
     },
+    atemSourceLabels: {},
     captureOutput: 'preview',
     // Runtime ATEM AUX sources (not persisted, updated via SSE)
     aux1Source: 0,
@@ -1013,6 +1015,7 @@
         if (s.showAtemDebug != null) state.showAtemDebug = !!s.showAtemDebug;
         if (s.atemFollows)           state.atemFollows   = s.atemFollows;
         if (s.atemOutputMap) state.atemOutputMap = { ...state.atemOutputMap, ...s.atemOutputMap };
+        if (s.atemSourceLabels) state.atemSourceLabels = { ...s.atemSourceLabels };
         if (s.captureOutput) state.captureOutput = s.captureOutput;
       }
     } catch (_) {}
@@ -1078,10 +1081,17 @@
     return state.cameras.find(c => c.enabled !== false && +c.atemInput === +sourceVal) || null;
   }
 
+  function getAtemSourceCustomLabel(sourceVal) {
+    if (!sourceVal) return '';
+    return (state.atemSourceLabels[String(sourceVal)] || '').trim();
+  }
+
   function formatAtemSourcePrimary(sourceVal) {
     if (!sourceVal) return 'No source detected';
     const cam = findCameraByAtemSource(sourceVal);
-    return cam ? cam.name : `Input ${sourceVal}`;
+    if (cam) return cam.name;
+    const customLabel = getAtemSourceCustomLabel(sourceVal);
+    return customLabel || `Input ${sourceVal}`;
   }
 
   function formatAtemSourceSecondary(sourceVal) {
@@ -1091,7 +1101,9 @@
   function formatAtemSourceSummary(sourceVal) {
     if (!sourceVal) return 'No source detected';
     const cam = findCameraByAtemSource(sourceVal);
-    return cam ? `${cam.name} (Input ${sourceVal})` : `Input ${sourceVal}`;
+    if (cam) return `${cam.name} (Input ${sourceVal})`;
+    const customLabel = getAtemSourceCustomLabel(sourceVal);
+    return customLabel ? `${customLabel} (Input ${sourceVal})` : `Input ${sourceVal}`;
   }
 
   function describeCaptureRoute(map = {}) {
@@ -1765,6 +1777,36 @@
       srcSpan.appendChild(srcSecondary);
       tdSrc.appendChild(srcSpan);
 
+      // Source label input
+      const tdAlias = document.createElement('td');
+      tdAlias.setAttribute('data-label', 'Source Label');
+      const aliasInp = document.createElement('input');
+      aliasInp.type = 'text';
+      aliasInp.autocomplete = 'off';
+      aliasInp.spellcheck = false;
+      if (!src) {
+        aliasInp.value = '';
+        aliasInp.placeholder = 'Wait for source';
+        aliasInp.disabled = true;
+      } else if (findCameraByAtemSource(src)) {
+        aliasInp.value = '';
+        aliasInp.placeholder = 'Uses camera name';
+        aliasInp.disabled = true;
+      } else {
+        aliasInp.value = getAtemSourceCustomLabel(src);
+        aliasInp.placeholder = 'e.g. Multiview';
+        aliasInp.addEventListener('change', () => {
+          const value = aliasInp.value.trim();
+          if (value) state.atemSourceLabels[String(src)] = value;
+          else delete state.atemSourceLabels[String(src)];
+          schedSave();
+          updateCaptureOutputLabel();
+          updateCameraStatusHints();
+          renderOutputMapTable();
+        });
+      }
+      tdAlias.appendChild(aliasInp);
+
       // USB device select
       const tdUsb = document.createElement('td');
       tdUsb.setAttribute('data-label', 'Mac Capture Device');
@@ -1803,6 +1845,7 @@
 
       tr.appendChild(tdLabel);
       tr.appendChild(tdSrc);
+      tr.appendChild(tdAlias);
       tr.appendChild(tdUsb);
       tr.appendChild(tdUrl);
       tbody.appendChild(tr);

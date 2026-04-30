@@ -38,6 +38,8 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("ATEM bus status:", self.html)
         self.assertIn("PTZ scan uses:", self.html)
         self.assertIn("Current ATEM assignment:", self.html)
+        self.assertIn("Source Label", self.html)
+        self.assertIn("e.g. Multiview", self.html)
         self.assertIn("Used For Scans", self.html)
 
 
