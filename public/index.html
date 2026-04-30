@@ -225,7 +225,11 @@
       padding: 0 20px;
       display: flex;
       flex-shrink: 0;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
     }
+    #cam-tabs::-webkit-scrollbar { display: none; }
 
     .cam-tab {
       background: transparent;
@@ -424,7 +428,8 @@
       transition: background .15s;
       z-index: 2;
     }
-    .preset-btn.edit-mode.has-image:hover .preset-clear { display: flex; }
+    .preset-btn.edit-mode.has-image .preset-clear { display: flex; opacity: 0.55; }
+    .preset-btn.edit-mode.has-image:hover .preset-clear { opacity: 1; }
     .preset-clear:hover { background: var(--error); border-color: var(--error); }
 
     .name-input {
@@ -488,7 +493,7 @@
     footer {
       border-top: 1px solid var(--surf);
       padding: 10px 20px;
-      font-size: .68rem; color: var(--border);
+      font-size: .68rem; color: var(--muted);
       text-align: center; flex-shrink: 0;
     }
 
@@ -575,6 +580,49 @@
     #atem-debug.visible { display: block; }
     #atem-debug span { color: var(--label); font-weight: 600; }
 
+    /* ── Safe-area insets (iOS notch / home indicator) ───── */
+    #grid-settings-fab {
+      bottom: max(18px, env(safe-area-inset-bottom));
+      right:  max(18px, env(safe-area-inset-right));
+    }
+    #grid-settings-panel {
+      bottom: max(18px, env(safe-area-inset-bottom));
+    }
+
+    /* ── Responsive — narrow screens ────────────────────── */
+    @media (max-width: 700px) {
+      /* Settings panel becomes a bottom sheet */
+      #grid-settings-panel {
+        bottom: 0; right: 0; left: 0;
+        width: 100%; max-width: 100%;
+        border-radius: 12px 12px 0 0;
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      #grid-settings-fab {
+        bottom: max(18px, env(safe-area-inset-bottom));
+        right:  max(18px, env(safe-area-inset-right));
+      }
+      /* Stack settings columns */
+      .gsp-body { grid-template-columns: 1fr; }
+      /* Remove fixed widths on settings inputs so they fill their column */
+      .gsp-body .field input,
+      .gsp-body .field select { width: 100%; }
+    }
+
+    @media (max-width: 640px) {
+      /* Header: hide subtitle and compress pills */
+      .brand-text p { display: none; }
+      #fullscreen-btn { display: none; }
+      #atem-pill span { display: none; }
+      #atem-pill { min-width: unset; padding: 5px 8px; }
+      #status { min-width: unset; }
+    }
+
+    @media (max-width: 480px) {
+      /* Preset grid: 2 columns on very small phones */
+      #preset-grid { grid-template-columns: repeat(2, 1fr) !important; }
+    }
+
     /* ── Flex gap fallbacks (Safari < 14.5) ─────────────── */
     header > * + *          { margin-left: 12px; }
     .header-pills > * + *   { margin-left: 8px; }
@@ -636,7 +684,7 @@
 <footer>Tap a preset to recall it &nbsp;&middot;&nbsp;
   Turn on Edit Labels to rename presets &nbsp;&middot;&nbsp; Double-click a camera tab to rename it</footer>
 
-<div id="grid-settings-panel">
+<div id="grid-settings-panel" role="dialog" aria-modal="true" aria-label="Settings">
   <div class="gsp-header">
     <span>Settings</span>
     <button id="gsp-close">&#x2715;</button>
@@ -773,7 +821,7 @@
     </div>
   </div>
 </div>
-<button id="grid-settings-fab" title="Grid Settings">
+<button id="grid-settings-fab" title="Grid Settings" aria-label="Open grid settings">
   <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
     <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61
              l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54
@@ -1111,6 +1159,18 @@
         openTabNameEditor(idx, nameEl, nameWrap);
       });
 
+      // Long-press rename for touch devices (500 ms hold)
+      let longPressTimer = null;
+      btn.addEventListener('pointerdown', () => {
+        longPressTimer = setTimeout(() => {
+          longPressTimer = null;
+          openTabNameEditor(idx, nameEl, nameWrap);
+        }, 500);
+      });
+      btn.addEventListener('pointerup',    () => clearTimeout(longPressTimer));
+      btn.addEventListener('pointerleave', () => clearTimeout(longPressTimer));
+      btn.addEventListener('pointermove',  () => clearTimeout(longPressTimer));
+
       elTabs.appendChild(btn);
     });
     renderFillCamStrip();
@@ -1302,7 +1362,6 @@
 
   if (elGspFab && elGspPanel) {
     elGspFab.addEventListener('click', () => {
-      console.log('FAB clicked!');
       elGspPanel.classList.toggle('open');
     });
   }
@@ -1880,13 +1939,16 @@
     elScanBar.classList.add('visible');
 
     const captureErrors = [];
+    const nums  = presetNumbers();
+    const total = nums.length;
 
-    for (let p = 0; p <= 11; p++) {
+    for (let i = 0; i < total; i++) {
+      const p = nums[i];
       if (cancelScan) break;
 
-      elScanFill.style.width = `${Math.round(p / 12 * 100)}%`;
-      elScanLbl.textContent  = `Recalling preset ${p} of 11…`;
-      setStatus('busy', `Scanning preset ${p} of 11…`, false);
+      elScanFill.style.width = `${Math.round(i / total * 100)}%`;
+      elScanLbl.textContent  = `Recalling preset ${i + 1} of ${total}…`;
+      setStatus('busy', `Scanning preset ${i + 1} of ${total}…`, false);
 
       const result = await doRecall(p);
       if (!result.success) console.warn(`Recall ${p}:`, result.message);
@@ -1894,16 +1956,16 @@
 
       const dwell = state.dwellMs;
       const steps = 20;
-      for (let i = 0; i < steps; i++) {
+      for (let s = 0; s < steps; s++) {
         if (cancelScan) break;
-        const pct = Math.round((p + (i + 1) / steps) / 12 * 100);
+        const pct = Math.round((i + (s + 1) / steps) / total * 100);
         elScanFill.style.width = pct + '%';
-        elScanLbl.textContent  = `Waiting… preset ${p} of 11`;
+        elScanLbl.textContent  = `Waiting… preset ${i + 1} of ${total}`;
         await sleep(dwell / steps);
       }
       if (cancelScan) break;
 
-      elScanLbl.textContent = `Capturing preset ${p} of 9…`;
+      elScanLbl.textContent = `Capturing preset ${i + 1} of ${total}…`;
       const ok = await captureFrame(state.activeCam, p);
       if (!ok) {
         captureErrors.push(p);
