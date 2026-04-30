@@ -18,8 +18,9 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertNotIn('id="fill-cam-select"', self.html)
 
     def test_delete_image_is_edit_mode_only(self):
+        # Clear button is always visible in edit mode (opacity-based, not hover-gated)
         self.assertIn(
-            ".preset-btn.edit-mode.has-image:hover .preset-clear { display: flex; }",
+            ".preset-btn.edit-mode.has-image .preset-clear { display: flex;",
             self.html,
         )
         self.assertNotIn(

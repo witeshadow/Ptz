@@ -79,6 +79,14 @@ DEFAULT_SETTINGS = {
     "atem": {"ip": "", "enabled": False},
     "liveMode": True,
     "atemFollows": "preview",
+    "atemOutputMap": {
+        "program": {"webcam": "", "streamUrl": ""},
+        "preview": {"webcam": "", "streamUrl": ""},
+        "aux1": {"webcam": "", "streamUrl": ""},
+        "aux2": {"webcam": "", "streamUrl": ""},
+        "aux3": {"webcam": "", "streamUrl": ""},
+    },
+    "captureOutput": "preview",
 }
 
 
@@ -118,17 +126,33 @@ def _broadcast(event: dict):
 
 
 # ── ATEM state ─────────────────────────────────────────────────────────────────
-_atem_state = {"connected": False, "preview": 0, "program": 0}
+_atem_state = {
+    "connected": False,
+    "preview": 0,
+    "program": 0,
+    "aux1": 0,
+    "aux2": 0,
+    "aux3": 0,
+}
 _atem_state_lock = threading.Lock()
 
 
-def _set_atem(connected: bool, preview: int | None = None, program: int | None = None):
+def _set_atem(
+    connected: bool,
+    preview: int | None = None,
+    program: int | None = None,
+    aux: tuple[int, int] | None = None,
+):
     with _atem_state_lock:
         _atem_state["connected"] = connected
         if preview is not None:
             _atem_state["preview"] = preview
         if program is not None:
             _atem_state["program"] = program
+        if aux is not None:
+            key = f"aux{aux[0] + 1}"
+            if key in _atem_state:
+                _atem_state[key] = aux[1]
 
 
 def _get_atem() -> dict:
@@ -242,6 +266,10 @@ def _atem_loop():
                                     init_preview = source
                                 else:
                                     init_program = source
+                        elif cmd == "AuxS" and len(cmd_data) >= 4:
+                            aux_idx = cmd_data[0]
+                            aux_src = struct.unpack(">H", cmd_data[2:4])[0]
+                            _set_atem(False, aux=(aux_idx, aux_src))
                 except socket.timeout:
                     print(f"[ATEM] init drain timeout after {pkt_count} pkts")
                     break  # proceed even if InCm wasn't seen
@@ -282,14 +310,14 @@ def _atem_loop():
                     for cmd, cmd_data in _parse_commands(
                         data[12:] if len(data) > 12 else b""
                     ):
-                        # filter to ME1 (cmd_data[0] == 0) for multi-ME switchers
+                        cur = _get_atem()
+                        # filter PrvI/PrgI to ME1 (cmd_data[0] == 0) for multi-ME switchers
                         if (
                             cmd in ("PrvI", "PrgI")
                             and len(cmd_data) >= 4
                             and cmd_data[0] == 0
                         ):
                             source = struct.unpack(">H", cmd_data[2:4])[0]
-                            cur = _get_atem()
                             if cmd == "PrvI" and source != cur["preview"]:
                                 print(f"[ATEM] PrvI source={source}")
                                 _set_atem(True, preview=source)
@@ -298,6 +326,16 @@ def _atem_loop():
                                 print(f"[ATEM] PrgI source={source}")
                                 _set_atem(True, program=source)
                                 _broadcast({"type": "program", "source": source})
+                        elif cmd == "AuxS" and len(cmd_data) >= 4:
+                            aux_idx = cmd_data[0]
+                            aux_src = struct.unpack(">H", cmd_data[2:4])[0]
+                            akey = f"aux{aux_idx + 1}"
+                            if akey in cur and aux_src != cur[akey]:
+                                print(f"[ATEM] AuxS idx={aux_idx} source={aux_src}")
+                                _set_atem(True, aux=(aux_idx, aux_src))
+                                _broadcast(
+                                    {"type": "aux", "index": aux_idx, "source": aux_src}
+                                )
                 except socket.timeout:
                     pass
 

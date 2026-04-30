@@ -225,7 +225,11 @@
       padding: 0 20px;
       display: flex;
       flex-shrink: 0;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
     }
+    #cam-tabs::-webkit-scrollbar { display: none; }
 
     .cam-tab {
       background: transparent;
@@ -432,7 +436,8 @@
       transition: background .15s;
       z-index: 2;
     }
-    .preset-btn.edit-mode.has-image:hover .preset-clear { display: flex; }
+    .preset-btn.edit-mode.has-image .preset-clear { display: flex; opacity: 0.55; }
+    .preset-btn.edit-mode.has-image:hover .preset-clear { opacity: 1; }
     .preset-clear:hover { background: var(--error); border-color: var(--error); }
 
     .name-input {
@@ -496,7 +501,7 @@
     footer {
       border-top: 1px solid var(--surf);
       padding: 10px 20px;
-      font-size: .68rem; color: var(--border);
+      font-size: .68rem; color: var(--muted);
       text-align: center; flex-shrink: 0;
     }
 
@@ -583,6 +588,71 @@
     #atem-debug.visible { display: block; }
     #atem-debug span { color: var(--label); font-weight: 600; }
 
+    /* ── Safe-area insets (iOS notch / home indicator) ───── */
+    #grid-settings-fab {
+      bottom: max(18px, env(safe-area-inset-bottom));
+      right:  max(18px, env(safe-area-inset-right));
+    }
+    #grid-settings-panel {
+      bottom: max(18px, env(safe-area-inset-bottom));
+    }
+
+    /* ── Responsive — narrow screens ────────────────────── */
+    @media (max-width: 700px) {
+      /* Settings panel becomes a bottom sheet */
+      #grid-settings-panel {
+        bottom: 0; right: 0; left: 0;
+        width: 100%; max-width: 100%;
+        border-radius: 12px 12px 0 0;
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      #grid-settings-fab {
+        bottom: max(18px, env(safe-area-inset-bottom));
+        right:  max(18px, env(safe-area-inset-right));
+      }
+      /* Stack settings columns */
+      .gsp-body { grid-template-columns: 1fr; }
+      /* Remove fixed widths on settings inputs so they fill their column */
+      .gsp-body .field input,
+      .gsp-body .field select { width: 100%; }
+    }
+
+    @media (max-width: 640px) {
+      /* Header: hide subtitle and compress pills */
+      .brand-text p { display: none; }
+      #fullscreen-btn { display: none; }
+      #atem-pill span { display: none; }
+      #atem-pill { min-width: unset; padding: 5px 8px; }
+      #status { min-width: unset; }
+    }
+
+    @media (max-width: 480px) {
+      /* Preset grid: 2 columns on very small phones */
+      #preset-grid { grid-template-columns: repeat(2, 1fr) !important; }
+    }
+
+    /* ── ATEM output-map table ──────────────────────────────── */
+    #output-map-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+    #output-map-table tbody tr { border-top: 1px solid var(--border); }
+    #output-map-table td { padding: 6px 8px; vertical-align: middle; }
+    .output-row-label { font-weight: 600; color: var(--text); white-space: nowrap; }
+    .output-row-source { font-size: .75rem; color: var(--label); white-space: nowrap; }
+    .output-row-source.live    { color: var(--error);   font-weight: 700; }
+    .output-row-source.preview { color: var(--success); font-weight: 700; }
+    #output-map-table select,
+    #output-map-table input[type=text] {
+      background: var(--surf2); border: 1px solid var(--border); border-radius: 4px;
+      color: var(--text); padding: 4px 6px; font-size: .78rem; width: 100%; outline: none;
+    }
+    #output-map-table select:focus,
+    #output-map-table input[type=text]:focus { border-color: var(--accent); }
+    @media (max-width: 700px) {
+      #output-map-table thead { display: none; }
+      #output-map-table tbody tr { display: block; margin-bottom: 8px; padding: 8px; background: var(--surf2); border-radius: 6px; border-top: none; }
+      #output-map-table td { display: block; padding: 2px 0; }
+      #output-map-table td::before { content: attr(data-label); display: block; font-size: .65rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 2px; }
+    }
+
     /* ── Flex gap fallbacks (Safari < 14.5) ─────────────── */
     header > * + *          { margin-left: 12px; }
     .header-pills > * + *   { margin-left: 8px; }
@@ -644,7 +714,7 @@
 <footer>Tap a preset to recall it &nbsp;&middot;&nbsp;
   Turn on Edit Labels to rename presets &nbsp;&middot;&nbsp; Double-click a camera tab to rename it</footer>
 
-<div id="grid-settings-panel">
+<div id="grid-settings-panel" role="dialog" aria-modal="true" aria-label="Settings">
   <div class="gsp-header">
     <span>Settings</span>
     <button id="gsp-close">&#x2715;</button>
@@ -773,6 +843,36 @@
     </div>
   </div>
 
+  <!-- ATEM Capture Sources (shown only when ATEM enabled) -->
+  <div id="atem-capture-section" style="display:none; border-top:1px solid var(--border); padding:12px;">
+    <div class="gsp-section-title" style="margin-bottom:10px;">Capture Sources</div>
+    <div style="display:flex; align-items:flex-end; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+      <div class="field" style="flex-shrink:0;">
+        <label for="f-capture-output">Scan capture source:</label>
+        <select id="f-capture-output">
+          <option value="program">Program</option>
+          <option value="preview">Preview</option>
+          <option value="aux1">AUX 1</option>
+          <option value="aux2">AUX 2</option>
+          <option value="aux3">AUX 3</option>
+        </select>
+      </div>
+      <span style="font-size:.8rem; color:var(--muted); padding-bottom:6px;">ATEM bus status:</span>
+      <span id="capture-output-label" style="font-size:.8rem; color:var(--label); padding-bottom:6px;"></span>
+    </div>
+    <table id="output-map-table">
+      <thead>
+        <tr style="color:var(--muted); text-align:left;">
+          <th style="padding:4px 8px; font-weight:600;">Output</th>
+          <th style="padding:4px 8px; font-weight:600;">ATEM Source Number</th>
+          <th style="padding:4px 8px; font-weight:600;">USB Device</th>
+          <th style="padding:4px 8px; font-weight:600;">Stream URL</th>
+        </tr>
+      </thead>
+      <tbody id="output-map-body"><!-- rendered by JS --></tbody>
+    </table>
+  </div>
+
   <!-- Webcam preview at bottom -->
   <div id="webcam-preview" style="border-top: 1px solid var(--border); padding: 12px;">
     <div id="preview-frame">
@@ -781,7 +881,7 @@
     </div>
   </div>
 </div>
-<button id="grid-settings-fab" title="Grid Settings">
+<button id="grid-settings-fab" title="Grid Settings" aria-label="Open grid settings">
   <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
     <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61
              l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54
@@ -823,6 +923,19 @@
     gridCols: 4,
     gridRows: 3,
     fillWindow: false,
+    // ATEM output → capture source mapping (persisted)
+    atemOutputMap: {
+      program: { webcam: '', streamUrl: '' },
+      preview: { webcam: '', streamUrl: '' },
+      aux1:    { webcam: '', streamUrl: '' },
+      aux2:    { webcam: '', streamUrl: '' },
+      aux3:    { webcam: '', streamUrl: '' },
+    },
+    captureOutput: 'preview',
+    // Runtime ATEM AUX sources (not persisted, updated via SSE)
+    aux1Source: 0,
+    aux2Source: 0,
+    aux3Source: 0,
   };
   const bootImageVersion = Date.now();
 
@@ -853,6 +966,8 @@
         if (s.liveMode      != null) state.liveMode      = !!s.liveMode;
         if (s.showAtemDebug != null) state.showAtemDebug = !!s.showAtemDebug;
         if (s.atemFollows)           state.atemFollows   = s.atemFollows;
+        if (s.atemOutputMap) state.atemOutputMap = { ...state.atemOutputMap, ...s.atemOutputMap };
+        if (s.captureOutput) state.captureOutput = s.captureOutput;
       }
     } catch (_) {}
   }
@@ -1136,7 +1251,22 @@
       btn.appendChild(numEl);
       btn.appendChild(nameWrap);
 
+      // Long-press rename for touch devices (500 ms hold)
+      let longPressTimer = null;
+      let longPressHandled = false;
+      btn.addEventListener('pointerdown', () => {
+        longPressTimer = setTimeout(() => {
+          longPressTimer = null;
+          longPressHandled = true;
+          openTabNameEditor(idx, nameEl, nameWrap);
+        }, 500);
+      });
+      btn.addEventListener('pointerup',    () => clearTimeout(longPressTimer));
+      btn.addEventListener('pointerleave', () => clearTimeout(longPressTimer));
+      btn.addEventListener('pointermove',  () => clearTimeout(longPressTimer));
+
       btn.addEventListener('click', () => {
+        if (longPressHandled) { longPressHandled = false; return; }
         if (idx !== state.activeCam) switchCamera(idx);
       });
 
@@ -1262,10 +1392,13 @@
     if (!state.atem.enabled) atemConnected = false;
     updateAtemPill();
     updateAtemDebug();
-    // Show/hide Live preference field based on ATEM enabled state
+    // Show/hide dependent fields based on ATEM enabled state
     if (elLivePreferenceField) {
       elLivePreferenceField.style.display = state.atem.enabled ? 'block' : 'none';
     }
+    const atemCaptureSection = document.getElementById('atem-capture-section');
+    if (atemCaptureSection) atemCaptureSection.style.display = state.atem.enabled ? 'block' : 'none';
+    updateCaptureOutputLabel();
   });
   elAtemIp.addEventListener('change', () => { saveCameraSettings(); schedSave(); });
 
@@ -1278,13 +1411,18 @@
         const ev = JSON.parse(e.data);
         if (ev.type === 'atem') {
           atemConnected = !!ev.connected;
-          // Apply initial preview/program sources sent with the connection event
+          // Apply initial preview/program/aux sources sent with the connection event
           if (ev.preview != null && ev.preview !== 0) state.previewSource = ev.preview;
           if (ev.program != null && ev.program !== 0) state.programSource = ev.program;
+          if (ev.aux1 != null && ev.aux1 !== 0) state.aux1Source = ev.aux1;
+          if (ev.aux2 != null && ev.aux2 !== 0) state.aux2Source = ev.aux2;
+          if (ev.aux3 != null && ev.aux3 !== 0) state.aux3Source = ev.aux3;
           updateAtemPill();
           updateCameraStatusHints();
           renderTabs();
           updateAtemDebug();
+          updateCaptureOutputLabel();
+          renderOutputMapTable();
         } else if (ev.type === 'preview') {
           atemConnected = true;
           state.previewSource = ev.source;
@@ -1292,6 +1430,8 @@
           updateCameraStatusHints();
           renderTabs();
           updateAtemDebug();
+          updateCaptureOutputLabel();
+          renderOutputMapTable();
           // Auto-switch in Live mode if following preview
           if (state.liveMode && state.atem.enabled && state.atemFollows === 'preview') {
             const idx = state.cameras.findIndex((_, camIdx) => cameraMatchesAtemSource(camIdx, ev.source));
@@ -1304,11 +1444,19 @@
           updateCameraStatusHints();
           renderTabs();
           updateAtemDebug();
+          updateCaptureOutputLabel();
+          renderOutputMapTable();
           // Auto-switch in Live mode if following program
           if (state.liveMode && state.atem.enabled && state.atemFollows === 'program') {
             const idx = state.cameras.findIndex((_, camIdx) => cameraMatchesAtemSource(camIdx, ev.source));
             if (idx >= 0 && idx !== state.activeCam) switchCamera(idx);
           }
+        } else if (ev.type === 'aux') {
+          atemConnected = true;
+          const auxKey = `aux${ev.index + 1}Source`;
+          if (auxKey in state) state[auxKey] = ev.source;
+          updateCaptureOutputLabel();
+          renderOutputMapTable();
         }
       } catch (_) {}
     };
@@ -1361,7 +1509,6 @@
 
   if (elGspFab && elGspPanel) {
     elGspFab.addEventListener('click', () => {
-      console.log('FAB clicked!');
       elGspPanel.classList.toggle('open');
     });
   }
@@ -1447,6 +1594,146 @@
   });
   if (elAtemFollows) {
     elAtemFollows.addEventListener('change', saveCameraManagement);
+  }
+
+  // ── ATEM output-map capture UI ────────────────────────────────────────────
+  let usbDevices = [];  // populated in boot; reused by renderOutputMapTable
+
+  const ATEM_OUTPUT_KEYS = [
+    { key: 'program', label: 'Program' },
+    { key: 'preview', label: 'Preview' },
+    { key: 'aux1',    label: 'AUX 1' },
+    { key: 'aux2',    label: 'AUX 2' },
+    { key: 'aux3',    label: 'AUX 3' },
+  ];
+
+  function getOutputSource(key) {
+    if (key === 'program') return state.programSource || 0;
+    if (key === 'preview') return state.previewSource || 0;
+    return state[`${key}Source`] || 0;
+  }
+
+  function sourceLabel(sourceVal) {
+    if (!sourceVal) return 'Unknown';
+    const idx = state.cameras.findIndex(c => c.enabled !== false && +c.atemInput === +sourceVal);
+    if (idx >= 0) return state.cameras[idx].name;
+    return `Input ${sourceVal}`;
+  }
+
+  function sourceClass(key, sourceVal) {
+    if (!sourceVal) return '';
+    const camIdx = state.cameras.findIndex(c => c.enabled !== false && +c.atemInput === +sourceVal);
+    if (camIdx < 0) return '';
+    const pgm = state.cameras.findIndex(c => +c.atemInput === +(state.programSource || 0));
+    const pvw = state.cameras.findIndex(c => +c.atemInput === +(state.previewSource || 0));
+    if (camIdx === pgm) return 'live';
+    if (camIdx === pvw) return 'preview';
+    return '';
+  }
+
+  function updateCaptureOutputLabel() {
+    const el = document.getElementById('capture-output-label');
+    if (!el) return;
+    const src = getOutputSource(state.captureOutput);
+    const name = sourceLabel(src);
+    const map = state.atemOutputMap[state.captureOutput] || {};
+    const hasDevice = !!(map.webcam || map.streamUrl);
+    if (!src) {
+      el.textContent = `→ source unknown${hasDevice ? '' : ' — no device configured'}`;
+      el.style.color = 'var(--muted)';
+    } else {
+      el.textContent = `→ ${name}${hasDevice ? '' : ' — no device configured'}`;
+      const cls = sourceClass(state.captureOutput, src);
+      el.style.color = cls === 'live' ? 'var(--error)' : cls === 'preview' ? 'var(--success)' : 'var(--label)';
+    }
+  }
+
+  function renderOutputMapTable() {
+    const tbody = document.getElementById('output-map-body');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    ATEM_OUTPUT_KEYS.forEach(({ key, label }) => {
+      const src = getOutputSource(key);
+      const sLabel = sourceLabel(src);
+      const sCls   = sourceClass(key, src);
+      const map    = state.atemOutputMap[key] || { webcam: '', streamUrl: '' };
+
+      const tr = document.createElement('tr');
+
+      // Output name
+      const tdLabel = document.createElement('td');
+      tdLabel.setAttribute('data-label', 'Output');
+      tdLabel.className = 'output-row-label';
+      tdLabel.textContent = label;
+
+      // Current source
+      const tdSrc = document.createElement('td');
+      tdSrc.setAttribute('data-label', 'ATEM Source Number');
+      const srcSpan = document.createElement('span');
+      srcSpan.className = `output-row-source${sCls ? ' ' + sCls : ''}`;
+      srcSpan.textContent = sLabel;
+      tdSrc.appendChild(srcSpan);
+
+      // USB device select
+      const tdUsb = document.createElement('td');
+      tdUsb.setAttribute('data-label', 'USB Device');
+      const usbSel = document.createElement('select');
+      const noneOpt = document.createElement('option');
+      noneOpt.value = ''; noneOpt.textContent = '— none —';
+      usbSel.appendChild(noneOpt);
+      usbDevices.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.index; opt.textContent = d.name;
+        usbSel.appendChild(opt);
+      });
+      usbSel.value = map.webcam || '';
+      usbSel.addEventListener('change', () => {
+        state.atemOutputMap[key].webcam = usbSel.value;
+        schedSave();
+        updateCaptureOutputLabel();
+      });
+      tdUsb.appendChild(usbSel);
+
+      // Stream URL input
+      const tdUrl = document.createElement('td');
+      tdUrl.setAttribute('data-label', 'Stream URL');
+      const urlInp = document.createElement('input');
+      urlInp.type = 'text';
+      urlInp.placeholder = 'https://vdo.ninja/…';
+      urlInp.value = map.streamUrl || '';
+      urlInp.spellcheck = false;
+      urlInp.autocomplete = 'off';
+      urlInp.addEventListener('change', () => {
+        state.atemOutputMap[key].streamUrl = urlInp.value.trim();
+        schedSave();
+        updateCaptureOutputLabel();
+      });
+      tdUrl.appendChild(urlInp);
+
+      tr.appendChild(tdLabel);
+      tr.appendChild(tdSrc);
+      tr.appendChild(tdUsb);
+      tr.appendChild(tdUrl);
+      tbody.appendChild(tr);
+    });
+  }
+
+  function loadCaptureSection() {
+    const sel = document.getElementById('f-capture-output');
+    if (sel) sel.value = state.captureOutput || 'preview';
+    const section = document.getElementById('atem-capture-section');
+    if (section) section.style.display = state.atem.enabled ? 'block' : 'none';
+    renderOutputMapTable();
+    updateCaptureOutputLabel();
+  }
+
+  const elCaptureOutput = document.getElementById('f-capture-output');
+  if (elCaptureOutput) {
+    elCaptureOutput.addEventListener('change', () => {
+      state.captureOutput = elCaptureOutput.value;
+      schedSave();
+      updateCaptureOutputLabel();
+    });
   }
 
   // ── Webcam / stream source ────────────────────────────────────────────────
@@ -1540,10 +1827,14 @@
   });
 
   // captureFrame priority: USB device (ffmpeg) > stream URL (playwright) > browser webcam
-  async function captureFrame(cam, preset) {
-    const camera = state.cameras[cam];
-    const usb = camera.usbDevice || '';
-    const url = camera.streamUrl || '';
+  // source = pre-resolved { webcam, streamUrl } object, or null to resolve from state
+  async function captureFrame(cam, preset, source = null) {
+    const resolved = source ?? (state.atem.enabled
+      ? (state.atemOutputMap[state.captureOutput] || {})
+      : { webcam: state.cameras[cam]?.usbDevice || '', streamUrl: state.cameras[cam]?.streamUrl || '' });
+
+    const usb = resolved.webcam || '';
+    const url = resolved.streamUrl || '';
 
     if (usb || url) {
       const body = usb ? { usbDevice: usb } : { url };
@@ -1860,6 +2151,7 @@
   });
 
   // ── Recall ─────────────────────────────────────────────────────────────────
+  // camIdx defaults to the current active camera; pass explicitly to lock during scan
   async function doRecall(preset, camIdx = state.activeCam) {
     const cam = state.cameras[camIdx];
     try {
@@ -1928,12 +2220,21 @@
   });
 
   async function scanAll() {
+    // Lock both the PTZ camera and the capture source at scan start so that
+    // switching the active camera in the UI mid-scan doesn't affect either.
     const scanCamIdx = state.activeCam;
     const cam = state.cameras[scanCamIdx];
     if (!cam.ip) { setStatus('error', 'Enter the camera IP address first'); return; }
-    const hasServerSource = cam.usbDevice || cam.streamUrl;
+
+    const lockedSource = state.atem.enabled
+      ? { ...(state.atemOutputMap[state.captureOutput] || {}) }
+      : { webcam: cam.usbDevice || '', streamUrl: cam.streamUrl || '' };
+    const hasServerSource = lockedSource.webcam || lockedSource.streamUrl;
     if (!hasServerSource && !videoStream) {
-      setStatus('error', 'Set a USB device, VDO.ninja URL, or browser webcam for this camera'); return;
+      const hint = state.atem.enabled
+        ? `Configure a USB device or stream URL for the ${state.captureOutput} output in Settings`
+        : 'Set a USB device, VDO.ninja URL, or browser webcam for this camera';
+      setStatus('error', hint); return;
     }
 
     scanning = true; cancelScan = false;
@@ -1942,13 +2243,16 @@
     elScanBar.classList.add('visible');
 
     const captureErrors = [];
+    const nums  = presetNumbers();
+    const total = nums.length;
 
-    for (let p = 0; p <= 11; p++) {
+    for (let i = 0; i < total; i++) {
+      const p = nums[i];
       if (cancelScan) break;
 
-      elScanFill.style.width = `${Math.round(p / 12 * 100)}%`;
-      elScanLbl.textContent  = `Camera ${scanCamIdx + 1}: recalling preset ${p} of 11…`;
-      setStatus('busy', `Scanning Camera ${scanCamIdx + 1} preset ${p} of 11…`, false);
+      elScanFill.style.width = `${Math.round(i / total * 100)}%`;
+      elScanLbl.textContent  = `Camera ${scanCamIdx + 1}: recalling preset ${i + 1} of ${total}…`;
+      setStatus('busy', `Scanning Camera ${scanCamIdx + 1} preset ${i + 1} of ${total}…`, false);
 
       const result = await doRecall(p, scanCamIdx);
       if (!result.success) console.warn(`Recall ${p}:`, result.message);
@@ -1956,17 +2260,17 @@
 
       const dwell = state.dwellMs;
       const steps = 20;
-      for (let i = 0; i < steps; i++) {
+      for (let s = 0; s < steps; s++) {
         if (cancelScan) break;
-        const pct = Math.round((p + (i + 1) / steps) / 12 * 100);
+        const pct = Math.round((i + (s + 1) / steps) / total * 100);
         elScanFill.style.width = pct + '%';
-        elScanLbl.textContent  = `Camera ${scanCamIdx + 1}: waiting on preset ${p} of 11`;
+        elScanLbl.textContent  = `Camera ${scanCamIdx + 1}: waiting on preset ${i + 1} of ${total}`;
         await sleep(dwell / steps);
       }
       if (cancelScan) break;
 
-      elScanLbl.textContent = `Camera ${scanCamIdx + 1}: capturing preset ${p} of 11…`;
-      const ok = await captureFrame(scanCamIdx, p);
+      elScanLbl.textContent = `Camera ${scanCamIdx + 1}: capturing preset ${i + 1} of ${total}…`;
+      const ok = await captureFrame(scanCamIdx, p, lockedSource);
       if (!ok) {
         captureErrors.push(p);
         console.error(`Capture failed for preset ${p}`);
@@ -2006,14 +2310,18 @@
         atemConnected = !!s.connected;
         if (s.preview != null && s.preview !== 0) state.previewSource = s.preview;
         if (s.program != null && s.program !== 0) state.programSource = s.program;
+        if (s.aux1 != null && s.aux1 !== 0) state.aux1Source = s.aux1;
+        if (s.aux2 != null && s.aux2 !== 0) state.aux2Source = s.aux2;
+        if (s.aux3 != null && s.aux3 !== 0) state.aux3Source = s.aux3;
         updateAtemPill();
         renderTabs();
         updateAtemDebug();
       }
     } catch (_) {}
-    // USB devices from server
+    // USB devices from server — store for use in output-map table
     try {
       const devs = await fetch('/api/devices').then(r => r.json());
+      usbDevices = devs;
       devs.forEach(d => {
         const opt = document.createElement('option');
         opt.value       = d.index;
@@ -2023,6 +2331,7 @@
       const curCam = state.cameras[state.activeCam];
       if (curCam.usbDevice) elUsbDevice.value = curCam.usbDevice;
     } catch (_) {}
+    loadCaptureSection();
 
     // browser webcam preview (localStorage, device-specific)
     await enumerateWebcams();
