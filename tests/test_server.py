@@ -77,12 +77,18 @@ class TestAtemPackets(unittest.TestCase):
 
     def test_cut_atem_to_source_sets_preview_then_cuts(self):
         with patch(
+            "server._get_atem",
+            return_value={"preview": 3, "program": 2},
+        ), patch(
             "server._send_atem_command",
             side_effect=[
                 (True, "preview ok"),
                 (True, "cut ok"),
             ],
         ) as mock_send, patch(
+            "server._wait_for_atem_preview_source",
+            return_value=True,
+        ) as mock_wait_preview, patch(
             "server._wait_for_atem_program_source",
             return_value=True,
         ) as mock_wait:
@@ -93,35 +99,47 @@ class TestAtemPackets(unittest.TestCase):
         self.assertEqual(mock_send.call_count, 2)
         self.assertEqual(mock_send.call_args_list[0].args[0], "CPvI")
         self.assertEqual(mock_send.call_args_list[1].args[0], "DCut")
+        mock_wait_preview.assert_called_once_with(7, timeout_s=1.0)
         mock_wait.assert_called_once_with(7, timeout_s=1.0)
 
     def test_cut_atem_to_source_falls_back_to_direct_program_switch(self):
         with patch(
+            "server._get_atem",
+            return_value={"preview": 3, "program": 2},
+        ), patch(
             "server._send_atem_command",
             side_effect=[
                 (True, "preview ok"),
-                (True, "cut ok"),
                 (True, "program ok"),
             ],
         ) as mock_send, patch(
+            "server._wait_for_atem_preview_source",
+            return_value=False,
+        ) as mock_wait_preview, patch(
             "server._wait_for_atem_program_source",
-            side_effect=[False, True],
+            return_value=True,
         ) as mock_wait:
             ok, message = server.cut_atem_to_source(9)
 
         self.assertTrue(ok)
         self.assertIn("direct program switch", message)
-        self.assertEqual([call.args[0] for call in mock_send.call_args_list], ["CPvI", "DCut", "CPgI"])
-        self.assertEqual(mock_wait.call_count, 2)
+        self.assertEqual([call.args[0] for call in mock_send.call_args_list], ["CPvI", "CPgI"])
+        mock_wait_preview.assert_called_once_with(9, timeout_s=1.0)
+        mock_wait.assert_called_once_with(9, timeout_s=1.0)
 
     def test_cut_atem_to_source_returns_false_when_program_never_confirms(self):
         with patch(
+            "server._get_atem",
+            return_value={"preview": 3, "program": 2},
+        ), patch(
             "server._send_atem_command",
             side_effect=[
                 (True, "preview ok"),
-                (True, "cut ok"),
                 (True, "program ok"),
             ],
+        ), patch(
+            "server._wait_for_atem_preview_source",
+            return_value=False,
         ), patch(
             "server._wait_for_atem_program_source",
             return_value=False,
@@ -129,7 +147,24 @@ class TestAtemPackets(unittest.TestCase):
             ok, message = server.cut_atem_to_source(11)
 
         self.assertFalse(ok)
-        self.assertIn("did not confirm", message)
+        self.assertIn("preview or program switched", message)
+
+    def test_cut_atem_to_source_cuts_immediately_when_preview_already_matches(self):
+        with patch(
+            "server._get_atem",
+            return_value={"preview": 12, "program": 2},
+        ), patch(
+            "server._send_atem_command",
+            return_value=(True, "cut ok"),
+        ) as mock_send, patch(
+            "server._wait_for_atem_program_source",
+            return_value=True,
+        ):
+            ok, message = server.cut_atem_to_source(12)
+
+        self.assertTrue(ok)
+        self.assertIn("Cut executed", message)
+        self.assertEqual([call.args[0] for call in mock_send.call_args_list], ["DCut"])
 
 
 # ── ATEM state ─────────────────────────────────────────────────────────────────

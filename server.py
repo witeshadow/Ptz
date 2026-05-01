@@ -393,13 +393,35 @@ def _wait_for_atem_program_source(source: int, timeout_s: float = 1.0) -> bool:
     return _get_atem().get("program") == source
 
 
+def _wait_for_atem_preview_source(source: int, timeout_s: float = 1.0) -> bool:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if _get_atem().get("preview") == source:
+            return True
+        time.sleep(0.05)
+    return _get_atem().get("preview") == source
+
+
 def cut_atem_to_source(source: int) -> tuple[bool, str]:
     if source <= 0:
         return False, "Invalid ATEM source"
     preview_payload = bytes([0, 0]) + struct.pack(">H", source)
-    ok, message = _send_atem_command("CPvI", preview_payload)
-    if not ok:
-        return False, message
+    current = _get_atem()
+    if current.get("preview") != source:
+        ok, message = _send_atem_command("CPvI", preview_payload)
+        if not ok:
+            return False, message
+        if not _wait_for_atem_preview_source(source, timeout_s=1.0):
+            ok, program_message = _send_atem_command("CPgI", preview_payload)
+            if not ok:
+                return (
+                    False,
+                    f"Preview did not change to {source} and direct program switch failed: {program_message}",
+                )
+            if _wait_for_atem_program_source(source, timeout_s=1.0):
+                return True, f"Preview did not change • direct program switch moved program to {source}"
+            return False, f"ATEM did not confirm preview or program switched to {source}"
+
     ok, cut_message = _send_atem_command("DCut", bytes([0, 0, 0, 0]))
     if not ok:
         return False, cut_message
