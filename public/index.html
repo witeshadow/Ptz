@@ -302,9 +302,9 @@
       background: transparent;
       border: none;
       border-bottom: 2px solid transparent;
-      padding: 11px 18px 9px;
+      padding: 9px 12px 7px;
       color: var(--muted);
-      font-size: 0.88rem;
+      font-size: 0.84rem;
       cursor: pointer;
       transition: color 0.2s, border-color 0.2s;
       user-select: none;
@@ -319,9 +319,9 @@
 
     .cam-badge {
       display: inline-block;
-      font-size: 0.6rem;
+      font-size: 0.55rem;
       font-weight: 700;
-      padding: 2px 6px;
+      padding: 2px 5px;
       border-radius: 3px;
       margin-left: 4px;
       text-transform: uppercase;
@@ -330,12 +330,6 @@
     .cam-badge.live { background: var(--error); color: white; }
     .cam-badge.preview { background: var(--success); color: white; }
     .cam-badge.edit { background: var(--muted); color: var(--surf); }
-
-    .cam-num {
-      font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
-      letter-spacing: .06em; color: inherit; opacity: .6;
-      flex: 0 0 auto;
-    }
 
     .cam-name-wrap {
       position: relative;
@@ -543,16 +537,18 @@
     }
 
     .preset-capture {
-      position: absolute; top: 5px; left: 5px;
-      width: 20px; height: 20px;
+      position: absolute; top: 6px; left: 6px;
+      min-width: 44px; height: 24px;
+      padding: 0 8px;
       background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.25);
-      border-radius: 50%; color: #fff; font-size: .75rem; line-height: 1;
+      border-radius: 999px; color: #fff; font-size: .65rem; line-height: 1;
+      font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
       cursor: pointer; display: none;
       align-items: center; justify-content: center;
       transition: background .15s;
       z-index: 2;
     }
-    .preset-btn.edit-mode .preset-capture { display: flex; opacity: 0.55; }
+    .preset-btn.edit-mode .preset-capture { display: inline-flex; opacity: 0.92; }
     .preset-btn.edit-mode:hover .preset-capture { opacity: 1; }
     .preset-capture:hover { background: var(--accent); border-color: var(--accent); }
 
@@ -569,19 +565,6 @@
     .preset-btn.edit-mode.has-image .preset-clear { display: flex; opacity: 0.55; }
     .preset-btn.edit-mode.has-image:hover .preset-clear { opacity: 1; }
     .preset-clear:hover { background: var(--error); border-color: var(--error); }
-
-    .preset-capture {
-      position: absolute; top: 5px; left: 5px;
-      width: 20px; height: 20px;
-      background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.25);
-      border-radius: 50%; color: #fff; font-size: .75rem; line-height: 1;
-      cursor: pointer; display: none;
-      align-items: center; justify-content: center;
-      transition: background .15s;
-      z-index: 2;
-    }
-    .preset-btn.edit-mode:hover .preset-capture { display: flex; }
-    .preset-capture:hover { background: var(--accent); border-color: var(--accent); }
 
     .name-input {
       font-size: .7rem; background: var(--surf2);
@@ -720,8 +703,7 @@
     body.fill-mode #atem-pill { padding: 4px 8px; font-size: 0.68rem; }
     body.fill-mode #status { width: 150px; max-width: 150px; flex-basis: 150px; padding: 3px 8px; font-size: 0.7rem; }
     body.fill-mode #cam-tabs { display: flex; }
-    body.fill-mode .cam-tab { padding: 13px 24px 11px; font-size: 0.94rem; }
-    body.fill-mode .cam-num { font-size: 0.7rem; }
+    body.fill-mode .cam-tab { padding: 11px 16px 9px; font-size: 0.88rem; }
     body.fill-mode main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
     body.fill-mode #preset-grid { flex: 1; align-content: start; justify-content: center; gap: 6px; }
     body.fill-mode #toolbar { margin-top: 8px; }
@@ -844,14 +826,10 @@
         flex: 1 1 0;
         min-width: 0;
         justify-content: center;
-        padding: 10px 8px 8px;
+        padding: 8px 6px 7px;
       }
       .cam-tab .cam-badge {
         display: none;
-      }
-      .cam-tab .cam-num {
-        font-size: 0.6rem;
-        letter-spacing: 0.04em;
       }
       .cam-tab .cam-name-wrap,
       .cam-tab .cam-name,
@@ -860,7 +838,8 @@
         max-width: 100%;
       }
       .cam-tab .cam-name {
-        font-size: 0.78rem;
+        font-size: 0.76rem;
+        text-align: center;
       }
       .header-actions {
         order: 3;
@@ -1681,10 +1660,7 @@
       btn.type = 'button';
       btn.className = 'cam-tab' + (idx === state.activeCam ? ' active' : '');
       btn.dataset.idx = idx;
-
-      const numEl = document.createElement('span');
-      numEl.className = 'cam-num';
-      numEl.textContent = `CAM ${idx + 1}`;
+      btn.title = cam.name;
 
       const nameWrap = document.createElement('span');
       nameWrap.className = 'cam-name-wrap';
@@ -1723,7 +1699,6 @@
       }
 
       nameWrap.appendChild(nameEl);
-      btn.appendChild(numEl);
       btn.appendChild(nameWrap);
 
       // Long-press rename for touch devices (500 ms hold)
@@ -2773,7 +2748,8 @@
     captureBtn.className = 'preset-capture';
     captureBtn.type      = 'button';
     captureBtn.title     = 'Update screenshot';
-    captureBtn.innerHTML = '&#x25CE;';
+    captureBtn.setAttribute('aria-label', 'Update screenshot');
+    captureBtn.textContent = 'Snap';
     captureBtn.addEventListener('pointerup', (e) => e.stopPropagation());
     captureBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -2846,6 +2822,9 @@
     elGrid.querySelectorAll('.preset-btn').forEach(b =>
       b.classList.toggle('edit-mode', editMode)
     );
+    if (editMode) {
+      setStatus('success', 'Edit mode: tap Snap on any preset to refresh its image');
+    }
   });
 
   // ── Recall ─────────────────────────────────────────────────────────────────
