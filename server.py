@@ -384,6 +384,15 @@ def _send_atem_command(name: str, payload: bytes) -> tuple[bool, str]:
     return True, f"ATEM packet {packet_id} sent"
 
 
+def _wait_for_atem_program_source(source: int, timeout_s: float = 1.0) -> bool:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if _get_atem().get("program") == source:
+            return True
+        time.sleep(0.05)
+    return _get_atem().get("program") == source
+
+
 def cut_atem_to_source(source: int) -> tuple[bool, str]:
     if source <= 0:
         return False, "Invalid ATEM source"
@@ -394,7 +403,18 @@ def cut_atem_to_source(source: int) -> tuple[bool, str]:
     ok, cut_message = _send_atem_command("DCut", bytes([0, 0, 0, 0]))
     if not ok:
         return False, cut_message
-    return True, f"Preview set to {source} • Cut executed"
+    if _wait_for_atem_program_source(source, timeout_s=1.0):
+        return True, f"Preview set to {source} • Cut executed"
+
+    ok, program_message = _send_atem_command("CPgI", preview_payload)
+    if not ok:
+        return False, f"Cut did not take and direct program switch failed: {program_message}"
+    if _wait_for_atem_program_source(source, timeout_s=1.0):
+        return True, f"Cut did not take • direct program switch moved program to {source}"
+    return (
+        False,
+        f"ATEM did not confirm program switched to {source} after cut or direct switch",
+    )
 
 
 def _atem_loop():

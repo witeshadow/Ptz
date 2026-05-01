@@ -82,7 +82,10 @@ class TestAtemPackets(unittest.TestCase):
                 (True, "preview ok"),
                 (True, "cut ok"),
             ],
-        ) as mock_send:
+        ) as mock_send, patch(
+            "server._wait_for_atem_program_source",
+            return_value=True,
+        ) as mock_wait:
             ok, message = server.cut_atem_to_source(7)
 
         self.assertTrue(ok)
@@ -90,6 +93,43 @@ class TestAtemPackets(unittest.TestCase):
         self.assertEqual(mock_send.call_count, 2)
         self.assertEqual(mock_send.call_args_list[0].args[0], "CPvI")
         self.assertEqual(mock_send.call_args_list[1].args[0], "DCut")
+        mock_wait.assert_called_once_with(7, timeout_s=1.0)
+
+    def test_cut_atem_to_source_falls_back_to_direct_program_switch(self):
+        with patch(
+            "server._send_atem_command",
+            side_effect=[
+                (True, "preview ok"),
+                (True, "cut ok"),
+                (True, "program ok"),
+            ],
+        ) as mock_send, patch(
+            "server._wait_for_atem_program_source",
+            side_effect=[False, True],
+        ) as mock_wait:
+            ok, message = server.cut_atem_to_source(9)
+
+        self.assertTrue(ok)
+        self.assertIn("direct program switch", message)
+        self.assertEqual([call.args[0] for call in mock_send.call_args_list], ["CPvI", "DCut", "CPgI"])
+        self.assertEqual(mock_wait.call_count, 2)
+
+    def test_cut_atem_to_source_returns_false_when_program_never_confirms(self):
+        with patch(
+            "server._send_atem_command",
+            side_effect=[
+                (True, "preview ok"),
+                (True, "cut ok"),
+                (True, "program ok"),
+            ],
+        ), patch(
+            "server._wait_for_atem_program_source",
+            return_value=False,
+        ):
+            ok, message = server.cut_atem_to_source(11)
+
+        self.assertFalse(ok)
+        self.assertIn("did not confirm", message)
 
 
 # ── ATEM state ─────────────────────────────────────────────────────────────────
