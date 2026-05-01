@@ -3019,6 +3019,10 @@
     const scanCamIdx = state.activeCam;
     const cam = state.cameras[scanCamIdx];
     if (!cam.ip) { setStatus('error', 'Enter the camera IP address first'); return; }
+    if (state.liveMode && state.lockLiveMode && cameraMatchesAtemSource(scanCamIdx, state.programSource)) {
+      setStatus('error', 'Cannot scan preset images for the LIVE camera while lock is enabled');
+      return;
+    }
 
     const lockedSource = state.atem.enabled
       ? { ...(state.atemOutputMap[state.captureOutput] || {}) }
@@ -3037,6 +3041,7 @@
     elScanBar.classList.add('visible');
 
     const captureErrors = [];
+    let recallFailure = null;
     const nums  = presetNumbers();
     const total = nums.length;
 
@@ -3049,7 +3054,11 @@
       setStatus('busy', `Scanning Camera ${scanCamIdx + 1} preset ${i + 1} of ${total}…`, false);
 
       const result = await doRecall(p, scanCamIdx);
-      if (!result.success) console.warn(`Recall ${p}:`, result.message);
+      if (!result.success) {
+        console.warn(`Recall ${p}:`, result.message);
+        recallFailure = { preset: p, message: result.message || 'recall failed' };
+        break;
+      }
       if (cancelScan) break;
 
       const dwell = state.dwellMs;
@@ -3078,7 +3087,9 @@
     btnScan.textContent = 'Scan All Presets';
     btnScan.classList.remove('cancel');
     hideScanBar();
-    if (captureErrors.length) {
+    if (recallFailure) {
+      setStatus('error', `Stopped at preset ${recallFailure.preset}: ${recallFailure.message}`);
+    } else if (captureErrors.length) {
       setStatus('error', `Capture failed for preset(s): ${captureErrors.join(', ')} — check server console`);
     } else {
       setStatus('success', cancelScan ? 'Scan cancelled' : 'Scan complete');
