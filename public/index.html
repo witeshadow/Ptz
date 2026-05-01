@@ -139,9 +139,6 @@
     }
 
     #status {
-      position: absolute;
-      bottom: 6px;
-      right: 156px;
       display: flex; align-items: center;
       background: var(--surf2);
       border: 1px solid var(--border);
@@ -151,6 +148,7 @@
       color: var(--label);
       min-width: 140px;
       transition: border-color 0.3s, color 0.3s;
+      flex-shrink: 0;
     }
     #status.success { border-color: var(--success); color: var(--success); }
     #status.error   { border-color: var(--error);   color: var(--error);   }
@@ -170,9 +168,6 @@
     .status-hint.status-preview { color: var(--success); font-weight: 600; }
 
     #atem-pill {
-      position: absolute;
-      bottom: 6px;
-      right: 16px;
       display: flex; align-items: center;
       background: var(--surf2);
       border: 1px solid var(--border);
@@ -182,6 +177,7 @@
       color: var(--muted);
       transition: border-color 0.3s, color 0.3s;
       white-space: nowrap;
+      flex-shrink: 0;
     }
     #atem-pill.connected { border-color: var(--success); color: var(--success); }
     #atem-pill.connected .atem-dot { background: var(--success); }
@@ -708,8 +704,8 @@
       .brand-text p { display: none; }
       #fullscreen-btn { display: none; }
       #atem-pill span { display: none; }
-      #atem-pill { min-width: unset; padding: 5px 8px; right: 16px !important; }
-      #status { min-width: unset; right: 72px !important; }
+      #atem-pill { min-width: unset; padding: 5px 8px; }
+      #status { min-width: unset; }
     }
 
     @media (max-width: 480px) {
