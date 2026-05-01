@@ -160,6 +160,10 @@
     #status.busy    .status-dot { background: var(--accent); animation: blink .8s ease-in-out infinite; }
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
 
+    .status-hint { display: block; font-size: 0.85rem; margin-top: 4px; }
+    .status-hint.status-live { color: var(--error); font-weight: 600; }
+    .status-hint.status-preview { color: var(--success); font-weight: 600; }
+
     #atem-pill {
       display: flex; align-items: center;
       background: var(--surf2);
@@ -1292,9 +1296,19 @@
 
     const program = state.programSource != null && state.programSource !== 0 ? state.programSource : '—';
     const preview = state.previewSource != null && state.previewSource !== 0 ? state.previewSource : '—';
+
+    let liveCameraName = '';
+    if (program !== '—') {
+      const liveCam = state.cameras.find(c => +c.atemInput === +program);
+      if (liveCam) {
+        liveCameraName = liveCam.name;
+      }
+    }
+
     elAtemPill.className = 'connected';
-    elAtemPillText.textContent = `ATEM P${program} V${preview}`;
-    elAtemPill.title = `ATEM connected • Program ${program} • Preview ${preview}`;
+    const baseText = `ATEM P${program} V${preview}`;
+    elAtemPillText.textContent = liveCameraName ? `${baseText} • 📹 ${liveCameraName} LIVE` : baseText;
+    elAtemPill.title = `ATEM connected • Program ${program}${liveCameraName ? ` (${liveCameraName})` : ''} • Preview ${preview}`;
   }
 
   // ── ATEM debug overlay ─────────────────────────────────────────────────────
@@ -1573,9 +1587,26 @@
     if (elAtemStatus) {
       const atemInput = getCameraAtemInput(state.activeCam);
       const busStatus = getCameraAtemBusStatus(state.activeCam);
-      elAtemStatus.textContent = atemInput
-        ? `ATEM bus status: ${busStatus} on ${formatAtemSourceSummary(atemInput)}`
-        : 'ATEM bus status: Unmapped';
+
+      let statusText = '';
+      let statusClass = '';
+
+      if (atemInput) {
+        statusText = `ATEM bus status: ${busStatus} on ${formatAtemSourceSummary(atemInput)}`;
+
+        if (busStatus === 'Program') {
+          statusText += ' • 🔴 LIVE - Camera is broadcasting';
+          statusClass = 'status-live';
+        } else if (busStatus === 'Preview') {
+          statusText += ' • 🟢 Preview - Safe to operate';
+          statusClass = 'status-preview';
+        }
+      } else {
+        statusText = 'ATEM bus status: Unmapped';
+      }
+
+      elAtemStatus.textContent = statusText;
+      elAtemStatus.className = 'status-hint ' + statusClass;
     }
     if (elCaptureSourceStatus) {
       elCaptureSourceStatus.textContent = `Scan capture source: ${getCameraCaptureSourceSummary(state.activeCam)}`;
