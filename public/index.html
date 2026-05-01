@@ -528,6 +528,19 @@
     .preset-btn.edit-mode.has-image:hover .preset-clear { opacity: 1; }
     .preset-clear:hover { background: var(--error); border-color: var(--error); }
 
+    .preset-capture {
+      position: absolute; top: 5px; left: 5px;
+      width: 20px; height: 20px;
+      background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.25);
+      border-radius: 50%; color: #fff; font-size: .75rem; line-height: 1;
+      cursor: pointer; display: none;
+      align-items: center; justify-content: center;
+      transition: background .15s;
+      z-index: 2;
+    }
+    .preset-btn.edit-mode:hover .preset-capture { display: flex; }
+    .preset-capture:hover { background: var(--accent); border-color: var(--accent); }
+
     .name-input {
       font-size: .7rem; background: var(--surf2);
       border: 1px solid var(--accent); border-radius: 3px;
@@ -548,6 +561,14 @@
       display: flex;
       align-items: center;
       margin-top: 16px;
+    }
+
+    #capture-source-toggle { display: flex; gap: 4px; }
+    #capture-source-toggle .csrc-btn {
+      padding: 5px 9px; font-size: .75rem; font-weight: 600;
+    }
+    #capture-source-toggle .csrc-btn.active {
+      border-color: var(--accent); color: var(--accent);
     }
 
     .btn-primary {
@@ -844,6 +865,11 @@
   <div id="toolbar">
     <button class="btn-primary" id="btn-scan">Scan All Presets</button>
     <button class="btn-ghost"    id="btn-edit">Edit Labels</button>
+    <div id="capture-source-toggle" style="display:none">
+      <button class="btn-ghost csrc-btn" data-src="active"   title="Capture from active camera">ACT</button>
+      <button class="btn-ghost csrc-btn" data-src="preview"  title="Capture from ATEM preview">PVW</button>
+      <button class="btn-ghost csrc-btn" data-src="program"  title="Capture from ATEM program">PGM</button>
+    </div>
     <div id="scan-bar">
       <div id="scan-track"><div id="scan-fill"></div></div>
       <span id="scan-label"></span>
@@ -1072,6 +1098,7 @@
     atemFollows: 'preview',
     previewSource: null,
     programSource: null,
+    captureSource: 'active',
     presetStart: 0,
     presetEnd: 11,
     gridCols: 4,
@@ -1682,7 +1709,7 @@
     if (!state.atem.enabled) atemConnected = false;
     updateAtemPill();
     updateAtemDebug();
-    updateCaptureModeVisibility();
+    updateToolbarVisibility();
     // Show/hide dependent fields based on ATEM enabled state
     if (elLivePreferenceField) {
       elLivePreferenceField.style.display = state.atem.enabled ? 'block' : 'none';
@@ -1753,10 +1780,32 @@
   })();
 
   // ── Live/Edit mode toggle ──────────────────────────────────────────────────
+  const elCaptureToggle = document.getElementById('capture-source-toggle');
+
   function updateToolbarVisibility() {
     const btnScanEl = document.getElementById('btn-scan');
     if (btnScanEl) btnScanEl.style.display = state.liveMode ? 'none' : '';
+    if (elCaptureToggle) {
+      elCaptureToggle.style.display =
+        (!state.liveMode && state.atem.enabled) ? 'flex' : 'none';
+    }
   }
+
+  // Restore capture source preference and wire up toggle buttons
+  (function initCaptureToggle() {
+    const saved = localStorage.getItem('captureSource');
+    if (saved) state.captureSource = saved;
+    elCaptureToggle.querySelectorAll('.csrc-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.src === state.captureSource);
+      btn.addEventListener('click', () => {
+        state.captureSource = btn.dataset.src;
+        localStorage.setItem('captureSource', state.captureSource);
+        elCaptureToggle.querySelectorAll('.csrc-btn').forEach(b =>
+          b.classList.toggle('active', b === btn)
+        );
+      });
+    });
+  })();
 
   // Define lock button handler FIRST so it's available for live button to use
   let updateLockIcon;
@@ -2457,6 +2506,31 @@
     refreshPresetImage(btn, cam, n);
   }
 
+  function resolveCaptureCamera() {
+    if (state.captureSource === 'preview' && state.atem.enabled) {
+      const idx = state.cameras.findIndex(c => +c.atemInput === +state.previewSource);
+      if (idx >= 0) return idx;
+    }
+    if (state.captureSource === 'program' && state.atem.enabled) {
+      const idx = state.cameras.findIndex(c => +c.atemInput === +state.programSource);
+      if (idx >= 0) return idx;
+    }
+    return state.activeCam;
+  }
+
+  async function capturePreset(n) {
+    const cam = resolveCaptureCamera();
+    const ok = await captureFrame(cam, n);
+    if (ok) {
+      bumpImageVersion(cam, n);
+      if (cam === state.activeCam) {
+        refreshPresetBtn(n, cam);
+      } else {
+        setStatus('success', `Captured preset ${n} (camera ${cam + 1})`);
+      }
+    }
+  }
+
   function buildPresetBtn(n) {
     const cam = state.activeCam;
     const lbl = state.labels[presetKey(cam, n)] || '';
@@ -2492,19 +2566,6 @@
     ov.appendChild(ovName);
     btn.appendChild(ov);
 
-    const captureBtn = document.createElement('button');
-    captureBtn.className = 'preset-capture';
-    captureBtn.type      = 'button';
-    captureBtn.title     = 'Capture snapshot';
-    captureBtn.textContent = '⭐';
-    captureBtn.addEventListener('pointerup', (e) => { e.stopPropagation(); });
-    captureBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const activeCam = state.activeCam;
-      await capturePresetImage(activeCam, n, captureBtn);
-    });
-    btn.appendChild(captureBtn);
-
     const clearBtn = document.createElement('button');
     clearBtn.className   = 'preset-clear';
     clearBtn.type        = 'button';
@@ -2519,6 +2580,18 @@
       refreshPresetBtn(n, activeCam);
     });
     btn.appendChild(clearBtn);
+
+    const captureBtn = document.createElement('button');
+    captureBtn.className = 'preset-capture';
+    captureBtn.type      = 'button';
+    captureBtn.title     = 'Update screenshot';
+    captureBtn.innerHTML = '&#x25CE;';
+    captureBtn.addEventListener('pointerup', (e) => e.stopPropagation());
+    captureBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await capturePreset(n);
+    });
+    btn.appendChild(captureBtn);
 
     let handledPointerUp = false;
     function activatePreset() {
