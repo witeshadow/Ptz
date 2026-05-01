@@ -140,8 +140,9 @@
 
     #status {
       position: absolute;
-      bottom: 6px;
-      right: 156px;
+      top: 50%;
+      transform: translateY(-50%);
+      right: 180px;
       display: flex; align-items: center;
       background: var(--surf2);
       border: 1px solid var(--border);
@@ -151,6 +152,7 @@
       color: var(--label);
       min-width: 140px;
       transition: border-color 0.3s, color 0.3s;
+      z-index: 10;
     }
     #status.success { border-color: var(--success); color: var(--success); }
     #status.error   { border-color: var(--error);   color: var(--error);   }
@@ -171,7 +173,8 @@
 
     #atem-pill {
       position: absolute;
-      bottom: 6px;
+      top: 50%;
+      transform: translateY(-50%);
       right: 16px;
       display: flex; align-items: center;
       background: var(--surf2);
@@ -182,6 +185,7 @@
       color: var(--muted);
       transition: border-color 0.3s, color 0.3s;
       white-space: nowrap;
+      z-index: 10;
     }
     #atem-pill.connected { border-color: var(--success); color: var(--success); }
     #atem-pill.connected .atem-dot { background: var(--success); }
