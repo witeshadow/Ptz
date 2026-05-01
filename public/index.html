@@ -2591,8 +2591,12 @@
 
   async function recallPreset(n, btn) {
     if (state.liveMode && state.lockLiveMode) {
-      setStatus('error', 'Cannot recall presets while live mode is locked');
-      flash(btn, 'fail'); return;
+      const activeCam = state.activeCam;
+      const isLiveCamera = cameraMatchesAtemSource(activeCam, state.programSource);
+      if (isLiveCamera) {
+        setStatus('error', 'Cannot move LIVE camera while lock is enabled');
+        flash(btn, 'fail'); return;
+      }
     }
     const cam = state.cameras[state.activeCam];
     if (!cam.ip) {
