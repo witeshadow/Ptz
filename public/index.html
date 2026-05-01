@@ -330,9 +330,25 @@
     .cam-num {
       font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
       letter-spacing: .06em; color: inherit; opacity: .6;
+      flex: 0 0 auto;
     }
 
-    .cam-name-wrap { position: relative; }
+    .cam-name-wrap {
+      position: relative;
+      min-width: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex: 1 1 auto;
+      overflow: hidden;
+    }
+
+    .cam-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
     .cam-name-input {
       font-size: 0.88rem; font-weight: 600;
@@ -413,6 +429,7 @@
       border: 1px solid var(--border);
       background: rgba(20, 22, 28, 0.96);
       box-shadow: 0 10px 28px rgba(0,0,0,.42);
+      -webkit-backdrop-filter: blur(8px);
       backdrop-filter: blur(8px);
       flex-direction: column;
       gap: 8px;
@@ -657,6 +674,33 @@
       text-align: center; flex-shrink: 0;
     }
 
+    #build-indicator {
+      position: fixed;
+      left: 18px;
+      bottom: 18px;
+      z-index: 197;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 9px;
+      border: 1px solid rgba(148,163,184,.2);
+      border-radius: 999px;
+      background: rgba(13,15,22,.82);
+      color: var(--muted);
+      font-size: 0.66rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      box-shadow: 0 4px 16px rgba(0,0,0,.25);
+      pointer-events: none;
+      user-select: none;
+      -webkit-backdrop-filter: blur(6px);
+      backdrop-filter: blur(6px);
+    }
+
+    #build-indicator .build-commit { color: var(--label); }
+    #build-indicator .build-mode { color: var(--accent); }
+
     /* ── Fill-window layout ──────────────────────────────── */
     body.fill-mode { height: 100vh; overflow: hidden; }
     body.fill-mode header { padding: 4px 8px; }
@@ -667,8 +711,8 @@
     body.fill-mode .brand-text { display: none; }
     body.fill-mode #fill-cam-strip { display: none; }
     body.fill-mode #fullscreen-btn { padding: 4px 8px; font-size: 0.92rem; }
-    body.fill-mode #live-mode-btn,
-    body.fill-mode #lock-live-btn { display: none; }
+    body.fill-mode #live-mode-btn { padding: 4px 9px; font-size: 0.68rem; }
+    body.fill-mode #lock-live-btn { padding: 4px 8px; font-size: 0.65rem; min-width: 70px; }
     body.fill-mode #atem-pill { padding: 4px 8px; font-size: 0.68rem; }
     body.fill-mode #status { width: 150px; max-width: 150px; flex-basis: 150px; padding: 3px 8px; font-size: 0.7rem; }
     body.fill-mode #cam-tabs { display: flex; }
@@ -678,12 +722,18 @@
     body.fill-mode #preset-grid { flex: 1; align-content: start; justify-content: center; gap: 6px; }
     body.fill-mode #toolbar { margin-top: 8px; }
     body.fill-mode #toolbar { flex-shrink: 0; }
-    body.fill-mode #toolbar-statuses { display: none; }
-    body.fill-mode #toolbar-right { flex: 0 1 320px; }
+    body.fill-mode #toolbar-statuses { display: flex; }
+    body.fill-mode #toolbar-right { flex: 1 1 420px; }
     body.fill-mode .btn-primary { padding: 6px 12px; font-size: 0.76rem; }
     body.fill-mode .btn-ghost { padding: 5px 10px; font-size: 0.74rem; }
     body.fill-mode #scan-label { font-size: 0.68rem; }
     body.fill-mode footer { display: none; }
+    body.fill-mode #build-indicator {
+      bottom: 12px;
+      left: 12px;
+      padding: 4px 8px;
+      font-size: 0.62rem;
+    }
 
     /* ── Grid-settings FAB ───────────────────────────────── */
     #grid-settings-fab {
@@ -784,15 +834,38 @@
         order: 2;
         flex-basis: 100%;
         padding-top: 4px;
+        overflow: hidden;
+      }
+      .cam-tab {
+        flex: 1 1 0;
+        min-width: 0;
+        justify-content: center;
+        padding: 10px 8px 8px;
+      }
+      .cam-tab .cam-badge {
+        display: none;
+      }
+      .cam-tab .cam-num {
+        font-size: 0.6rem;
+        letter-spacing: 0.04em;
+      }
+      .cam-tab .cam-name-wrap,
+      .cam-tab .cam-name,
+      .cam-tab .cam-name-input {
+        min-width: 0;
+        max-width: 100%;
+      }
+      .cam-tab .cam-name {
+        font-size: 0.78rem;
       }
       .header-actions {
         order: 3;
         width: 100%;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         justify-content: flex-end;
       }
       .brand-text p { display: none; }
-      #fullscreen-btn { display: none; }
+      #fullscreen-btn { padding: 4px 8px; font-size: 0.92rem; }
       #atem-pill span { display: none; }
       #atem-pill { min-width: unset; padding: 5px 8px; }
       #status {
@@ -804,6 +877,10 @@
         width: 100%;
         margin-left: 0;
         justify-content: space-between;
+      }
+      #toolbar-statuses {
+        width: 100%;
+        justify-content: flex-end;
       }
       #scan-bar {
         max-width: none;
@@ -927,9 +1004,9 @@
     <div id="fill-cam-strip" aria-label="Camera status controls"></div>
     <div id="cam-tabs"><!-- rendered by JS --></div>
     <div class="header-actions">
-      <button id="fullscreen-btn" title="Toggle fullscreen">&#x26F6;</button>
       <button id="live-mode-btn" class="live" title="Toggle Live/Edit mode">Live</button>
       <button id="lock-live-btn" title="Lock camera to prevent preset movement"></button>
+      <button id="fullscreen-btn" title="Toggle fullscreen">&#x26F6;</button>
     </div>
   </div>
 </header>
@@ -1159,10 +1236,16 @@
              c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
   </svg>
 </button>
+<div id="build-indicator" aria-live="polite">
+  <span class="build-commit">build <span id="build-commit">5efe1f2</span></span>
+  <span class="build-mode" id="build-mode">normal</span>
+</div>
 
 <script>
 (function () {
   'use strict';
+
+  const BUILD_COMMIT = '5efe1f2';
 
   // ── State ──────────────────────────────────────────────────────────────────
   const DEF_CAMERAS = [
@@ -1314,7 +1397,16 @@
   // ── Status pill ────────────────────────────────────────────────────────────
   const elStatus     = document.getElementById('status');
   const elStatusText = document.getElementById('status-text');
+  const elBuildCommit = document.getElementById('build-commit');
+  const elBuildMode = document.getElementById('build-mode');
   let statusTimer    = null;
+
+  if (elBuildCommit) elBuildCommit.textContent = BUILD_COMMIT;
+
+  function updateBuildIndicator() {
+    if (!elBuildMode) return;
+    elBuildMode.textContent = state.fillWindow ? 'fill' : 'normal';
+  }
 
   function setStatus(type, msg, autoClear = true) {
     clearTimeout(statusTimer);
@@ -1915,6 +2007,12 @@
   }
 
   const elLiveBtn = document.getElementById('live-mode-btn');
+  function updateLiveModeButton() {
+    if (!elLiveBtn) return;
+    elLiveBtn.textContent = state.liveMode ? 'Live' : 'Edit';
+    elLiveBtn.classList.toggle('live', state.liveMode);
+  }
+
   if (elLiveBtn) {
     elLiveBtn.addEventListener('click', () => {
       state.liveMode = !state.liveMode;
@@ -1926,8 +2024,7 @@
           state.lockLiveMode = false;
         }
       }
-      elLiveBtn.textContent = state.liveMode ? 'Live' : 'Edit';
-      elLiveBtn.classList.toggle('live', state.liveMode);
+      updateLiveModeButton();
       if (updateLockIcon) updateLockIcon();
       schedSave();
       renderTabs();
@@ -2547,6 +2644,7 @@
       elMain.style.padding  = '20px';
       document.body.classList.remove('fill-mode');
     }
+    updateBuildIndicator();
     updateFillGridMetrics();
   }
 
@@ -2899,6 +2997,8 @@
   // ── Boot ───────────────────────────────────────────────────────────────────
   (async function boot() {
     await loadSettings();
+    updateLiveModeButton();
+    if (updateLockIcon) updateLockIcon();
     loadCameraSettings();
     loadGridSettings();
     loadCameraManagement();
