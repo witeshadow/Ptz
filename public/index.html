@@ -269,13 +269,17 @@
     #lock-live-btn:hover { background: #b45309; border-color: #b45309; }
     #lock-live-btn.locked {
       color: white;
-      background: var(--error);
-      border-color: var(--error);
+      background: var(--accent);
+      border-color: var(--accent);
       font-weight: 600;
       animation: none;
       box-shadow: none;
     }
-    #lock-live-btn.locked:hover { opacity: 0.9; }
+    #lock-live-btn.locked:hover {
+      background: #2563eb;
+      border-color: #2563eb;
+      opacity: 1;
+    }
 
     .atem-dot {
       width: 7px; height: 7px; border-radius: 50%;
