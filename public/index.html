@@ -2160,27 +2160,28 @@
       preset_btn.classList.remove('state-ok', 'state-fail');
     }
 
-    const startTime = Date.now();
-    const ok = await captureFrame(cam, preset);
+    try {
+      const ok = await captureFrame(cam, preset);
 
-    if (ok) {
-      bumpImageVersion(cam, preset);
-      refreshPresetBtn(preset, cam);
-      if (preset_btn) {
-        preset_btn.classList.remove('state-busy');
-        preset_btn.classList.add('state-ok');
-        setTimeout(() => preset_btn.classList.remove('state-ok'), 1000);
+      if (ok) {
+        bumpImageVersion(cam, preset);
+        refreshPresetBtn(preset, cam);
+        if (preset_btn) {
+          preset_btn.classList.remove('state-busy');
+          preset_btn.classList.add('state-ok');
+          setTimeout(() => preset_btn.classList.remove('state-ok'), 1000);
+        }
+        setStatus('success', `Captured preset ${preset}`);
+      } else {
+        if (preset_btn) {
+          preset_btn.classList.remove('state-busy');
+          preset_btn.classList.add('state-fail');
+          setTimeout(() => preset_btn.classList.remove('state-fail'), 1500);
+        }
       }
-      setStatus('success', `Captured preset ${preset}`);
-    } else {
-      if (preset_btn) {
-        preset_btn.classList.remove('state-busy');
-        preset_btn.classList.add('state-fail');
-        setTimeout(() => preset_btn.classList.remove('state-fail'), 1500);
-      }
+    } finally {
+      btn.disabled = false;
     }
-
-    btn.disabled = false;
   }
 
   // ── Preset grid ────────────────────────────────────────────────────────────
@@ -2390,6 +2391,7 @@
     captureBtn.type      = 'button';
     captureBtn.title     = 'Capture snapshot';
     captureBtn.textContent = '⭐';
+    captureBtn.addEventListener('pointerup', (e) => { e.stopPropagation(); });
     captureBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const activeCam = state.activeCam;
