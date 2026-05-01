@@ -51,6 +51,16 @@ class MotionSample:
         return text
 
 
+@dataclass(frozen=True)
+class ProbeResult:
+    preset: int
+    replies: list[ViscaReply]
+    saw_completion: bool
+    settled: bool
+    samples: list[MotionSample]
+    error: str | None
+
+
 def _nibbles_to_int(data: bytes) -> int:
     return int("".join(f"{byte & 0x0F:X}" for byte in data), 16)
 
@@ -262,52 +272,70 @@ def print_replies(replies: list[ViscaReply]) -> None:
         print(f"  {reply.kind:<10} code=0x{reply.code:02X}{suffix} raw={reply.payload.hex()}")
 
 
-def probe_motion(args: argparse.Namespace) -> int:
-    camera_byte = 0x80 | (args.camera_address & 0x07)
-    preset_payload = bytes([camera_byte, 0x01, 0x04, 0x3F, 0x02, args.preset & 0x7F, 0xFF])
+def probe_preset(
+    *,
+    ip: str,
+    port: int,
+    camera_address: int,
+    preset: int,
+    transport: str,
+    local_port: int | None,
+    completion_timeout: float,
+    settle_timeout: float,
+    poll_interval: float,
+    stable_count: int,
+    inquiry_timeout: float,
+    include_focus: bool,
+    verbose: bool = True,
+) -> ProbeResult:
+    camera_byte = 0x80 | (camera_address & 0x07)
+    preset_payload = bytes([camera_byte, 0x01, 0x04, 0x3F, 0x02, preset & 0x7F, 0xFF])
     seq_counter = SequenceCounter()
-    local_port = args.local_port
-    if local_port is None and args.transport == "sony-udp":
-        local_port = args.port
+    if local_port is None and transport == "sony-udp":
+        local_port = port
+    samples: list[MotionSample] = []
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         sock.bind(("", 0 if local_port is None else local_port))
-        sock.settimeout(args.inquiry_timeout)
-        print(
-            f"Sending preset {args.preset} to {args.ip}:{args.port} "
-            f"using {args.transport} (local port {sock.getsockname()[1]})."
-        )
-        send_command(sock, args.ip, args.port, preset_payload, args.transport, seq_counter)
+        sock.settimeout(inquiry_timeout)
+        if verbose:
+            print(
+                f"Sending preset {preset} to {ip}:{port} "
+                f"using {transport} (local port {sock.getsockname()[1]})."
+            )
+        send_command(sock, ip, port, preset_payload, transport, seq_counter)
         replies, saw_completion = wait_for_completion(
             sock,
-            args.transport,
-            args.completion_timeout,
+            transport,
+            completion_timeout,
         )
-        print_replies(replies)
-        if saw_completion:
-            print("VISCA completion arrived before settle polling.")
-        else:
-            print("No VISCA completion arrived in time; falling back to motion polling.")
+        if verbose:
+            print_replies(replies)
+            if saw_completion:
+                print("VISCA completion arrived before settle polling.")
+            else:
+                print("No VISCA completion arrived in time; falling back to motion polling.")
 
-        settle_deadline = time.monotonic() + args.settle_timeout
+        settle_deadline = time.monotonic() + settle_timeout
         last_key: tuple[int, ...] | None = None
         stable_runs = 0
         observed_change = False
-        guard_deadline = time.monotonic() + max(args.poll_interval * args.stable_count, 0.6)
+        guard_deadline = time.monotonic() + max(poll_interval * stable_count, 0.6)
 
         while time.monotonic() < settle_deadline:
             sample = query_motion_sample(
                 sock,
-                args.ip,
-                args.port,
-                args.camera_address,
-                args.transport,
+                ip,
+                port,
+                camera_address,
+                transport,
                 seq_counter,
-                args.include_focus,
-                args.inquiry_timeout,
+                include_focus,
+                inquiry_timeout,
             )
-            key = sample.comparable(args.include_focus)
+            samples.append(sample)
+            key = sample.comparable(include_focus)
             if key == last_key:
                 stable_runs += 1
             else:
@@ -315,17 +343,69 @@ def probe_motion(args: argparse.Namespace) -> int:
                     observed_change = True
                 stable_runs = 1
             last_key = key
-            print(f"[sample {stable_runs}/{args.stable_count}] {sample.format()}")
-            if stable_runs >= args.stable_count:
+            if verbose:
+                print(f"[sample {stable_runs}/{stable_count}] {sample.format()}")
+            if stable_runs >= stable_count:
                 if observed_change or time.monotonic() >= guard_deadline or saw_completion:
-                    print("Motion appears settled.")
-                    return 0
-            time.sleep(args.poll_interval)
+                    if verbose:
+                        print("Motion appears settled.")
+                    return ProbeResult(
+                        preset=preset,
+                        replies=replies,
+                        saw_completion=saw_completion,
+                        settled=True,
+                        samples=samples,
+                        error=None,
+                    )
+            time.sleep(poll_interval)
 
-        print("Timed out before motion settled.")
-        return 2
+        if verbose:
+            print("Timed out before motion settled.")
+        return ProbeResult(
+            preset=preset,
+            replies=replies,
+            saw_completion=saw_completion,
+            settled=False,
+            samples=samples,
+            error=None,
+        )
+    except Exception as exc:
+        if verbose:
+            print(f"Probe failed: {exc}")
+        return ProbeResult(
+            preset=preset,
+            replies=[],
+            saw_completion=False,
+            settled=False,
+            samples=samples,
+            error=str(exc),
+        )
     finally:
         sock.close()
+
+
+def probe_motion(args: argparse.Namespace) -> int:
+    result = probe_preset(
+        ip=args.ip,
+        port=args.port,
+        camera_address=args.camera_address,
+        preset=args.preset,
+        transport=args.transport,
+        local_port=args.local_port,
+        completion_timeout=args.completion_timeout,
+        settle_timeout=args.settle_timeout,
+        poll_interval=args.poll_interval,
+        stable_count=args.stable_count,
+        inquiry_timeout=args.inquiry_timeout,
+        include_focus=args.include_focus,
+        verbose=True,
+    )
+    if result.error:
+        print(f"Error: {result.error}", file=sys.stderr)
+        return 1
+    if result.settled:
+        return 0
+    return 2
 
 
 def build_parser() -> argparse.ArgumentParser:
