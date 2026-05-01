@@ -36,7 +36,19 @@ class TestFrontendContracts(unittest.TestCase):
     def test_explicit_scan_and_atem_mapping_hints_present(self):
         self.assertIn("ATEM Source Number", self.html)
         self.assertIn("ATEM bus status:", self.html)
-        self.assertIn("Scan capture source:", self.html)
+        self.assertIn("PTZ scan uses:", self.html)
+        self.assertIn("Current routed source:", self.html)
+        self.assertIn("Direct Camera Capture", self.html)
+        self.assertIn("Used only when ATEM routing is off.", self.html)
+        self.assertIn("Local Preview PIP", self.html)
+        self.assertIn("Preview Device", self.html)
+        self.assertIn("Local Preview", self.html)
+        self.assertIn("USB Webcam", self.html)
+        self.assertIn("SDI Out 4", self.html)
+        self.assertIn("Source Label", self.html)
+        self.assertIn("e.g. Multiview", self.html)
+        self.assertIn("Scan source:", self.html)
+        self.assertIn("Scan Output", self.html)
 
 
 if __name__ == "__main__":
