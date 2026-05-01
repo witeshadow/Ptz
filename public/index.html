@@ -213,6 +213,24 @@
     }
     #live-mode-btn.live:hover { background: var(--success); opacity: 0.9; }
 
+    #lock-live-btn {
+      background: var(--surf2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 10px;
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s, background-color 0.2s;
+    }
+    #lock-live-btn:hover { border-color: var(--accent); color: var(--accent); }
+    #lock-live-btn.locked {
+      color: var(--error);
+      border-color: var(--error);
+    }
+    #lock-live-btn.locked:hover { background: rgba(239, 68, 68, 0.1); }
+
     .atem-dot {
       width: 7px; height: 7px; border-radius: 50%;
       background: var(--muted); flex-shrink: 0;
@@ -560,6 +578,7 @@
     body.fill-mode #fill-cam-strip { display: inline-flex; }
     body.fill-mode #fullscreen-btn { padding: 4px 8px; font-size: 0.92rem; }
     body.fill-mode #live-mode-btn { padding: 4px 9px; font-size: 0.68rem; }
+    body.fill-mode #lock-live-btn { padding: 4px 8px; font-size: 0.92rem; }
     body.fill-mode #atem-pill { padding: 4px 8px; font-size: 0.68rem; }
     body.fill-mode #status { min-width: 112px; padding: 3px 8px; font-size: 0.7rem; }
     body.fill-mode #cam-tabs { display: none; }
@@ -781,6 +800,7 @@
     <div id="fill-cam-strip" aria-label="Camera status controls"></div>
     <button id="fullscreen-btn" title="Toggle fullscreen">&#x26F6;</button>
     <button id="live-mode-btn" class="live" title="Toggle Live/Edit mode">Live</button>
+    <button id="lock-live-btn" title="Prevent camera movement in live mode">🔓</button>
     <div id="atem-pill" class="disabled">
       <div class="atem-dot"></div>
       <span>ATEM</span>
@@ -1022,6 +1042,7 @@
     atem: { ip: '', enabled: false },
     showAtemDebug: false,
     liveMode: true,
+    lockLiveMode: false,
     atemFollows: 'preview',
     previewSource: null,
     programSource: null,
@@ -1125,6 +1146,7 @@
         if (s.gridRows    != null) state.gridRows    = +s.gridRows;
         if (s.fillWindow  != null) state.fillWindow  = !!s.fillWindow;
         if (s.liveMode      != null) state.liveMode      = !!s.liveMode;
+        if (s.lockLiveMode  != null) state.lockLiveMode  = !!s.lockLiveMode;
         if (s.showAtemDebug != null) state.showAtemDebug = !!s.showAtemDebug;
         if (s.atemFollows)           state.atemFollows   = s.atemFollows;
         if (s.atemOutputMap) state.atemOutputMap = normalizeAtemOutputMap(s.atemOutputMap);
@@ -1691,6 +1713,20 @@
       schedSave();
       renderTabs();
       updateToolbarVisibility();
+    });
+  }
+
+  const elLockLiveBtn = document.getElementById('lock-live-btn');
+  if (elLockLiveBtn) {
+    function updateLockIcon() {
+      elLockLiveBtn.textContent = state.lockLiveMode ? '🔒' : '🔓';
+      elLockLiveBtn.classList.toggle('locked', state.lockLiveMode);
+    }
+    updateLockIcon();
+    elLockLiveBtn.addEventListener('click', () => {
+      state.lockLiveMode = !state.lockLiveMode;
+      updateLockIcon();
+      schedSave();
     });
   }
 
@@ -2500,6 +2536,10 @@
   }
 
   async function recallPreset(n, btn) {
+    if (state.liveMode && state.lockLiveMode) {
+      setStatus('error', 'Cannot recall presets while live mode is locked');
+      flash(btn, 'fail'); return;
+    }
     const cam = state.cameras[state.activeCam];
     if (!cam.ip) {
       setStatus('error', 'Enter the camera IP address first');
