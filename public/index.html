@@ -1742,6 +1742,27 @@
     if (btnScanEl) btnScanEl.style.display = state.liveMode ? 'none' : '';
   }
 
+  // Define lock button handler FIRST so it's available for live button to use
+  let updateLockIcon;
+  const elLockLiveBtn = document.getElementById('lock-live-btn');
+  if (elLockLiveBtn) {
+    updateLockIcon = function() {
+      if (state.lockLiveMode) {
+        elLockLiveBtn.textContent = '🔒 Locked';
+        elLockLiveBtn.classList.add('locked');
+      } else {
+        elLockLiveBtn.textContent = '🔓 Unlock';
+        elLockLiveBtn.classList.remove('locked');
+      }
+    };
+    updateLockIcon();
+    elLockLiveBtn.addEventListener('click', () => {
+      state.lockLiveMode = !state.lockLiveMode;
+      updateLockIcon();
+      schedSave();
+    });
+  }
+
   const elLiveBtn = document.getElementById('live-mode-btn');
   if (elLiveBtn) {
     elLiveBtn.addEventListener('click', () => {
@@ -1756,29 +1777,10 @@
       }
       elLiveBtn.textContent = state.liveMode ? 'Live' : 'Edit';
       elLiveBtn.classList.toggle('live', state.liveMode);
-      if (elLockLiveBtn) updateLockIcon();
+      if (updateLockIcon) updateLockIcon();
       schedSave();
       renderTabs();
       updateToolbarVisibility();
-    });
-  }
-
-  const elLockLiveBtn = document.getElementById('lock-live-btn');
-  if (elLockLiveBtn) {
-    function updateLockIcon() {
-      if (state.lockLiveMode) {
-        elLockLiveBtn.textContent = '🔒 Locked';
-        elLockLiveBtn.classList.add('locked');
-      } else {
-        elLockLiveBtn.textContent = '🔓 Unlock';
-        elLockLiveBtn.classList.remove('locked');
-      }
-    }
-    updateLockIcon();
-    elLockLiveBtn.addEventListener('click', () => {
-      state.lockLiveMode = !state.lockLiveMode;
-      updateLockIcon();
-      schedSave();
     });
   }
 
