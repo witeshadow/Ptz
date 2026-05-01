@@ -315,7 +315,7 @@
     .cam-tab:hover { color: var(--text); }
     .cam-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
     .cam-tab.live { background: rgba(34, 197, 94, 0.1); }
-    .cam-tab.edit { background: rgba(107, 114, 128, 0.05); }
+    .cam-tab.edit { background: rgba(217, 119, 6, 0.08); }
 
     .cam-badge {
       display: inline-block;
@@ -329,7 +329,7 @@
     }
     .cam-badge.live { background: var(--error); color: white; }
     .cam-badge.preview { background: var(--success); color: white; }
-    .cam-badge.edit { background: var(--muted); color: var(--surf); }
+    .cam-badge.edit { background: #d97706; color: white; }
 
     .cam-name-wrap {
       position: relative;
@@ -632,6 +632,20 @@
       transition: border-color .2s, color .2s;
     }
     .btn-ghost:hover, .btn-ghost.active { border-color: var(--accent); color: var(--accent); }
+    #btn-edit.active {
+      border-color: #d97706;
+      color: #fbbf24;
+      background: rgba(217, 119, 6, 0.14);
+    }
+    #btn-auto-cut.active {
+      border-color: var(--success);
+      color: var(--success);
+      background: rgba(16, 185, 129, 0.12);
+    }
+    #btn-auto-cut:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
 
     /* ── Scan bar ────────────────────────────────────── */
     #scan-bar {
@@ -660,9 +674,10 @@
       font-size: .68rem; color: var(--muted);
       text-align: center; flex-shrink: 0;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 10px;
+      gap: 6px;
       flex-wrap: wrap;
     }
 
@@ -670,25 +685,26 @@
       position: static;
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      padding: 5px 9px;
-      border: 1px solid rgba(148,163,184,.2);
+      gap: 4px;
+      padding: 3px 7px;
+      border: 1px solid rgba(148,163,184,.12);
       border-radius: 999px;
-      background: rgba(13,15,22,.82);
-      color: var(--muted);
-      font-size: 0.66rem;
-      font-weight: 600;
-      letter-spacing: 0.04em;
+      background: rgba(13,15,22,.55);
+      color: rgba(148,163,184,.82);
+      font-size: 0.58rem;
+      font-weight: 500;
+      letter-spacing: 0.03em;
       text-transform: uppercase;
-      box-shadow: 0 4px 16px rgba(0,0,0,.25);
+      box-shadow: 0 2px 8px rgba(0,0,0,.16);
       pointer-events: none;
       user-select: none;
-      -webkit-backdrop-filter: blur(6px);
-      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(4px);
+      backdrop-filter: blur(4px);
+      opacity: 0.8;
     }
 
-    #build-indicator .build-commit { color: var(--label); }
-    #build-indicator .build-mode { color: var(--accent); }
+    #build-indicator .build-commit { color: rgba(148,163,184,.72); }
+    #build-indicator .build-mode { color: rgba(59,130,246,.82); }
 
     /* ── Fill-window layout ──────────────────────────────── */
     body.fill-mode { height: 100vh; overflow: hidden; }
@@ -718,10 +734,11 @@
     body.fill-mode footer { display: none; }
     body.fill-mode #build-indicator {
       position: fixed;
-      right: 12px;
+      left: 50%;
+      transform: translateX(-50%);
       bottom: 12px;
-      padding: 4px 8px;
-      font-size: 0.62rem;
+      padding: 3px 7px;
+      font-size: 0.56rem;
       z-index: 197;
     }
 
@@ -1072,6 +1089,7 @@
   <div id="preset-grid"><!-- rendered by JS --></div>
   <div id="toolbar">
     <button class="btn-primary" id="btn-scan">Scan All Presets</button>
+    <button class="btn-ghost"    id="btn-auto-cut" style="display:none">Auto Cut</button>
     <button class="btn-ghost"    id="btn-edit">Edit Labels / Snap</button>
     <div id="capture-source-toggle" style="display:none">
       <button class="btn-ghost csrc-btn" data-src="active"   title="Capture from active camera">ACT</button>
@@ -1177,8 +1195,19 @@
         <span>Follow ATEM</span>
       </label>
       <div class="field gsp-mobile-section active" data-mobile-tab="atem">
-        <label for="f-atem-ip">ATEM IP</label>
-        <input id="f-atem-ip" type="text" placeholder="192.168.1.200" autocomplete="off" spellcheck="false" />
+      <label for="f-atem-ip">ATEM IP</label>
+      <input id="f-atem-ip" type="text" placeholder="192.168.1.200" autocomplete="off" spellcheck="false" />
+    </div>
+      <label class="atem-toggle-wrap gsp-mobile-section active" data-mobile-tab="atem">
+        <input id="f-auto-cut-enabled" type="checkbox" />
+        <span>Enable Auto Cut</span>
+      </label>
+      <div class="field gsp-mobile-section active" data-mobile-tab="atem">
+        <label for="f-auto-cut-delay">Auto Cut Delay (s)</label>
+        <input id="f-auto-cut-delay" type="number" min="0" max="30" step="0.5" />
+        <div class="field-note">
+          When Auto Cut is armed, recalling a preset will switch that camera to air after this delay.
+        </div>
       </div>
       <label class="atem-toggle-wrap gsp-mobile-section active" data-mobile-tab="atem">
         <input id="gsp-atem-debug" type="checkbox" />
@@ -1329,6 +1358,8 @@
     lockLiveMode: false,
     unlockOnExitLiveMode: true,
     atemFollows: 'preview',
+    autoCutEnabled: false,
+    autoCutDelayMs: 2000,
     previewSource: null,
     programSource: null,
     captureSource: 'active',
@@ -1436,6 +1467,8 @@
         if (s.unlockOnExitLiveMode != null) state.unlockOnExitLiveMode = !!s.unlockOnExitLiveMode;
         if (s.showAtemDebug != null) state.showAtemDebug = !!s.showAtemDebug;
         if (s.atemFollows)           state.atemFollows   = s.atemFollows;
+        if (s.autoCutEnabled != null) state.autoCutEnabled = !!s.autoCutEnabled;
+        if (s.autoCutDelayMs != null) state.autoCutDelayMs = Math.max(0, +s.autoCutDelayMs || 0);
         if (s.atemOutputMap) state.atemOutputMap = normalizeAtemOutputMap(s.atemOutputMap);
         if (s.atemSourceLabels) state.atemSourceLabels = { ...s.atemSourceLabels };
         if (s.captureOutput) state.captureOutput = normalizeCaptureOutput(s.captureOutput);
@@ -1569,6 +1602,7 @@
       elAtemPill.className = 'disabled';
       elAtemPillText.textContent = 'ATEM Off';
       elAtemPill.title = 'ATEM integration is disabled';
+      updateAutoCutButton();
       return;
     }
 
@@ -1576,6 +1610,7 @@
       elAtemPill.className = 'waiting';
       elAtemPillText.textContent = 'ATEM Wait';
       elAtemPill.title = 'ATEM is enabled but not connected yet';
+      updateAutoCutButton();
       return;
     }
 
@@ -1594,6 +1629,7 @@
     const baseText = `ATEM P${program} V${preview}`;
     elAtemPillText.textContent = liveCameraName ? `${baseText} • 📹 ${liveCameraName} LIVE` : baseText;
     elAtemPill.title = `ATEM connected • Program ${program}${liveCameraName ? ` (${liveCameraName})` : ''} • Preview ${preview}`;
+    updateAutoCutButton();
   }
 
   // ── ATEM debug overlay ─────────────────────────────────────────────────────
@@ -1816,6 +1852,7 @@
       setStatus('busy', 'Finish or cancel the current scan before changing cameras', false);
       return;
     }
+    clearPendingAutoCut();
     saveCameraSettings();
     state.activeCam = idx;
     schedSave();
@@ -1824,6 +1861,7 @@
     refreshGridForActiveCamera();
     applyGridLayout();
     updateAtemDebug();
+    updateToolbarVisibility();
   }
 
   function openTabNameEditor(idx, nameEl, nameWrap) {
@@ -1863,6 +1901,8 @@
   const elAtemStatus = document.getElementById('f-atem-status');
   const elCaptureSourceStatus = document.getElementById('f-capture-source-status');
   const elDwell     = document.getElementById('f-dwell');
+  const elAutoCutEnabled = document.getElementById('f-auto-cut-enabled');
+  const elAutoCutDelay = document.getElementById('f-auto-cut-delay');
 
   function updateCameraStatusHints() {
     if (elAtemStatus) {
@@ -1904,6 +1944,8 @@
     elDwell.value     = state.dwellMs / 1000;
     elAtemEnabled.checked = !!state.atem.enabled;
     elAtemIp.value        = state.atem.ip || '';
+    if (elAutoCutEnabled) elAutoCutEnabled.checked = !!state.autoCutEnabled;
+    if (elAutoCutDelay) elAutoCutDelay.value = String((state.autoCutDelayMs || 0) / 1000);
     updateAtemPill();
     elUsbDevice.value = cam.usbDevice || '';
     const url = cam.streamUrl || '';
@@ -1930,6 +1972,8 @@
     state.dwellMs  = (parseInt(elDwell.value, 10) || 3) * 1000;
     state.atem.enabled = elAtemEnabled.checked;
     state.atem.ip      = elAtemIp.value.trim();
+    state.autoCutEnabled = !!(elAutoCutEnabled && elAutoCutEnabled.checked);
+    state.autoCutDelayMs = Math.max(0, Math.round(((parseFloat(elAutoCutDelay?.value || '0') || 0) * 1000)));
     updateCameraStatusHints();
   }
 
@@ -1945,6 +1989,7 @@
     saveCameraSettings();
     schedSave();
     if (!state.atem.enabled) atemConnected = false;
+    if (!state.atem.enabled) setAutoCutArmed(false);
     updateAtemPill();
     updateAtemDebug();
     updateToolbarVisibility();
@@ -1955,6 +2000,21 @@
     updateCaptureOutputLabel();
   });
   elAtemIp.addEventListener('change', () => { saveCameraSettings(); schedSave(); });
+  if (elAutoCutEnabled) {
+    elAutoCutEnabled.addEventListener('change', () => {
+      saveCameraSettings();
+      if (!state.autoCutEnabled) setAutoCutArmed(false);
+      schedSave();
+      updateToolbarVisibility();
+    });
+  }
+  if (elAutoCutDelay) {
+    elAutoCutDelay.addEventListener('change', () => {
+      saveCameraSettings();
+      schedSave();
+      updateAutoCutButton();
+    });
+  }
 
   // ── SSE ────────────────────────────────────────────────────────────────────
   (function initSSE() {
@@ -2019,14 +2079,129 @@
 
   // ── Live/Edit mode toggle ──────────────────────────────────────────────────
   const elCaptureToggle = document.getElementById('capture-source-toggle');
+  const elAutoCutBtn = document.getElementById('btn-auto-cut');
+  let autoCutArmed = false;
+  let autoCutTimer = null;
+  let autoCutPending = null;
+
+  function getAutoCutDelaySeconds() {
+    return ((state.autoCutDelayMs || 0) / 1000).toFixed(1).replace(/\.0$/, '');
+  }
+
+  function clearPendingAutoCut() {
+    if (autoCutTimer) {
+      clearTimeout(autoCutTimer);
+      autoCutTimer = null;
+    }
+    autoCutPending = null;
+  }
+
+  function getActiveCameraCutSource() {
+    return getCameraAtemInput(state.activeCam);
+  }
+
+  function canArmAutoCut() {
+    return !state.liveMode && !!state.atem.enabled && !!state.autoCutEnabled && !!atemConnected;
+  }
+
+  function updateAutoCutButton() {
+    if (!elAutoCutBtn) return;
+    const delayText = `${getAutoCutDelaySeconds()}s`;
+    const source = getActiveCameraCutSource();
+    const armable = canArmAutoCut();
+    elAutoCutBtn.textContent = 'Auto Cut';
+    elAutoCutBtn.classList.toggle('active', autoCutArmed);
+    elAutoCutBtn.setAttribute('aria-pressed', autoCutArmed ? 'true' : 'false');
+    elAutoCutBtn.disabled = !armable || !source;
+    if (!state.atem.enabled) {
+      elAutoCutBtn.title = 'Enable ATEM to use Auto Cut';
+    } else if (!atemConnected) {
+      elAutoCutBtn.title = 'Wait for ATEM to connect';
+    } else if (!state.autoCutEnabled) {
+      elAutoCutBtn.title = 'Turn on Enable Auto Cut in Settings';
+    } else if (state.liveMode) {
+      elAutoCutBtn.title = 'Auto Cut can only be armed in Edit mode';
+    } else if (!source) {
+      elAutoCutBtn.title = 'Set an ATEM source number for this camera first';
+    } else if (autoCutArmed) {
+      elAutoCutBtn.title = `Armed: cut ${state.cameras[state.activeCam]?.name || 'camera'} to air after ${delayText}`;
+    } else {
+      elAutoCutBtn.title = `Arm Auto Cut (${delayText})`;
+    }
+  }
+
+  function setAutoCutArmed(nextArmed) {
+    autoCutArmed = !!nextArmed && canArmAutoCut() && !!getActiveCameraCutSource();
+    if (!autoCutArmed) clearPendingAutoCut();
+    updateAutoCutButton();
+  }
+
+  async function fireAutoCut(source, camName, preset) {
+    try {
+      const res = await fetch('/atem/cut', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || data.message || `HTTP ${res.status}`);
+      }
+      setStatus('success', `Auto Cut: ${camName} preset ${preset} is now live`);
+    } catch (err) {
+      setStatus('error', `Auto Cut failed: ${err.message || err}`);
+    } finally {
+      autoCutTimer = null;
+      autoCutPending = null;
+    }
+  }
+
+  function scheduleAutoCut(preset, camIdx) {
+    if (!autoCutArmed || !canArmAutoCut()) return;
+    const source = getCameraAtemInput(camIdx);
+    if (!source) {
+      setStatus('error', 'Set an ATEM source number for this camera before using Auto Cut');
+      setAutoCutArmed(false);
+      return;
+    }
+    clearPendingAutoCut();
+    const camName = state.cameras[camIdx]?.name || `Camera ${camIdx + 1}`;
+    const delayMs = Math.max(0, state.autoCutDelayMs || 0);
+    autoCutPending = { source, camName, preset };
+    setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} in ${getAutoCutDelaySeconds()}s`, false);
+    autoCutTimer = setTimeout(() => {
+      const pending = autoCutPending;
+      if (!pending) return;
+      fireAutoCut(pending.source, pending.camName, pending.preset);
+    }, delayMs);
+  }
+
+  if (elAutoCutBtn) {
+    elAutoCutBtn.addEventListener('click', () => {
+      if (!canArmAutoCut()) return;
+      const source = getActiveCameraCutSource();
+      if (!source) {
+        setStatus('error', 'Set an ATEM source number for this camera first');
+        return;
+      }
+      setAutoCutArmed(!autoCutArmed);
+      if (autoCutArmed) {
+        setStatus('success', `Auto Cut armed for ${state.cameras[state.activeCam]?.name || 'camera'} (${getAutoCutDelaySeconds()}s)`);
+      }
+    });
+  }
 
   function updateToolbarVisibility() {
     const btnScanEl = document.getElementById('btn-scan');
     if (btnScanEl) btnScanEl.style.display = state.liveMode ? 'none' : '';
+    if (elAutoCutBtn) {
+      elAutoCutBtn.style.display = (!state.liveMode && state.atem.enabled) ? '' : 'none';
+    }
     if (elCaptureToggle) {
       elCaptureToggle.style.display =
         (!state.liveMode && state.atem.enabled) ? 'flex' : 'none';
     }
+    updateAutoCutButton();
   }
 
   // Restore capture source preference and wire up toggle buttons
@@ -2078,6 +2253,7 @@
       state.liveMode = !state.liveMode;
       if (state.liveMode) {
         state.lockLiveMode = true;
+        setAutoCutArmed(false);
         setStatus('success', 'Live mode activated - camera locked to prevent accidental movement');
       } else {
         if (state.unlockOnExitLiveMode) {
@@ -2955,15 +3131,15 @@
   }
 
   async function recallPreset(n, btn) {
+    const recallCamIdx = state.activeCam;
     if (state.liveMode && state.lockLiveMode) {
-      const activeCam = state.activeCam;
-      const isLiveCamera = cameraMatchesAtemSource(activeCam, state.programSource);
+      const isLiveCamera = cameraMatchesAtemSource(recallCamIdx, state.programSource);
       if (isLiveCamera) {
         setStatus('error', 'Cannot move LIVE camera while lock is enabled');
         flash(btn, 'fail'); return;
       }
     }
-    const cam = state.cameras[state.activeCam];
+    const cam = state.cameras[recallCamIdx];
     if (!cam.ip) {
       setStatus('error', 'Enter the camera IP address first');
       flash(btn, 'fail'); return;
@@ -2977,6 +3153,7 @@
         ? `Preset ${n} recalled — ${data.message}`
         : `Preset ${n} recalled`;
       setStatus('success', msg);
+      scheduleAutoCut(n, recallCamIdx);
     } else {
       flash(btn, 'fail', 1100);
       const msg = state.showAtemDebug

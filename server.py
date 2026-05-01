@@ -81,6 +81,8 @@ DEFAULT_SETTINGS = {
     "lockLiveMode": False,
     "unlockOnExitLiveMode": True,
     "atemFollows": "preview",
+    "autoCutEnabled": False,
+    "autoCutDelayMs": 2000,
     "atemOutputMap": {
         "webcam": {"webcam": "", "streamUrl": ""},
         "sdi1": {"webcam": "", "streamUrl": ""},
@@ -139,6 +141,13 @@ _atem_state = {
     "aux4": 0,
 }
 _atem_state_lock = threading.Lock()
+_atem_conn = {
+    "sock": None,
+    "addr": None,
+    "session_id": 0,
+    "packet_id": 0,
+}
+_atem_conn_lock = threading.Lock()
 
 
 def _set_atem(
@@ -162,6 +171,23 @@ def _set_atem(
 def _get_atem() -> dict:
     with _atem_state_lock:
         return dict(_atem_state)
+
+
+def _clear_atem_conn():
+    with _atem_conn_lock:
+        _atem_conn["sock"] = None
+        _atem_conn["addr"] = None
+        _atem_conn["session_id"] = 0
+        _atem_conn["packet_id"] = 0
+
+
+def _update_atem_conn(sock, addr, session_id: int):
+    with _atem_conn_lock:
+        _atem_conn["sock"] = sock
+        _atem_conn["addr"] = addr
+        _atem_conn["session_id"] = session_id
+        if not _atem_conn["packet_id"]:
+            _atem_conn["packet_id"] = 0
 
 
 # ── ATEM UDP client ────────────────────────────────────────────────────────────
@@ -216,6 +242,45 @@ def _parse_commands(payload: bytes):
         pos += cmd_len
 
 
+def _build_atem_command(name: str, payload: bytes) -> bytes:
+    cmd_name = name.encode("ascii")
+    if len(cmd_name) != 4:
+        raise ValueError("ATEM command names must be 4 ASCII bytes")
+    total_len = 8 + len(payload)
+    return struct.pack(">H2x4s", total_len, cmd_name) + payload
+
+
+def _send_atem_command(name: str, payload: bytes) -> tuple[bool, str]:
+    packet_payload = _build_atem_command(name, payload)
+    with _atem_conn_lock:
+        sock = _atem_conn["sock"]
+        addr = _atem_conn["addr"]
+        session_id = int(_atem_conn["session_id"] or 0)
+        if not sock or not addr or session_id <= 0:
+            return False, "ATEM is not connected"
+        packet_id = (int(_atem_conn["packet_id"] or 0) + 1) & 0x7FFF
+        if packet_id == 0:
+            packet_id = 1
+        _atem_conn["packet_id"] = packet_id
+        packet_len = 12 + len(packet_payload)
+        word0 = (0x01 << 11) | packet_len
+        packet = struct.pack(
+            ">HHHHHH", word0, session_id, 0, 0, 0, packet_id
+        ) + packet_payload
+        try:
+            sock.sendto(packet, addr)
+        except OSError as exc:
+            return False, str(exc)
+    return True, f"ATEM packet {packet_id} sent"
+
+
+def cut_atem_to_source(source: int) -> tuple[bool, str]:
+    if source <= 0:
+        return False, "Invalid ATEM source"
+    payload = bytes([0, 0]) + struct.pack(">H", source)
+    return _send_atem_command("CPgI", payload)
+
+
 def _atem_loop():
     while True:
         cfg = load_settings().get("atem", {})
@@ -229,12 +294,13 @@ def _atem_loop():
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.settimeout(5.0)
-            sock.sendto(ATEM_HELLO, (ip, ATEM_PORT))
+            atem_addr = (ip, ATEM_PORT)
+            sock.sendto(ATEM_HELLO, atem_addr)
             data, _ = sock.recvfrom(2048)
             print(f"[ATEM] HELLO response raw={data[:12].hex()}")
             # ACK the HELLO response with session_id=0 (not yet assigned)
             _, hello_seq = _parse_header(data)
-            sock.sendto(_make_ack(0, hello_seq), (ip, ATEM_PORT))
+            sock.sendto(_make_ack(0, hello_seq), atem_addr)
 
             # drain init dump; pick up actual session_id from first data packet
             session_id = 0
@@ -250,9 +316,10 @@ def _atem_loop():
                     pkt_sid = struct.unpack(">H", data[2:4])[0]
                     if pkt_sid != 0:
                         session_id = pkt_sid
+                        _update_atem_conn(sock, atem_addr, session_id)
                     flags, seq_num = _parse_header(data)
                     if flags & 0x01:  # ATEM wants ACK (RELIABLE flag)
-                        sock.sendto(_make_ack(session_id, seq_num), (ip, ATEM_PORT))
+                        sock.sendto(_make_ack(session_id, seq_num), atem_addr)
                     for cmd, cmd_data in _parse_commands(
                         data[12:] if len(data) > 12 else b""
                     ):
@@ -279,6 +346,7 @@ def _atem_loop():
                     break  # proceed even if InCm wasn't seen
 
             _set_atem(True, preview=init_preview, program=init_program)
+            _update_atem_conn(sock, atem_addr, session_id)
             _broadcast({"type": "atem", **_get_atem()})
             print(
                 f"[ATEM] Connected — init preview={init_preview} program={init_program}"
@@ -310,7 +378,7 @@ def _atem_loop():
                     flags, seq_num = _parse_header(data)
                     last_seq = seq_num
                     if flags & 0x01:  # ATEM wants ACK (RELIABLE flag)
-                        sock.sendto(_make_ack(session_id, seq_num), (ip, ATEM_PORT))
+                        sock.sendto(_make_ack(session_id, seq_num), atem_addr)
                     for cmd, cmd_data in _parse_commands(
                         data[12:] if len(data) > 12 else b""
                     ):
@@ -348,12 +416,13 @@ def _atem_loop():
                     print("[ATEM] No data for 5 s — reconnecting")
                     break
                 if now - last_keepalive >= 0.5:
-                    sock.sendto(_make_ack(session_id, last_seq), (ip, ATEM_PORT))
+                    sock.sendto(_make_ack(session_id, last_seq), atem_addr)
                     last_keepalive = time.monotonic()
 
         except Exception as exc:
             print(f"[ATEM] Error: {exc!r}")
         finally:
+            _clear_atem_conn()
             _set_atem(False)
             print("[ATEM] Disconnected — will retry in 3 s")
             try:
@@ -744,6 +813,8 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/recall":
             self._handle_recall()
+        elif path == "/atem/cut":
+            self._handle_atem_cut()
         elif path == "/settings":
             self._handle_settings_post()
         elif m := re.match(r"^/api/image/(\d+)/(\d+)$", path):
@@ -790,6 +861,33 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True})
         except Exception as e:
             self._json(400, {"ok": False, "error": str(e)})
+
+    def _handle_atem_cut(self):
+        body = self._read_body()
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            self._json(400, {"ok": False, "error": "Invalid JSON"})
+            return
+
+        try:
+            source = int(data.get("source", 0))
+        except (TypeError, ValueError):
+            self._json(400, {"ok": False, "error": "Invalid ATEM source"})
+            return
+
+        cfg = load_settings().get("atem", {})
+        if not cfg.get("enabled"):
+            self._json(409, {"ok": False, "error": "ATEM is disabled in settings"})
+            return
+
+        if not _get_atem().get("connected"):
+            self._json(409, {"ok": False, "error": "ATEM is not connected"})
+            return
+
+        ok, message = cut_atem_to_source(source)
+        status = 200 if ok else 502
+        self._json(status, {"ok": ok, "message": message, "source": source})
 
     def _get_image(self, cam: int, preset: int):
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
