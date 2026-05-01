@@ -39,8 +39,8 @@
       padding: 6px 16px;
       display: flex;
       align-items: center;
+      gap: 12px;
       flex-shrink: 0;
-      position: relative;
     }
 
     .brand-icon {
@@ -58,13 +58,29 @@
       margin-left: auto;
       display: flex;
       align-items: center;
+      justify-content: flex-end;
       gap: 8px;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+      margin-left: auto;
+      min-width: 0;
     }
 
     #fill-cam-strip {
       display: none;
       align-items: center;
       gap: 6px;
+      flex: 1 1 auto;
+      min-width: 0;
+      justify-content: flex-end;
+      flex-wrap: wrap;
     }
 
     .fill-cam-indicator {
@@ -139,10 +155,6 @@
     }
 
     #status {
-      position: absolute;
-      top: 50%;
-      transform: translateY(-50%);
-      right: 180px;
       display: flex; align-items: center;
       background: var(--surf2);
       border: 1px solid var(--border);
@@ -150,9 +162,12 @@
       padding: 4px 10px;
       font-size: 0.75rem;
       color: var(--label);
-      min-width: 140px;
+      width: 180px;
+      min-width: 0;
+      max-width: 180px;
+      flex: 0 0 180px;
+      overflow: hidden;
       transition: border-color 0.3s, color 0.3s;
-      z-index: 10;
     }
     #status.success { border-color: var(--success); color: var(--success); }
     #status.error   { border-color: var(--error);   color: var(--error);   }
@@ -167,15 +182,18 @@
     #status.busy    .status-dot { background: var(--accent); animation: blink .8s ease-in-out infinite; }
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
 
+    #status-text {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .status-hint { display: block; font-size: 0.85rem; margin-top: 4px; }
     .status-hint.status-live { color: var(--error); font-weight: 600; }
     .status-hint.status-preview { color: var(--success); font-weight: 600; }
 
     #atem-pill {
-      position: absolute;
-      top: 50%;
-      transform: translateY(-50%);
-      right: 16px;
       display: flex; align-items: center;
       background: var(--surf2);
       border: 1px solid var(--border);
@@ -185,7 +203,6 @@
       color: var(--muted);
       transition: border-color 0.3s, color 0.3s;
       white-space: nowrap;
-      z-index: 10;
     }
     #atem-pill.connected { border-color: var(--success); color: var(--success); }
     #atem-pill.connected .atem-dot { background: var(--success); }
@@ -621,6 +638,8 @@
     /* ── Fill-window layout ──────────────────────────────── */
     body.fill-mode { height: 100vh; overflow: hidden; }
     body.fill-mode header { padding: 4px 8px; }
+    body.fill-mode .header-pills { gap: 6px; }
+    body.fill-mode .header-actions { gap: 6px; }
     body.fill-mode .brand-icon { width: 24px; height: 24px; border-radius: 5px; }
     body.fill-mode .brand-icon svg { width: 13px; height: 13px; }
     body.fill-mode .brand-text h1 { font-size: 0.8rem; }
@@ -630,7 +649,7 @@
     body.fill-mode #live-mode-btn { padding: 4px 9px; font-size: 0.68rem; }
     body.fill-mode #lock-live-btn { padding: 4px 8px; font-size: 0.65rem; min-width: 70px; }
     body.fill-mode #atem-pill { padding: 4px 8px; font-size: 0.68rem; }
-    body.fill-mode #status { min-width: 112px; padding: 3px 8px; font-size: 0.7rem; }
+    body.fill-mode #status { width: 150px; max-width: 150px; flex-basis: 150px; padding: 3px 8px; font-size: 0.7rem; }
     body.fill-mode #cam-tabs { display: none; }
     body.fill-mode main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
     body.fill-mode #preset-grid { flex: 1; align-content: start; justify-content: center; gap: 6px; }
@@ -730,11 +749,24 @@
 
     @media (max-width: 640px) {
       /* Header: hide subtitle and compress pills */
+      header { flex-wrap: wrap; }
+      .header-pills {
+        margin-left: 0;
+        width: 100%;
+      }
+      .header-actions {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
       .brand-text p { display: none; }
       #fullscreen-btn { display: none; }
       #atem-pill span { display: none; }
-      #atem-pill { min-width: unset; padding: 5px 8px; right: 16px !important; }
-      #status { min-width: unset; right: 72px !important; }
+      #atem-pill { min-width: unset; padding: 5px 8px; }
+      #status {
+        width: 140px;
+        max-width: 140px;
+        flex-basis: 140px;
+      }
     }
 
     @media (max-width: 480px) {
@@ -820,6 +852,7 @@
     /* ── Flex gap fallbacks (Safari < 14.5) ─────────────── */
     header > * + *          { margin-left: 12px; }
     .header-pills > * + *   { margin-left: 8px; }
+    .header-actions > * + * { margin-left: 8px; }
     #status > * + *         { margin-left: 7px; }
     #atem-pill > * + *      { margin-left: 6px; }
     #cam-tabs > * + *       { margin-left: 2px; }
@@ -848,16 +881,18 @@
   </div>
   <div class="header-pills">
     <div id="fill-cam-strip" aria-label="Camera status controls"></div>
-    <button id="fullscreen-btn" title="Toggle fullscreen">&#x26F6;</button>
-    <button id="live-mode-btn" class="live" title="Toggle Live/Edit mode">Live</button>
-    <button id="lock-live-btn" title="Lock camera to prevent preset movement"></button>
-    <div id="atem-pill" class="disabled">
-      <div class="atem-dot"></div>
-      <span>ATEM</span>
-    </div>
-    <div id="status" role="status" aria-live="polite">
-      <div class="status-dot"></div>
-      <span id="status-text">Ready</span>
+    <div class="header-actions">
+      <button id="fullscreen-btn" title="Toggle fullscreen">&#x26F6;</button>
+      <button id="live-mode-btn" class="live" title="Toggle Live/Edit mode">Live</button>
+      <button id="lock-live-btn" title="Lock camera to prevent preset movement"></button>
+      <div id="atem-pill" class="disabled">
+        <div class="atem-dot"></div>
+        <span>ATEM</span>
+      </div>
+      <div id="status" role="status" aria-live="polite">
+        <div class="status-dot"></div>
+        <span id="status-text">Ready</span>
+      </div>
     </div>
   </div>
 </header>
