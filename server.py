@@ -78,6 +78,8 @@ DEFAULT_SETTINGS = {
     "dwellMs": 3000,
     "atem": {"ip": "", "enabled": False},
     "liveMode": True,
+    "lockLiveMode": False,
+    "unlockOnExitLiveMode": True,
     "atemFollows": "preview",
     "atemOutputMap": {
         "webcam": {"webcam": "", "streamUrl": ""},
