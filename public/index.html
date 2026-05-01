@@ -659,13 +659,15 @@
       padding: 10px 20px;
       font-size: .68rem; color: var(--muted);
       text-align: center; flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
     }
 
     #build-indicator {
-      position: fixed;
-      left: 18px;
-      bottom: 18px;
-      z-index: 197;
+      position: static;
       display: inline-flex;
       align-items: center;
       gap: 6px;
@@ -715,10 +717,12 @@
     body.fill-mode #scan-label { font-size: 0.68rem; }
     body.fill-mode footer { display: none; }
     body.fill-mode #build-indicator {
+      position: fixed;
+      right: 12px;
       bottom: 12px;
-      left: 12px;
       padding: 4px 8px;
       font-size: 0.62rem;
+      z-index: 197;
     }
 
     /* ── Grid-settings FAB ───────────────────────────────── */
@@ -750,11 +754,45 @@
     }
     #gsp-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1rem; line-height: 1; }
     #gsp-close:hover { color: var(--text); }
+    .gsp-mobile-tabs {
+      display: none;
+      flex-shrink: 0;
+      gap: 8px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      background: var(--surf);
+    }
+    .gsp-mobile-tab-btn {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--surf2);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 7px 11px;
+      font-size: .74rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .gsp-mobile-tab-btn.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(59,130,246,.12);
+    }
     .gsp-body {
       display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
       padding: 16px; overflow-y: auto; flex: 1;
     }
     .gsp-column { display: flex; flex-direction: column; }
+    .gsp-extra-card {
+      grid-column: 1 / -1;
+      border-top: 1px solid var(--border);
+      padding: 12px 0 0;
+    }
     .gsp-section-title { font-size: .75rem; font-weight: 600; color: var(--label); text-transform: uppercase; letter-spacing: 0.5px; }
     .gsp-body .field { display: flex; flex-direction: column; }
     .gsp-body .field label { font-size: .75rem; color: var(--label); font-weight: 500; }
@@ -762,6 +800,17 @@
     .gsp-body .atem-toggle-wrap { display: flex; align-items: center; }
     .gsp-body .atem-toggle-wrap input { width: 16px; height: 16px; }
     .gsp-body .atem-toggle-wrap span { font-size: .8rem; color: var(--text); }
+    .camera-management-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .camera-management-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 4px 0;
+    }
 
     /* ── ATEM debug panel display ───────────────────────── */
     #atem-debug {
@@ -792,17 +841,42 @@
     @media (max-width: 700px) {
       /* Settings panel becomes a bottom sheet */
       #grid-settings-panel {
-        bottom: 0; right: 0; left: 0;
+        top: 0; bottom: 0; right: 0; left: 0;
         width: 100%; max-width: 100%;
-        border-radius: 12px 12px 0 0;
+        max-height: none;
+        height: 100vh;
+        border-radius: 0;
         padding-bottom: env(safe-area-inset-bottom);
       }
       #grid-settings-fab {
         bottom: max(18px, env(safe-area-inset-bottom));
         right:  max(18px, env(safe-area-inset-right));
       }
-      /* Stack settings columns */
-      .gsp-body { grid-template-columns: 1fr; }
+      .gsp-mobile-tabs { display: flex; }
+      .gsp-body {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        padding: 12px;
+      }
+      .gsp-mobile-section { display: none !important; }
+      .gsp-mobile-section.active { display: block !important; }
+      .gsp-column.gsp-mobile-section.active { display: flex !important; }
+      .gsp-extra-card {
+        grid-column: auto;
+        border-top: none;
+        padding: 12px;
+        background: var(--surf2);
+        border-radius: 8px;
+      }
+      .camera-management-grid { grid-template-columns: 1fr; gap: 10px; }
+      .camera-management-item {
+        margin: 0;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: rgba(13,15,22,.24);
+        justify-content: flex-start;
+      }
       /* Remove fixed widths on settings inputs so they fill their column */
       .gsp-body .field input,
       .gsp-body .field select { width: 100%; }
@@ -998,7 +1072,7 @@
   <div id="preset-grid"><!-- rendered by JS --></div>
   <div id="toolbar">
     <button class="btn-primary" id="btn-scan">Scan All Presets</button>
-    <button class="btn-ghost"    id="btn-edit">Edit Labels</button>
+    <button class="btn-ghost"    id="btn-edit">Edit Labels / Snap</button>
     <div id="capture-source-toggle" style="display:none">
       <button class="btn-ghost csrc-btn" data-src="active"   title="Capture from active camera">ACT</button>
       <button class="btn-ghost csrc-btn" data-src="preview"  title="Capture from ATEM preview">PVW</button>
@@ -1023,17 +1097,28 @@
   </div>
 </main>
 
-<footer>Tap a preset to recall it &nbsp;&middot;&nbsp;
-  Turn on Edit Labels to rename presets &nbsp;&middot;&nbsp; Double-click a camera tab to rename it</footer>
+<footer>
+  <span>Tap a preset to recall it &nbsp;&middot;&nbsp; Turn on Edit Labels / Snap to rename presets or refresh images &nbsp;&middot;&nbsp; Double-click a camera tab to rename it</span>
+  <div id="build-indicator" aria-live="polite">
+    <span class="build-commit">build <span id="build-commit">5efe1f2</span></span>
+    <span class="build-mode" id="build-mode">normal</span>
+  </div>
+</footer>
 
 <div id="grid-settings-panel" role="dialog" aria-modal="true" aria-label="Settings">
   <div class="gsp-header">
     <span>Settings</span>
     <button id="gsp-close">&#x2715;</button>
   </div>
+  <div class="gsp-mobile-tabs" role="tablist" aria-label="Settings sections">
+    <button class="gsp-mobile-tab-btn active" type="button" data-tab="cameras" role="tab" aria-selected="true">Cameras</button>
+    <button class="gsp-mobile-tab-btn" type="button" data-tab="grid" role="tab" aria-selected="false">Grid</button>
+    <button class="gsp-mobile-tab-btn" type="button" data-tab="atem" role="tab" aria-selected="false">ATEM</button>
+    <button class="gsp-mobile-tab-btn" type="button" data-tab="capture" role="tab" aria-selected="false">Capture</button>
+  </div>
   <div class="gsp-body">
     <!-- Camera Settings (Col 1) -->
-    <div class="gsp-column">
+    <div class="gsp-column gsp-mobile-section active" data-mobile-tab="cameras">
       <div class="gsp-section-title">Camera</div>
       <div class="field">
         <label for="f-ip">IP</label>
@@ -1062,7 +1147,7 @@
 
     <!-- Capture & Live (Col 2) -->
     <div class="gsp-column">
-      <div id="direct-capture-settings">
+      <div id="direct-capture-settings" class="gsp-mobile-section active" data-mobile-tab="capture">
         <div class="gsp-section-title">Direct Camera Capture</div>
         <p class="capture-mode-note">Used only when ATEM routing is off.</p>
         <div class="field">
@@ -1075,7 +1160,7 @@
         </div>
         <div id="f-capture-source-status" class="field-note">Scan capture source: Not configured</div>
       </div>
-      <div id="local-preview-settings">
+      <div id="local-preview-settings" class="gsp-mobile-section active" data-mobile-tab="capture">
         <div class="gsp-section-title">Local Preview PIP</div>
         <p class="capture-mode-note">Local browser-only preview. Not used as the primary ATEM scan source.</p>
         <div class="field">
@@ -1083,23 +1168,23 @@
           <select id="f-webcam"><option value="">— select —</option></select>
         </div>
       </div>
-      <div class="field">
+      <div class="field gsp-mobile-section active" data-mobile-tab="capture">
         <label for="f-dwell">Dwell (s)</label>
         <input id="f-dwell" type="number" value="3" min="1" max="60" />
       </div>
-      <label class="atem-toggle-wrap">
+      <label class="atem-toggle-wrap gsp-mobile-section active" data-mobile-tab="atem">
         <input id="f-atem-enabled" type="checkbox" />
         <span>Follow ATEM</span>
       </label>
-      <div class="field">
+      <div class="field gsp-mobile-section active" data-mobile-tab="atem">
         <label for="f-atem-ip">ATEM IP</label>
         <input id="f-atem-ip" type="text" placeholder="192.168.1.200" autocomplete="off" spellcheck="false" />
       </div>
-      <label class="atem-toggle-wrap">
+      <label class="atem-toggle-wrap gsp-mobile-section active" data-mobile-tab="atem">
         <input id="gsp-atem-debug" type="checkbox" />
         <span>Show Debug Overlay</span>
       </label>
-      <div id="atem-debug">
+      <div id="atem-debug" class="gsp-mobile-section active" data-mobile-tab="atem">
         CAM <span id="dbg-cam">—</span> &nbsp;
         PGM <span id="dbg-pgm">—</span> &nbsp;
         PVW <span id="dbg-pvw">—</span> &nbsp;
@@ -1111,7 +1196,7 @@
     </div>
 
     <!-- Grid Layout (Col 3) -->
-    <div class="gsp-column">
+    <div class="gsp-column gsp-mobile-section active" data-mobile-tab="grid">
       <div class="gsp-section-title">Grid Layout</div>
       <div class="field">
         <label for="gsp-start">Start</label>
@@ -1133,67 +1218,68 @@
         <input id="gsp-fill" type="checkbox" />
         <span>Fill Window</span>
       </label>
-      <div class="field" id="live-preference-field" style="display:none;">
-        <label>Live Mode Follows</label>
-        <select id="f-atem-follows">
-          <option value="preview">Preview</option>
-          <option value="program">Program</option>
-        </select>
-      </div>
     </div>
-  </div>
 
-  <!-- Camera Management -->
-  <div style="border-top: 1px solid var(--border); padding: 12px;">
-    <div class="gsp-section-title">Camera Management</div>
-    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
-      <label class="atem-toggle-wrap" style="margin: 4px 0;">
+    <!-- Camera Management -->
+    <div class="gsp-extra-card gsp-mobile-section active" data-mobile-tab="cameras">
+      <div class="gsp-section-title">Camera Management</div>
+      <div class="camera-management-grid">
+        <label class="atem-toggle-wrap camera-management-item">
         <input id="f-cam-0-enabled" type="checkbox" class="cam-enable-cb" data-idx="0" />
         <span>Camera 1</span>
       </label>
-      <label class="atem-toggle-wrap" style="margin: 4px 0;">
+        <label class="atem-toggle-wrap camera-management-item">
         <input id="f-cam-1-enabled" type="checkbox" class="cam-enable-cb" data-idx="1" />
         <span>Camera 2</span>
       </label>
-      <label class="atem-toggle-wrap" style="margin: 4px 0;">
+        <label class="atem-toggle-wrap camera-management-item">
         <input id="f-cam-2-enabled" type="checkbox" class="cam-enable-cb" data-idx="2" />
         <span>Camera 3</span>
       </label>
-    </div>
-  </div>
-
-  <!-- ATEM Capture Sources (shown only when ATEM enabled) -->
-  <div id="atem-capture-section" style="display:none; border-top:1px solid var(--border); padding:12px;">
-    <div class="gsp-section-title" style="margin-bottom:10px;">ATEM Routing</div>
-    <p class="capture-section-note">
-      Map each physical ATEM output to the Mac capture device or URL that carries it. PTZ scans use the output selected below, including the ATEM virtual webcam if it appears as a USB device.
-    </p>
-    <div style="display:flex; align-items:flex-end; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
-      <div class="field" style="flex-shrink:0;">
-        <label for="f-capture-output">PTZ scan uses:</label>
-        <select id="f-capture-output">
-          <option value="webcam">USB Webcam</option>
-          <option value="sdi1">SDI Out 1</option>
-          <option value="sdi2">SDI Out 2</option>
-          <option value="sdi3">SDI Out 3</option>
-          <option value="sdi4">SDI Out 4</option>
-        </select>
       </div>
-      <span style="font-size:.8rem; color:var(--muted); padding-bottom:6px;">Current routed source:</span>
-      <span id="capture-output-label" style="font-size:.8rem; color:var(--label); padding-bottom:6px;"></span>
     </div>
-    <table id="output-map-table">
-      <thead>
-        <tr style="color:var(--muted); text-align:left;">
-          <th style="padding:4px 8px; font-weight:600;">Feed</th>
-          <th style="padding:4px 8px; font-weight:600;">Current Assignment</th>
-          <th style="padding:4px 8px; font-weight:600;">Source Label</th>
-          <th style="padding:4px 8px; font-weight:600;">Mac Capture Device</th>
-          <th style="padding:4px 8px; font-weight:600;">Stream URL</th>
-        </tr>
-      </thead>
-      <tbody id="output-map-body"><!-- rendered by JS --></tbody>
-    </table>
+
+    <div class="field gsp-extra-card gsp-mobile-section active" id="live-preference-field" data-mobile-tab="atem" style="display:none;">
+      <label>Live Mode Follows</label>
+      <select id="f-atem-follows">
+        <option value="preview">Preview</option>
+        <option value="program">Program</option>
+      </select>
+    </div>
+
+    <!-- ATEM Capture Sources (shown only when ATEM enabled) -->
+    <div id="atem-capture-section" class="gsp-extra-card gsp-mobile-section active" data-mobile-tab="atem" style="display:none;">
+      <div class="gsp-section-title" style="margin-bottom:10px;">ATEM Routing</div>
+      <p class="capture-section-note">
+        Map each physical ATEM output to the Mac capture device or URL that carries it. PTZ scans use the output selected below, including the ATEM virtual webcam if it appears as a USB device.
+      </p>
+      <div style="display:flex; align-items:flex-end; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+        <div class="field" style="flex-shrink:0;">
+          <label for="f-capture-output">PTZ scan uses:</label>
+          <select id="f-capture-output">
+            <option value="webcam">USB Webcam</option>
+            <option value="sdi1">SDI Out 1</option>
+            <option value="sdi2">SDI Out 2</option>
+            <option value="sdi3">SDI Out 3</option>
+            <option value="sdi4">SDI Out 4</option>
+          </select>
+        </div>
+        <span style="font-size:.8rem; color:var(--muted); padding-bottom:6px;">Current routed source:</span>
+        <span id="capture-output-label" style="font-size:.8rem; color:var(--label); padding-bottom:6px;"></span>
+      </div>
+      <table id="output-map-table">
+        <thead>
+          <tr style="color:var(--muted); text-align:left;">
+            <th style="padding:4px 8px; font-weight:600;">Feed</th>
+            <th style="padding:4px 8px; font-weight:600;">Current Assignment</th>
+            <th style="padding:4px 8px; font-weight:600;">Source Label</th>
+            <th style="padding:4px 8px; font-weight:600;">Mac Capture Device</th>
+            <th style="padding:4px 8px; font-weight:600;">Stream URL</th>
+          </tr>
+        </thead>
+        <tbody id="output-map-body"><!-- rendered by JS --></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- Webcam preview at bottom -->
@@ -1219,11 +1305,6 @@
              c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
   </svg>
 </button>
-<div id="build-indicator" aria-live="polite">
-  <span class="build-commit">build <span id="build-commit">5efe1f2</span></span>
-  <span class="build-mode" id="build-mode">normal</span>
-</div>
-
 <script>
 (function () {
   'use strict';
@@ -2031,17 +2112,45 @@
   const elGspPanel = document.getElementById('grid-settings-panel');
   const elGspFab   = document.getElementById('grid-settings-fab');
   const elGspClose = document.getElementById('gsp-close');
+  const gspTabBtns = Array.from(document.querySelectorAll('.gsp-mobile-tab-btn'));
+  const gspMobileSections = Array.from(document.querySelectorAll('.gsp-mobile-section'));
   const elGspStart = document.getElementById('gsp-start');
   const elGspEnd   = document.getElementById('gsp-end');
   const elGspCols  = document.getElementById('gsp-cols');
   const elGspRows  = document.getElementById('gsp-rows');
   const elGspFill  = document.getElementById('gsp-fill');
+  let activeSettingsTab = 'cameras';
+
+  function applySettingsTabVisibility() {
+    const isMobile = window.matchMedia('(max-width: 700px)').matches;
+    gspTabBtns.forEach(btn => {
+      const active = btn.dataset.tab === activeSettingsTab;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    gspMobileSections.forEach(section => {
+      const shouldShow = !isMobile || section.dataset.mobileTab === activeSettingsTab;
+      section.classList.toggle('active', shouldShow);
+    });
+  }
+
+  gspTabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeSettingsTab = btn.dataset.tab || 'cameras';
+      applySettingsTabVisibility();
+    });
+  });
+
+  window.addEventListener('resize', applySettingsTabVisibility);
+  applySettingsTabVisibility();
 
   if (elGspFab && elGspPanel) {
     elGspFab.addEventListener('click', () => {
       const willOpen = !elGspPanel.classList.contains('open');
       elGspPanel.classList.toggle('open');
       if (willOpen) {
+        activeSettingsTab = 'cameras';
+        applySettingsTabVisibility();
         loadCaptureSection();
         updateCameraStatusHints();
       }
@@ -2817,7 +2926,7 @@
   const btnEdit = document.getElementById('btn-edit');
   btnEdit.addEventListener('click', () => {
     editMode = !editMode;
-    btnEdit.textContent = editMode ? 'Done' : 'Edit Labels';
+    btnEdit.textContent = editMode ? 'Done' : 'Edit Labels / Snap';
     btnEdit.classList.toggle('active', editMode);
     elGrid.querySelectorAll('.preset-btn').forEach(b =>
       b.classList.toggle('edit-mode', editMode)
