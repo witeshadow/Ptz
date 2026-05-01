@@ -264,9 +264,10 @@ def _send_atem_command(name: str, payload: bytes) -> tuple[bool, str]:
         _atem_conn["packet_id"] = packet_id
         packet_len = 12 + len(packet_payload)
         word0 = (0x01 << 11) | packet_len
-        packet = struct.pack(
-            ">HHHHHH", word0, session_id, 0, 0, 0, packet_id
-        ) + packet_payload
+        packet = (
+            struct.pack(">HHHHHH", word0, session_id, 0, 0, 0, packet_id)
+            + packet_payload
+        )
         try:
             sock.sendto(packet, addr)
         except OSError as exc:
