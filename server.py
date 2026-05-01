@@ -90,7 +90,7 @@ DEFAULT_SETTINGS = {
     "unlockOnExitLiveMode": True,
     "atemFollows": "preview",
     "autoCutEnabled": False,
-    "autoCutDelayMs": 2000,
+    "autoCutDelayMs": 0,
     "atemOutputMap": {
         "webcam": {"webcam": "", "streamUrl": ""},
         "sdi1": {"webcam": "", "streamUrl": ""},

@@ -1216,10 +1216,10 @@
         <span>Enable Auto Cut</span>
       </label>
       <div class="field gsp-mobile-section active" data-mobile-tab="atem">
-        <label for="f-auto-cut-delay">Auto Cut Delay (s)</label>
+        <label for="f-auto-cut-delay">Auto Cut Extra Delay (s)</label>
         <input id="f-auto-cut-delay" type="number" min="0" max="30" step="0.5" />
         <div class="field-note">
-          When Auto Cut is armed, recalling a preset will switch that camera to air after this delay.
+          Auto Cut waits for confirmed camera stop first, then applies this optional extra delay before switching.
         </div>
       </div>
       <label class="atem-toggle-wrap gsp-mobile-section active" data-mobile-tab="atem">
@@ -1374,7 +1374,7 @@
     unlockOnExitLiveMode: true,
     atemFollows: 'preview',
     autoCutEnabled: false,
-    autoCutDelayMs: 2000,
+    autoCutDelayMs: 0,
     previewSource: null,
     programSource: null,
     captureSource: 'active',
@@ -2163,9 +2163,13 @@
     } else if (!source) {
       elAutoCutBtn.title = 'Set an ATEM source number for this camera first';
     } else if (autoCutArmed) {
-      elAutoCutBtn.title = `Armed: cut ${state.cameras[state.activeCam]?.name || 'camera'} to air after ${delayText}`;
+      elAutoCutBtn.title = delayText === '0s'
+        ? `Armed: cut ${state.cameras[state.activeCam]?.name || 'camera'} to air when camera stop is confirmed`
+        : `Armed: cut ${state.cameras[state.activeCam]?.name || 'camera'} to air after confirmed stop + ${delayText}`;
     } else {
-      elAutoCutBtn.title = `Arm Auto Cut (${delayText})`;
+      elAutoCutBtn.title = delayText === '0s'
+        ? 'Arm Auto Cut (confirmed stop)'
+        : `Arm Auto Cut (confirmed stop + ${delayText})`;
     }
   }
 
@@ -2177,6 +2181,7 @@
 
   async function fireAutoCut(source, camName, preset) {
     try {
+      setStatus('busy', `Auto Cut: switching ${camName} preset ${preset} to ATEM source ${source}…`, false);
       const res = await fetch('/atem/cut', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2186,7 +2191,7 @@
       if (!res.ok || !data.ok) {
         throw new Error(data.error || data.message || `HTTP ${res.status}`);
       }
-      setStatus('success', `Auto Cut: ${camName} preset ${preset} is now live`);
+      setStatus('success', `Auto Cut: ${camName} preset ${preset} is now live on source ${source}`);
     } catch (err) {
       setStatus('error', `Auto Cut failed: ${err.message || err}`);
     } finally {
@@ -2207,7 +2212,11 @@
     const camName = state.cameras[camIdx]?.name || `Camera ${camIdx + 1}`;
     const delayMs = Math.max(0, state.autoCutDelayMs || 0);
     autoCutPending = { source, camName, preset };
-    setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} in ${getAutoCutDelaySeconds()}s`, false);
+    if (delayMs > 0) {
+      setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} after confirmed stop + ${getAutoCutDelaySeconds()}s`, false);
+    } else {
+      setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} when camera stop is confirmed`, false);
+    }
     autoCutTimer = setTimeout(() => {
       const pending = autoCutPending;
       if (!pending) return;
@@ -2225,7 +2234,12 @@
       }
       setAutoCutArmed(!autoCutArmed);
       if (autoCutArmed) {
-        setStatus('success', `Auto Cut armed for ${state.cameras[state.activeCam]?.name || 'camera'} (${getAutoCutDelaySeconds()}s)`);
+        const camName = state.cameras[state.activeCam]?.name || 'camera';
+        if ((state.autoCutDelayMs || 0) > 0) {
+          setStatus('success', `Auto Cut armed for ${camName} after confirmed stop + ${getAutoCutDelaySeconds()}s`);
+        } else {
+          setStatus('success', `Auto Cut armed for ${camName} on confirmed camera stop`);
+        }
       }
     });
   }
