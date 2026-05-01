@@ -40,6 +40,7 @@
       display: flex;
       align-items: center;
       flex-shrink: 0;
+      position: relative;
     }
 
     .brand-icon {
@@ -57,6 +58,7 @@
       margin-left: auto;
       display: flex;
       align-items: center;
+      gap: 8px;
     }
 
     #fill-cam-strip {
@@ -137,6 +139,9 @@
     }
 
     #status {
+      position: absolute;
+      bottom: 6px;
+      right: 156px;
       display: flex; align-items: center;
       background: var(--surf2);
       border: 1px solid var(--border);
@@ -165,6 +170,9 @@
     .status-hint.status-preview { color: var(--success); font-weight: 600; }
 
     #atem-pill {
+      position: absolute;
+      bottom: 6px;
+      right: 16px;
       display: flex; align-items: center;
       background: var(--surf2);
       border: 1px solid var(--border);
@@ -218,25 +226,33 @@
     #live-mode-btn.live:hover { background: var(--success); opacity: 0.9; }
 
     #lock-live-btn {
-      background: var(--surf2);
-      border: 1px solid var(--border);
+      background: #d97706;
+      border: 1px solid #d97706;
       border-radius: 6px;
       padding: 5px 10px;
-      color: var(--muted);
+      color: white;
       font-size: 0.75rem;
-      font-weight: 500;
+      font-weight: 600;
       line-height: 1;
       cursor: pointer;
-      transition: border-color 0.2s, color 0.2s, background-color 0.2s;
+      transition: border-color 0.2s, color 0.2s, background-color 0.2s, box-shadow 0.3s;
       min-width: 78px;
       text-align: center;
+      box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.7);
+      animation: unlock-pulse 2s infinite;
     }
-    #lock-live-btn:hover { border-color: var(--accent); color: var(--accent); }
+    @keyframes unlock-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.7); }
+      50% { box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.2); }
+    }
+    #lock-live-btn:hover { background: #b45309; border-color: #b45309; }
     #lock-live-btn.locked {
       color: white;
       background: var(--error);
       border-color: var(--error);
       font-weight: 600;
+      animation: none;
+      box-shadow: none;
     }
     #lock-live-btn.locked:hover { opacity: 0.9; }
 
@@ -692,8 +708,8 @@
       .brand-text p { display: none; }
       #fullscreen-btn { display: none; }
       #atem-pill span { display: none; }
-      #atem-pill { min-width: unset; padding: 5px 8px; }
-      #status { min-width: unset; }
+      #atem-pill { min-width: unset; padding: 5px 8px; right: 16px !important; }
+      #status { min-width: unset; right: 72px !important; }
     }
 
     @media (max-width: 480px) {
