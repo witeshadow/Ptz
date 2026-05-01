@@ -419,8 +419,14 @@ def cut_atem_to_source(source: int) -> tuple[bool, str]:
                     f"Preview did not change to {source} and direct program switch failed: {program_message}",
                 )
             if _wait_for_atem_program_source(source, timeout_s=1.0):
-                return True, f"Preview did not change • direct program switch moved program to {source}"
-            return False, f"ATEM did not confirm preview or program switched to {source}"
+                return (
+                    True,
+                    f"Preview did not change • direct program switch moved program to {source}",
+                )
+            return (
+                False,
+                f"ATEM did not confirm preview or program switched to {source}",
+            )
 
     ok, cut_message = _send_atem_command("DCut", bytes([0, 0, 0, 0]))
     if not ok:
@@ -430,9 +436,15 @@ def cut_atem_to_source(source: int) -> tuple[bool, str]:
 
     ok, program_message = _send_atem_command("CPgI", preview_payload)
     if not ok:
-        return False, f"Cut did not take and direct program switch failed: {program_message}"
+        return (
+            False,
+            f"Cut did not take and direct program switch failed: {program_message}",
+        )
     if _wait_for_atem_program_source(source, timeout_s=1.0):
-        return True, f"Cut did not take • direct program switch moved program to {source}"
+        return (
+            True,
+            f"Cut did not take • direct program switch moved program to {source}",
+        )
     return (
         False,
         f"ATEM did not confirm program switched to {source} after cut or direct switch",
