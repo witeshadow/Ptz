@@ -284,11 +284,10 @@
 
     /* ── Camera tabs ─────────────────────────────────── */
     #cam-tabs {
-      background: var(--surf);
-      border-bottom: 2px solid var(--border);
-      padding: 0 20px;
       display: flex;
-      flex-shrink: 0;
+      align-items: stretch;
+      flex: 1 1 auto;
+      min-width: 0;
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
       scrollbar-width: none;
@@ -299,14 +298,15 @@
       background: transparent;
       border: none;
       border-bottom: 2px solid transparent;
-      margin-bottom: -2px;
-      padding: 11px 22px;
+      padding: 11px 18px 9px;
       color: var(--muted);
       font-size: 0.88rem;
       cursor: pointer;
       transition: color 0.2s, border-color 0.2s;
       user-select: none;
       display: flex; align-items: center;
+      flex: 0 0 auto;
+      white-space: nowrap;
     }
     .cam-tab:hover { color: var(--text); }
     .cam-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
@@ -581,7 +581,28 @@
     #toolbar {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       margin-top: 16px;
+    }
+
+    #toolbar-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      flex: 1 1 420px;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+
+    #toolbar-statuses {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      min-width: 0;
+      flex-wrap: wrap;
     }
 
     #capture-source-toggle { display: flex; gap: 4px; }
@@ -612,8 +633,9 @@
     #scan-bar {
       display: none;
       align-items: center;
-      margin-left: auto;
-      flex: 1; max-width: 380px;
+      flex: 1 1 240px;
+      max-width: 380px;
+      min-width: 180px;
     }
     #scan-bar.visible { display: flex; }
 
@@ -639,22 +661,25 @@
     body.fill-mode { height: 100vh; overflow: hidden; }
     body.fill-mode header { padding: 4px 8px; }
     body.fill-mode .header-pills { gap: 6px; }
-    body.fill-mode .header-actions { gap: 6px; }
+    body.fill-mode .header-actions { gap: 4px; }
     body.fill-mode .brand-icon { width: 24px; height: 24px; border-radius: 5px; }
     body.fill-mode .brand-icon svg { width: 13px; height: 13px; }
-    body.fill-mode .brand-text h1 { font-size: 0.8rem; }
-    body.fill-mode .brand-text p { display: none; }
+    body.fill-mode .brand-text { display: none; }
     body.fill-mode #fill-cam-strip { display: none; }
     body.fill-mode #fullscreen-btn { padding: 4px 8px; font-size: 0.92rem; }
-    body.fill-mode #live-mode-btn { padding: 4px 9px; font-size: 0.68rem; }
-    body.fill-mode #lock-live-btn { padding: 4px 8px; font-size: 0.65rem; min-width: 70px; }
+    body.fill-mode #live-mode-btn,
+    body.fill-mode #lock-live-btn { display: none; }
     body.fill-mode #atem-pill { padding: 4px 8px; font-size: 0.68rem; }
     body.fill-mode #status { width: 150px; max-width: 150px; flex-basis: 150px; padding: 3px 8px; font-size: 0.7rem; }
     body.fill-mode #cam-tabs { display: flex; }
+    body.fill-mode .cam-tab { padding: 13px 24px 11px; font-size: 0.94rem; }
+    body.fill-mode .cam-num { font-size: 0.7rem; }
     body.fill-mode main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
     body.fill-mode #preset-grid { flex: 1; align-content: start; justify-content: center; gap: 6px; }
     body.fill-mode #toolbar { margin-top: 8px; }
     body.fill-mode #toolbar { flex-shrink: 0; }
+    body.fill-mode #toolbar-statuses { display: none; }
+    body.fill-mode #toolbar-right { flex: 0 1 320px; }
     body.fill-mode .btn-primary { padding: 6px 12px; font-size: 0.76rem; }
     body.fill-mode .btn-ghost { padding: 5px 10px; font-size: 0.74rem; }
     body.fill-mode #scan-label { font-size: 0.68rem; }
@@ -753,8 +778,16 @@
       .header-pills {
         margin-left: 0;
         width: 100%;
+        flex-wrap: wrap;
+      }
+      #cam-tabs {
+        order: 2;
+        flex-basis: 100%;
+        padding-top: 4px;
       }
       .header-actions {
+        order: 3;
+        width: 100%;
         flex-wrap: wrap;
         justify-content: flex-end;
       }
@@ -766,6 +799,15 @@
         width: 140px;
         max-width: 140px;
         flex-basis: 140px;
+      }
+      #toolbar-right {
+        width: 100%;
+        margin-left: 0;
+        justify-content: space-between;
+      }
+      #scan-bar {
+        max-width: none;
+        min-width: 0;
       }
     }
 
@@ -860,6 +902,8 @@
     .atem-toggle-wrap > * + * { margin-left: 8px; }
     .preset-overlay > * + * { margin-left: 4px; }
     #toolbar > * + *        { margin-left: 10px; }
+    #toolbar-right > * + *  { margin-left: 10px; }
+    #toolbar-statuses > * + * { margin-left: 8px; }
     #scan-bar > * + *       { margin-left: 12px; }
     .field > * + *          { margin-top: 4px; }
     #webcam-preview > * + * { margin-top: 4px; }
@@ -881,23 +925,14 @@
   </div>
   <div class="header-pills">
     <div id="fill-cam-strip" aria-label="Camera status controls"></div>
+    <div id="cam-tabs"><!-- rendered by JS --></div>
     <div class="header-actions">
       <button id="fullscreen-btn" title="Toggle fullscreen">&#x26F6;</button>
       <button id="live-mode-btn" class="live" title="Toggle Live/Edit mode">Live</button>
       <button id="lock-live-btn" title="Lock camera to prevent preset movement"></button>
-      <div id="atem-pill" class="disabled">
-        <div class="atem-dot"></div>
-        <span>ATEM</span>
-      </div>
-      <div id="status" role="status" aria-live="polite">
-        <div class="status-dot"></div>
-        <span id="status-text">Ready</span>
-      </div>
     </div>
   </div>
 </header>
-
-<div id="cam-tabs"><!-- rendered by JS --></div>
 
 <main>
   <div id="preset-grid"><!-- rendered by JS --></div>
@@ -909,9 +944,21 @@
       <button class="btn-ghost csrc-btn" data-src="preview"  title="Capture from ATEM preview">PVW</button>
       <button class="btn-ghost csrc-btn" data-src="program"  title="Capture from ATEM program">PGM</button>
     </div>
-    <div id="scan-bar">
-      <div id="scan-track"><div id="scan-fill"></div></div>
-      <span id="scan-label"></span>
+    <div id="toolbar-right">
+      <div id="scan-bar">
+        <div id="scan-track"><div id="scan-fill"></div></div>
+        <span id="scan-label"></span>
+      </div>
+      <div id="toolbar-statuses">
+        <div id="atem-pill" class="disabled">
+          <div class="atem-dot"></div>
+          <span>ATEM</span>
+        </div>
+        <div id="status" role="status" aria-live="polite">
+          <div class="status-dot"></div>
+          <span id="status-text">Ready</span>
+        </div>
+      </div>
     </div>
   </div>
 </main>
