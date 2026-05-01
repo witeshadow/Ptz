@@ -79,6 +79,7 @@ DEFAULT_SETTINGS = {
     "atem": {"ip": "", "enabled": False},
     "liveMode": True,
     "lockLiveMode": False,
+    "unlockOnExitLiveMode": True,
     "atemFollows": "preview",
     "atemOutputMap": {
         "webcam": {"webcam": "", "streamUrl": ""},

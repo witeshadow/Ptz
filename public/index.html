@@ -219,17 +219,22 @@
       border-radius: 6px;
       padding: 5px 10px;
       color: var(--muted);
-      font-size: 1rem;
+      font-size: 0.75rem;
+      font-weight: 500;
       line-height: 1;
       cursor: pointer;
       transition: border-color 0.2s, color 0.2s, background-color 0.2s;
+      min-width: 78px;
+      text-align: center;
     }
     #lock-live-btn:hover { border-color: var(--accent); color: var(--accent); }
     #lock-live-btn.locked {
-      color: var(--error);
+      color: white;
+      background: var(--error);
       border-color: var(--error);
+      font-weight: 600;
     }
-    #lock-live-btn.locked:hover { background: rgba(239, 68, 68, 0.1); }
+    #lock-live-btn.locked:hover { opacity: 0.9; }
 
     .atem-dot {
       width: 7px; height: 7px; border-radius: 50%;
@@ -578,7 +583,7 @@
     body.fill-mode #fill-cam-strip { display: inline-flex; }
     body.fill-mode #fullscreen-btn { padding: 4px 8px; font-size: 0.92rem; }
     body.fill-mode #live-mode-btn { padding: 4px 9px; font-size: 0.68rem; }
-    body.fill-mode #lock-live-btn { padding: 4px 8px; font-size: 0.92rem; }
+    body.fill-mode #lock-live-btn { padding: 4px 8px; font-size: 0.65rem; min-width: 70px; }
     body.fill-mode #atem-pill { padding: 4px 8px; font-size: 0.68rem; }
     body.fill-mode #status { min-width: 112px; padding: 3px 8px; font-size: 0.7rem; }
     body.fill-mode #cam-tabs { display: none; }
@@ -800,7 +805,7 @@
     <div id="fill-cam-strip" aria-label="Camera status controls"></div>
     <button id="fullscreen-btn" title="Toggle fullscreen">&#x26F6;</button>
     <button id="live-mode-btn" class="live" title="Toggle Live/Edit mode">Live</button>
-    <button id="lock-live-btn" title="Prevent camera movement in live mode">🔓</button>
+    <button id="lock-live-btn" title="Lock camera to prevent preset movement"></button>
     <div id="atem-pill" class="disabled">
       <div class="atem-dot"></div>
       <span>ATEM</span>
@@ -1043,6 +1048,7 @@
     showAtemDebug: false,
     liveMode: true,
     lockLiveMode: false,
+    unlockOnExitLiveMode: true,
     atemFollows: 'preview',
     previewSource: null,
     programSource: null,
@@ -1147,6 +1153,7 @@
         if (s.fillWindow  != null) state.fillWindow  = !!s.fillWindow;
         if (s.liveMode      != null) state.liveMode      = !!s.liveMode;
         if (s.lockLiveMode  != null) state.lockLiveMode  = !!s.lockLiveMode;
+        if (s.unlockOnExitLiveMode != null) state.unlockOnExitLiveMode = !!s.unlockOnExitLiveMode;
         if (s.showAtemDebug != null) state.showAtemDebug = !!s.showAtemDebug;
         if (s.atemFollows)           state.atemFollows   = s.atemFollows;
         if (s.atemOutputMap) state.atemOutputMap = normalizeAtemOutputMap(s.atemOutputMap);
@@ -1708,8 +1715,17 @@
   if (elLiveBtn) {
     elLiveBtn.addEventListener('click', () => {
       state.liveMode = !state.liveMode;
+      if (state.liveMode) {
+        state.lockLiveMode = true;
+        setStatus('success', 'Live mode activated - camera locked to prevent accidental movement');
+      } else {
+        if (state.unlockOnExitLiveMode) {
+          state.lockLiveMode = false;
+        }
+      }
       elLiveBtn.textContent = state.liveMode ? 'Live' : 'Edit';
       elLiveBtn.classList.toggle('live', state.liveMode);
+      if (elLockLiveBtn) updateLockIcon();
       schedSave();
       renderTabs();
       updateToolbarVisibility();
@@ -1719,8 +1735,13 @@
   const elLockLiveBtn = document.getElementById('lock-live-btn');
   if (elLockLiveBtn) {
     function updateLockIcon() {
-      elLockLiveBtn.textContent = state.lockLiveMode ? '🔒' : '🔓';
-      elLockLiveBtn.classList.toggle('locked', state.lockLiveMode);
+      if (state.lockLiveMode) {
+        elLockLiveBtn.textContent = '🔒 Locked';
+        elLockLiveBtn.classList.add('locked');
+      } else {
+        elLockLiveBtn.textContent = '🔓 Unlock';
+        elLockLiveBtn.classList.remove('locked');
+      }
     }
     updateLockIcon();
     elLockLiveBtn.addEventListener('click', () => {
