@@ -165,6 +165,7 @@ class TestAtemPackets(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIn("Cut executed", message)
         self.assertEqual([call.args[0] for call in mock_send.call_args_list], ["DCut"])
+        self.assertEqual(server._get_atem_last_action()["stage"], "cut-confirm")
 
 
 # ── ATEM state ─────────────────────────────────────────────────────────────────
@@ -633,6 +634,8 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertEqual(status, 200)
         data = json.loads(body)
         self.assertIn("state", data)
+        self.assertIn("connection", data)
+        self.assertIn("last_action", data)
         self.assertIn("sse_clients", data)
         self.assertIn("settings", data)
 

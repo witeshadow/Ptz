@@ -245,6 +245,29 @@
       font-weight: 700;
     }
     #live-mode-btn.live:hover { background: var(--success); opacity: 0.9; }
+    #cut-live-btn {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      border-radius: 999px;
+      padding: 6px 12px;
+      color: #fca5a5;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s, background-color 0.2s, opacity 0.2s;
+      user-select: none;
+    }
+    #cut-live-btn:hover {
+      border-color: #f87171;
+      color: #fecaca;
+      background: rgba(239, 68, 68, 0.2);
+    }
+    #cut-live-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
 
     #lock-live-btn {
       background: #d97706;
@@ -1079,6 +1102,7 @@
     <div id="cam-tabs"><!-- rendered by JS --></div>
     <div class="header-actions">
       <button id="live-mode-btn" class="live" title="Toggle Live/Edit mode">Live</button>
+      <button id="cut-live-btn" style="display:none" title="Cut active camera to ATEM program">Cut</button>
       <button id="lock-live-btn" title="Lock camera to prevent preset movement"></button>
       <button id="fullscreen-btn" title="Toggle fullscreen">&#x26F6;</button>
     </div>
@@ -1618,6 +1642,7 @@
       elAtemPill.className = 'disabled';
       elAtemPillText.textContent = 'ATEM Off';
       elAtemPill.title = 'ATEM integration is disabled';
+      updateManualCutButton();
       updateAutoCutButton();
       return;
     }
@@ -1626,6 +1651,7 @@
       elAtemPill.className = 'waiting';
       elAtemPillText.textContent = 'ATEM Wait';
       elAtemPill.title = 'ATEM is enabled but not connected yet';
+      updateManualCutButton();
       updateAutoCutButton();
       return;
     }
@@ -1645,6 +1671,7 @@
     const baseText = `ATEM P${program} V${preview}`;
     elAtemPillText.textContent = liveCameraName ? `${baseText} • 📹 ${liveCameraName} LIVE` : baseText;
     elAtemPill.title = `ATEM connected • Program ${program}${liveCameraName ? ` (${liveCameraName})` : ''} • Preview ${preview}`;
+    updateManualCutButton();
     updateAutoCutButton();
   }
 
@@ -2119,6 +2146,7 @@
   // ── Live/Edit mode toggle ──────────────────────────────────────────────────
   const elCaptureToggle = document.getElementById('capture-source-toggle');
   const elAutoCutBtn = document.getElementById('btn-auto-cut');
+  const elCutLiveBtn = document.getElementById('cut-live-btn');
   let autoCutArmed = false;
   let autoCutTimer = null;
   let autoCutPending = null;
@@ -2141,6 +2169,31 @@
 
   function canArmAutoCut() {
     return !state.liveMode && !!state.atem.enabled && !!state.autoCutEnabled && !!atemConnected;
+  }
+
+  function canManualCut() {
+    return !!state.atem.enabled && !!atemConnected && !!getActiveCameraCutSource();
+  }
+
+  function updateManualCutButton() {
+    if (!elCutLiveBtn) return;
+    const source = getActiveCameraCutSource();
+    const camName = state.cameras[state.activeCam]?.name || `Camera ${state.activeCam + 1}`;
+    const alreadyLive = !!source && cameraMatchesAtemSource(state.activeCam, state.programSource);
+    elCutLiveBtn.style.display = state.atem.enabled ? '' : 'none';
+    elCutLiveBtn.disabled = !canManualCut() || alreadyLive;
+    elCutLiveBtn.textContent = source ? `Cut ${source}` : 'Cut';
+    if (!state.atem.enabled) {
+      elCutLiveBtn.title = 'Enable ATEM to use manual cut';
+    } else if (!atemConnected) {
+      elCutLiveBtn.title = 'Wait for ATEM to connect';
+    } else if (!source) {
+      elCutLiveBtn.title = 'Set an ATEM source number for this camera first';
+    } else if (alreadyLive) {
+      elCutLiveBtn.title = `${camName} is already live on source ${source}`;
+    } else {
+      elCutLiveBtn.title = `Cut ${camName} to air on source ${source}`;
+    }
   }
 
   function updateAutoCutButton() {
@@ -2200,6 +2253,30 @@
     }
   }
 
+  async function cutActiveCameraLive() {
+    const source = getActiveCameraCutSource();
+    const camName = state.cameras[state.activeCam]?.name || `Camera ${state.activeCam + 1}`;
+    if (!source) {
+      setStatus('error', 'Set an ATEM source number for this camera first');
+      return;
+    }
+    try {
+      setStatus('busy', `Cutting ${camName} to ATEM source ${source}…`, false);
+      const res = await fetch('/atem/cut', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || data.message || `HTTP ${res.status}`);
+      }
+      setStatus('success', `Cut complete: ${camName} is now live on source ${source}`);
+    } catch (err) {
+      setStatus('error', `Manual cut failed: ${err.message || err}`);
+    }
+  }
+
   function scheduleAutoCut(preset, camIdx) {
     if (!autoCutArmed || !canArmAutoCut()) return;
     const source = getCameraAtemInput(camIdx);
@@ -2244,16 +2321,22 @@
     });
   }
 
+  if (elCutLiveBtn) {
+    elCutLiveBtn.addEventListener('click', () => {
+      if (!canManualCut()) return;
+      void cutActiveCameraLive();
+    });
+  }
+
   function updateToolbarVisibility() {
     const btnScanEl = document.getElementById('btn-scan');
     if (btnScanEl) btnScanEl.style.display = state.liveMode ? 'none' : '';
-    if (elAutoCutBtn) {
-      elAutoCutBtn.style.display = (!state.liveMode && state.atem.enabled) ? '' : 'none';
-    }
+    if (elAutoCutBtn) elAutoCutBtn.style.display = (!state.liveMode && state.atem.enabled) ? '' : 'none';
     if (elCaptureToggle) {
       elCaptureToggle.style.display =
         (!state.liveMode && state.atem.enabled) ? 'flex' : 'none';
     }
+    updateManualCutButton();
     updateAutoCutButton();
   }
 

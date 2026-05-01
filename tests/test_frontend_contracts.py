@@ -32,6 +32,7 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("ATEM Off", self.html)
         self.assertIn("ATEM Wait", self.html)
         self.assertIn("ATEM P${program} V${preview}", self.html)
+        self.assertIn('id="cut-live-btn"', self.html)
 
     def test_explicit_scan_and_atem_mapping_hints_present(self):
         self.assertIn("ATEM Source Number", self.html)

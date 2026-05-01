@@ -250,6 +250,15 @@ _atem_state = {
     "aux4": 0,
 }
 _atem_state_lock = threading.Lock()
+_atem_last_action = {
+    "name": "",
+    "stage": "",
+    "source": 0,
+    "ok": None,
+    "message": "",
+    "timestamp": 0.0,
+}
+_atem_last_action_lock = threading.Lock()
 _atem_conn = {
     "sock": None,
     "addr": None,
@@ -280,6 +289,41 @@ def _set_atem(
 def _get_atem() -> dict:
     with _atem_state_lock:
         return dict(_atem_state)
+
+
+def _set_atem_last_action(
+    name: str,
+    stage: str,
+    source: int,
+    ok: bool | None,
+    message: str,
+):
+    with _atem_last_action_lock:
+        _atem_last_action.update(
+            {
+                "name": name,
+                "stage": stage,
+                "source": source,
+                "ok": ok,
+                "message": message,
+                "timestamp": time.time(),
+            }
+        )
+
+
+def _get_atem_last_action() -> dict:
+    with _atem_last_action_lock:
+        return dict(_atem_last_action)
+
+
+def _get_atem_connection_debug() -> dict:
+    with _atem_conn_lock:
+        addr = _atem_conn["addr"]
+        return {
+            "session_id": int(_atem_conn["session_id"] or 0),
+            "packet_id": int(_atem_conn["packet_id"] or 0),
+            "address": f"{addr[0]}:{addr[1]}" if addr else "",
+        }
 
 
 def _clear_atem_conn():
@@ -404,25 +448,65 @@ def _wait_for_atem_preview_source(source: int, timeout_s: float = 1.0) -> bool:
 
 def cut_atem_to_source(source: int) -> tuple[bool, str]:
     if source <= 0:
+        _set_atem_last_action("cut", "invalid", source, False, "Invalid ATEM source")
         return False, "Invalid ATEM source"
     preview_payload = bytes([0, 0]) + struct.pack(">H", source)
     current = _get_atem()
+    _set_atem_last_action(
+        "cut",
+        "start",
+        source,
+        None,
+        f"Starting cut request for source {source} (preview={current.get('preview')} program={current.get('program')})",
+    )
     if current.get("preview") != source:
         ok, message = _send_atem_command("CPvI", preview_payload)
         if not ok:
+            _set_atem_last_action(
+                "cut",
+                "preview-send",
+                source,
+                False,
+                f"Preview command failed: {message}",
+            )
             return False, message
         if not _wait_for_atem_preview_source(source, timeout_s=1.0):
+            _set_atem_last_action(
+                "cut",
+                "preview-confirm",
+                source,
+                False,
+                f"Preview did not confirm on source {source}",
+            )
             ok, program_message = _send_atem_command("CPgI", preview_payload)
             if not ok:
+                _set_atem_last_action(
+                    "cut",
+                    "program-fallback-send",
+                    source,
+                    False,
+                    f"Direct program switch failed: {program_message}",
+                )
                 return (
                     False,
                     f"Preview did not change to {source} and direct program switch failed: {program_message}",
                 )
             if _wait_for_atem_program_source(source, timeout_s=1.0):
+                msg = f"Preview did not change • direct program switch moved program to {source}"
+                _set_atem_last_action(
+                    "cut", "program-fallback-confirm", source, True, msg
+                )
                 return (
                     True,
-                    f"Preview did not change • direct program switch moved program to {source}",
+                    msg,
                 )
+            _set_atem_last_action(
+                "cut",
+                "program-fallback-confirm",
+                source,
+                False,
+                f"ATEM did not confirm preview or program switched to {source}",
+            )
             return (
                 False,
                 f"ATEM did not confirm preview or program switched to {source}",
@@ -430,21 +514,42 @@ def cut_atem_to_source(source: int) -> tuple[bool, str]:
 
     ok, cut_message = _send_atem_command("DCut", bytes([0, 0, 0, 0]))
     if not ok:
+        _set_atem_last_action(
+            "cut", "cut-send", source, False, f"Cut command failed: {cut_message}"
+        )
         return False, cut_message
     if _wait_for_atem_program_source(source, timeout_s=1.0):
-        return True, f"Preview set to {source} • Cut executed"
+        msg = f"Preview set to {source} • Cut executed"
+        _set_atem_last_action("cut", "cut-confirm", source, True, msg)
+        return True, msg
 
     ok, program_message = _send_atem_command("CPgI", preview_payload)
     if not ok:
+        _set_atem_last_action(
+            "cut",
+            "program-fallback-send",
+            source,
+            False,
+            f"Cut did not take and direct program switch failed: {program_message}",
+        )
         return (
             False,
             f"Cut did not take and direct program switch failed: {program_message}",
         )
     if _wait_for_atem_program_source(source, timeout_s=1.0):
+        msg = f"Cut did not take • direct program switch moved program to {source}"
+        _set_atem_last_action("cut", "program-fallback-confirm", source, True, msg)
         return (
             True,
-            f"Cut did not take • direct program switch moved program to {source}",
+            msg,
         )
+    _set_atem_last_action(
+        "cut",
+        "program-fallback-confirm",
+        source,
+        False,
+        f"ATEM did not confirm program switched to {source} after cut or direct switch",
+    )
     return (
         False,
         f"ATEM did not confirm program switched to {source} after cut or direct switch",
@@ -957,6 +1062,8 @@ class Handler(BaseHTTPRequestHandler):
                 200,
                 {
                     "state": _get_atem(),
+                    "connection": _get_atem_connection_debug(),
+                    "last_action": _get_atem_last_action(),
                     "sse_clients": n_clients,
                     "settings": {
                         "ip": cfg.get("ip", ""),
@@ -1058,7 +1165,15 @@ class Handler(BaseHTTPRequestHandler):
 
         ok, message = cut_atem_to_source(source)
         status = 200 if ok else 502
-        self._json(status, {"ok": ok, "message": message, "source": source})
+        self._json(
+            status,
+            {
+                "ok": ok,
+                "message": message,
+                "source": source,
+                "lastAction": _get_atem_last_action(),
+            },
+        )
 
     def _get_image(self, cam: int, preset: int):
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
