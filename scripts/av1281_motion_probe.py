@@ -65,6 +65,10 @@ def _nibbles_to_int(data: bytes) -> int:
     return int("".join(f"{byte & 0x0F:X}" for byte in data), 16)
 
 
+def _to_signed_16(value: int) -> int:
+    return value - 0x10000 if value & 0x8000 else value
+
+
 def classify_visca_payload(payload: bytes) -> ViscaReply | None:
     if len(payload) < 3 or payload[-1] != 0xFF:
         return None
@@ -260,6 +264,56 @@ def query_motion_sample(
     return MotionSample(pan, tilt, zoom, focus, time.monotonic())
 
 
+def motion_sample_to_dict(sample: MotionSample) -> dict:
+    return {
+        "pan": sample.pan,
+        "tilt": sample.tilt,
+        "zoom": sample.zoom,
+        "focus": sample.focus,
+        "pan_hex": f"{sample.pan:04X}",
+        "tilt_hex": f"{sample.tilt:04X}",
+        "zoom_hex": f"{sample.zoom:04X}",
+        "focus_hex": f"{sample.focus:04X}" if sample.focus is not None else None,
+        "pan_signed": _to_signed_16(sample.pan),
+        "tilt_signed": _to_signed_16(sample.tilt),
+    }
+
+
+def inquire_absolute_position(
+    *,
+    ip: str,
+    port: int,
+    camera_address: int,
+    transport: str,
+    local_port: int | None = None,
+    inquiry_timeout: float = 1.0,
+    include_focus: bool = False,
+) -> dict:
+    seq_counter = SequenceCounter()
+    if local_port is None and transport == "sony-udp":
+        local_port = port
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.bind(("", 0 if local_port is None else local_port))
+        sock.settimeout(inquiry_timeout)
+        sample = query_motion_sample(
+            sock,
+            ip,
+            port,
+            camera_address,
+            transport,
+            seq_counter,
+            include_focus,
+            inquiry_timeout,
+        )
+        result = motion_sample_to_dict(sample)
+        result["transport"] = transport
+        return result
+    finally:
+        sock.close()
+
+
 def print_replies(replies: list[ViscaReply]) -> None:
     if not replies:
         print("No VISCA replies received while waiting for completion.")
@@ -286,6 +340,7 @@ def probe_preset(
     stable_count: int,
     inquiry_timeout: float,
     include_focus: bool,
+    require_settle: bool = True,
     verbose: bool = True,
 ) -> ProbeResult:
     camera_byte = 0x80 | (camera_address & 0x07)
@@ -316,6 +371,18 @@ def probe_preset(
                 print("VISCA completion arrived before settle polling.")
             else:
                 print("No VISCA completion arrived in time; falling back to motion polling.")
+
+        if not require_settle:
+            if verbose:
+                print("Manual dwell mode: skipping settle polling.")
+            return ProbeResult(
+                preset=preset,
+                replies=replies,
+                saw_completion=saw_completion,
+                settled=False,
+                samples=samples,
+                error=None,
+            )
 
         settle_deadline = time.monotonic() + settle_timeout
         last_key: tuple[int, ...] | None = None
@@ -398,6 +465,7 @@ def probe_motion(args: argparse.Namespace) -> int:
         stable_count=args.stable_count,
         inquiry_timeout=args.inquiry_timeout,
         include_focus=args.include_focus,
+        require_settle=True,
         verbose=True,
     )
     if result.error:

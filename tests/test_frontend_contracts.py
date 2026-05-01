@@ -42,6 +42,8 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("Used only when ATEM routing is off.", self.html)
         self.assertIn("Local Preview PIP", self.html)
         self.assertIn("Preview Device", self.html)
+        self.assertIn("Confirmed Camera Stop", self.html)
+        self.assertIn("Manual Dwell", self.html)
         self.assertIn("Local Preview", self.html)
         self.assertIn("USB Webcam", self.html)
         self.assertIn("SDI Out 4", self.html)

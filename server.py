@@ -16,6 +16,13 @@ import tempfile
 import threading
 import time
 
+from scripts.av1281_motion_probe import (
+    ProbeResult,
+    inquire_absolute_position as _probe_inquire_absolute_position,
+    motion_sample_to_dict as _probe_motion_sample_to_dict,
+    probe_preset as _probe_preset,
+)
+
 try:
     from playwright.sync_api import sync_playwright as _sync_playwright
 
@@ -76,6 +83,7 @@ DEFAULT_SETTINGS = {
     ],
     "labels": {"0:1": "Stage Left", "0:5": "Wide"},
     "dwellMs": 3000,
+    "scanWaitMode": "settle",
     "atem": {"ip": "", "enabled": False},
     "liveMode": True,
     "lockLiveMode": False,
@@ -93,6 +101,107 @@ DEFAULT_SETTINGS = {
     "atemSourceLabels": {},
     "captureOutput": "webcam",
 }
+
+VISCA_RAW_UDP_PORT = 1259
+VISCA_COMPLETION_TIMEOUT_S = 2.0
+VISCA_SETTLE_TIMEOUT_S = 8.0
+VISCA_POLL_INTERVAL_S = 0.2
+VISCA_STABLE_COUNT = 3
+VISCA_INQUIRY_TIMEOUT_S = 1.0
+
+
+def _visca_transport_for_port(port: int) -> str:
+    return "raw-udp" if port == VISCA_RAW_UDP_PORT else "sony-udp"
+
+
+def _normalize_scan_wait_mode(wait_mode: str | None) -> str:
+    return "dwell" if wait_mode == "dwell" else "settle"
+
+
+def _format_probe_message(result: ProbeResult, wait_mode: str) -> str:
+    parts = []
+    ack = next((reply for reply in result.replies if reply.kind == "ack"), None)
+    completion = next(
+        (reply for reply in result.replies if reply.kind == "completion"),
+        None,
+    )
+    if ack:
+        parts.append(f"ACK {ack.payload.hex()}")
+    if completion:
+        parts.append(f"Completion {completion.payload.hex()}")
+    if wait_mode == "settle" and result.settled and result.samples:
+        pos = _probe_motion_sample_to_dict(result.samples[-1])
+        parts.append(
+            "Settled "
+            f"pan {pos['pan_hex']} tilt {pos['tilt_hex']} zoom {pos['zoom_hex']}"
+        )
+    elif wait_mode == "settle" and not result.settled:
+        parts.append("Motion did not settle in time")
+    elif wait_mode == "dwell":
+        parts.append("Manual dwell mode")
+    if result.error:
+        parts.append(result.error)
+    if wait_mode == "dwell" and not parts:
+        parts.append("Command sent")
+    return " • ".join(parts) if parts else "VISCA preset recall completed"
+
+
+def recall_visca_preset(
+    ip: str,
+    port: int,
+    preset_number: int,
+    camera_address: int = 1,
+    wait_mode: str = "settle",
+):
+    wait_mode = _normalize_scan_wait_mode(wait_mode)
+    result = _probe_preset(
+        ip=ip,
+        port=port,
+        camera_address=camera_address,
+        preset=preset_number,
+        transport=_visca_transport_for_port(port),
+        local_port=None,
+        completion_timeout=VISCA_COMPLETION_TIMEOUT_S,
+        settle_timeout=VISCA_SETTLE_TIMEOUT_S,
+        poll_interval=VISCA_POLL_INTERVAL_S,
+        stable_count=VISCA_STABLE_COUNT,
+        inquiry_timeout=VISCA_INQUIRY_TIMEOUT_S,
+        include_focus=False,
+        require_settle=wait_mode == "settle",
+        verbose=False,
+    )
+    success = result.error is None and (
+        result.settled if wait_mode == "settle" else True
+    )
+    payload = {
+        "success": success,
+        "message": _format_probe_message(result, wait_mode),
+        "settled": result.settled,
+        "sawCompletion": result.saw_completion,
+        "waitMode": wait_mode,
+        "position": (
+            _probe_motion_sample_to_dict(result.samples[-1]) if result.samples else None
+        ),
+    }
+    return payload
+
+
+def inquire_visca_absolute_position(
+    ip: str, port: int, camera_address: int = 1
+) -> tuple[bool, dict | str]:
+    try:
+        result = _probe_inquire_absolute_position(
+            ip=ip,
+            port=port,
+            camera_address=camera_address,
+            transport=_visca_transport_for_port(port),
+            local_port=None,
+            inquiry_timeout=VISCA_INQUIRY_TIMEOUT_S,
+            include_focus=False,
+        )
+        return True, result
+    except Exception as exc:
+        return False, str(exc)
 
 
 # ── Settings ───────────────────────────────────────────────────────────────────
@@ -278,8 +387,14 @@ def _send_atem_command(name: str, payload: bytes) -> tuple[bool, str]:
 def cut_atem_to_source(source: int) -> tuple[bool, str]:
     if source <= 0:
         return False, "Invalid ATEM source"
-    payload = bytes([0, 0]) + struct.pack(">H", source)
-    return _send_atem_command("CPgI", payload)
+    preview_payload = bytes([0, 0]) + struct.pack(">H", source)
+    ok, message = _send_atem_command("CPvI", preview_payload)
+    if not ok:
+        return False, message
+    ok, cut_message = _send_atem_command("DCut", bytes([0, 0, 0, 0]))
+    if not ok:
+        return False, cut_message
+    return True, f"Preview set to {source} • Cut executed"
 
 
 def _atem_loop():
@@ -848,11 +963,12 @@ class Handler(BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             self._json(400, {"success": False, "message": "Invalid numeric parameter"})
             return
+        wait_mode = _normalize_scan_wait_mode(str(data.get("waitMode", "settle")))
         if not ip:
             self._json(400, {"success": False, "message": "Camera IP is required"})
             return
-        ok, msg = send_visca_preset_recall(ip, port, preset, camera)
-        self._json(200, {"success": ok, "message": msg})
+        result = recall_visca_preset(ip, port, preset, camera, wait_mode)
+        self._json(200, result)
 
     def _handle_settings_post(self):
         body = self._read_body()
@@ -919,7 +1035,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"ok": False, "error": "Camera IP is not configured"})
             return
 
-        ok, result = inquire_visca_pan_tilt_position(ip, port, visca_addr)
+        ok, result = inquire_visca_absolute_position(ip, port, visca_addr)
         if ok:
             self._json(200, {"ok": True, **result})
         else:

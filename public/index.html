@@ -1187,8 +1187,21 @@
         </div>
       </div>
       <div class="field gsp-mobile-section active" data-mobile-tab="capture">
-        <label for="f-dwell">Dwell (s)</label>
-        <input id="f-dwell" type="number" value="3" min="1" max="60" />
+        <label for="f-scan-wait-mode">Scan Wait</label>
+        <select id="f-scan-wait-mode">
+          <option value="settle">Confirmed Camera Stop</option>
+          <option value="dwell">Manual Dwell</option>
+        </select>
+        <div class="field-note">
+          Choose either camera stop confirmation or a fixed manual dwell before capture.
+        </div>
+      </div>
+      <div class="field gsp-mobile-section active" data-mobile-tab="capture" id="scan-dwell-field">
+        <label for="f-dwell">Manual Dwell (s)</label>
+        <input id="f-dwell" type="number" value="3" min="0" max="60" step="0.5" />
+        <div class="field-note">
+          Used only when Scan Wait is set to Manual Dwell.
+        </div>
       </div>
       <label class="atem-toggle-wrap gsp-mobile-section active" data-mobile-tab="atem">
         <input id="f-atem-enabled" type="checkbox" />
@@ -1219,6 +1232,7 @@
         PVW <span id="dbg-pvw">—</span> &nbsp;
         PAN <span id="dbg-pan">—</span> &nbsp;
         TILT <span id="dbg-tilt">—</span> &nbsp;
+        ZOOM <span id="dbg-zoom">—</span> &nbsp;
         VISCA <span id="dbg-visca">—</span> &nbsp;
         <span id="dbg-inputs"></span>
       </div>
@@ -1352,6 +1366,7 @@
     cameras: DEF_CAMERAS.map(c => ({ ...c })),
     labels: {},
     dwellMs: 3000,
+    scanWaitMode: 'settle',
     atem: { ip: '', enabled: false },
     showAtemDebug: false,
     liveMode: true,
@@ -1455,7 +1470,8 @@
         }
         if (s.activeCam != null) state.activeCam = +s.activeCam;
         if (s.labels)   state.labels  = s.labels;
-        if (s.dwellMs)  state.dwellMs = +s.dwellMs;
+        if (s.dwellMs != null) state.dwellMs = Math.max(0, +s.dwellMs || 0);
+        if (s.scanWaitMode) state.scanWaitMode = s.scanWaitMode === 'dwell' ? 'dwell' : 'settle';
         if (s.atem)     state.atem    = { ip: '', enabled: false, ...s.atem };
         if (s.presetStart != null) state.presetStart = +s.presetStart;
         if (s.presetEnd   != null) state.presetEnd   = +s.presetEnd;
@@ -1639,15 +1655,30 @@
   const elDbgPvw    = document.getElementById('dbg-pvw');
   const elDbgPan    = document.getElementById('dbg-pan');
   const elDbgTilt   = document.getElementById('dbg-tilt');
+  const elDbgZoom   = document.getElementById('dbg-zoom');
   const elDbgVisca  = document.getElementById('dbg-visca');
   const elDbgInputs = document.getElementById('dbg-inputs');
   let debugPositionTimer = null;
   let debugPositionRequestId = 0;
 
-  function setDebugPosition(pan = '—', tilt = '—', visca = '—') {
+  function setDebugPosition(pan = '—', tilt = '—', zoom = '—', visca = '—') {
     elDbgPan.textContent = pan;
     elDbgTilt.textContent = tilt;
+    elDbgZoom.textContent = zoom;
     elDbgVisca.textContent = visca;
+  }
+
+  function formatDebugAxis(hexValue, signedValue) {
+    if (!hexValue || hexValue === '—') return '—';
+    return signedValue == null ? hexValue : `${hexValue} (${signedValue})`;
+  }
+
+  function applyDebugPositionData(data = {}) {
+    const pan = formatDebugAxis(data.pan_hex || '—', data.pan_signed);
+    const tilt = formatDebugAxis(data.tilt_hex || '—', data.tilt_signed);
+    const zoom = data.zoom_hex || '—';
+    const visca = data.transport ? `OK ${String(data.transport).toUpperCase()}` : 'OK';
+    setDebugPosition(pan, tilt, zoom, visca);
   }
 
   async function fetchDebugPosition() {
@@ -1655,7 +1686,7 @@
     const camIdx = state.activeCam;
     const cam = state.cameras[camIdx];
     if (!cam?.ip) {
-      setDebugPosition('—', '—', 'NO IP');
+      setDebugPosition('—', '—', '—', 'NO IP');
       return;
     }
 
@@ -1666,16 +1697,12 @@
       if (requestId !== debugPositionRequestId) return;
       if (!res.ok || !data.ok) {
         const msg = (data.error || `${res.status}`).slice(0, 48);
-        setDebugPosition('ERR', 'ERR', msg);
+        setDebugPosition('ERR', 'ERR', 'ERR', msg);
         return;
       }
-      const visca = data.responder && data.expected_responder &&
-        data.responder !== data.expected_responder
-        ? `${data.responder} != ${data.expected_responder}`
-        : 'OK';
-      setDebugPosition(data.pan_hex || '—', data.tilt_hex || '—', visca);
+      applyDebugPositionData(data);
     } catch (_) {
-      if (requestId === debugPositionRequestId) setDebugPosition('ERR', 'ERR', 'FETCH ERR');
+      if (requestId === debugPositionRequestId) setDebugPosition('ERR', 'ERR', 'ERR', 'FETCH ERR');
     }
   }
 
@@ -1900,9 +1927,18 @@
   const elAtemInput = document.getElementById('f-atem-input');
   const elAtemStatus = document.getElementById('f-atem-status');
   const elCaptureSourceStatus = document.getElementById('f-capture-source-status');
+  const elScanWaitMode = document.getElementById('f-scan-wait-mode');
+  const elScanDwellField = document.getElementById('scan-dwell-field');
   const elDwell     = document.getElementById('f-dwell');
   const elAutoCutEnabled = document.getElementById('f-auto-cut-enabled');
   const elAutoCutDelay = document.getElementById('f-auto-cut-delay');
+
+  function updateScanWaitModeUi() {
+    const manual = state.scanWaitMode === 'dwell';
+    if (elScanWaitMode) elScanWaitMode.value = manual ? 'dwell' : 'settle';
+    if (elDwell) elDwell.disabled = !manual;
+    if (elScanDwellField) elScanDwellField.style.opacity = manual ? '1' : '0.6';
+  }
 
   function updateCameraStatusHints() {
     if (elAtemStatus) {
@@ -1942,6 +1978,7 @@
     const atemInput = getCameraAtemInput(cam);
     elAtemInput.value = atemInput != null ? String(atemInput) : '';
     elDwell.value     = state.dwellMs / 1000;
+    if (elScanWaitMode) elScanWaitMode.value = state.scanWaitMode;
     elAtemEnabled.checked = !!state.atem.enabled;
     elAtemIp.value        = state.atem.ip || '';
     if (elAutoCutEnabled) elAutoCutEnabled.checked = !!state.autoCutEnabled;
@@ -1969,15 +2006,17 @@
     cam.atemInput  = getCameraAtemInput({ atemInput: elAtemInput.value });
     cam.usbDevice  = elUsbDevice.value;
     cam.streamUrl  = elStreamUrl.value.trim();
-    state.dwellMs  = (parseInt(elDwell.value, 10) || 3) * 1000;
+    state.dwellMs  = Math.max(0, Math.round((parseFloat(elDwell.value) || 0) * 1000));
+    state.scanWaitMode = elScanWaitMode?.value === 'dwell' ? 'dwell' : 'settle';
     state.atem.enabled = elAtemEnabled.checked;
     state.atem.ip      = elAtemIp.value.trim();
     state.autoCutEnabled = !!(elAutoCutEnabled && elAutoCutEnabled.checked);
     state.autoCutDelayMs = Math.max(0, Math.round(((parseFloat(elAutoCutDelay?.value || '0') || 0) * 1000)));
     updateCameraStatusHints();
+    updateScanWaitModeUi();
   }
 
-  [elIp, elPort, elVisca, elAtemInput, elDwell].forEach(el =>
+  [elIp, elPort, elVisca, elAtemInput, elDwell, elScanWaitMode].forEach(el =>
     el.addEventListener('change', () => { saveCameraSettings(); schedSave(); })
   );
 
@@ -3114,14 +3153,14 @@
 
   // ── Recall ─────────────────────────────────────────────────────────────────
   // camIdx defaults to the current active camera; pass explicitly to lock during scan
-  async function doRecall(preset, camIdx = state.activeCam) {
+  async function doRecall(preset, camIdx = state.activeCam, waitMode = 'settle') {
     const cam = state.cameras[camIdx];
     try {
       const res = await fetch('/recall', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
-          ip: cam.ip, port: cam.port, camera: cam.viscaAddr, preset,
+          ip: cam.ip, port: cam.port, camera: cam.viscaAddr, preset, waitMode,
         }),
       });
       return await res.json();
@@ -3146,9 +3185,12 @@
     }
     flash(btn, 'busy');
     setStatus('busy', `Recalling preset ${n}…`, false);
-    const data = await doRecall(n);
+    const data = await doRecall(n, recallCamIdx, 'settle');
     if (data.success) {
       flash(btn, 'ok', 900);
+      if (state.showAtemDebug && recallCamIdx === state.activeCam && data.position) {
+        applyDebugPositionData(data.position);
+      }
       const msg = state.showAtemDebug
         ? `Preset ${n} recalled — ${data.message}`
         : `Preset ${n} recalled`;
@@ -3230,7 +3272,8 @@
       elScanLbl.textContent  = `Camera ${scanCamIdx + 1}: recalling preset ${i + 1} of ${total}…`;
       setStatus('busy', `Scanning Camera ${scanCamIdx + 1} preset ${i + 1} of ${total}…`, false);
 
-      const result = await doRecall(p, scanCamIdx);
+      const waitMode = state.scanWaitMode === 'dwell' ? 'dwell' : 'settle';
+      const result = await doRecall(p, scanCamIdx, waitMode);
       if (!result.success) {
         console.warn(`Recall ${p}:`, result.message);
         recallFailure = { preset: p, message: result.message || 'recall failed' };
@@ -3238,14 +3281,16 @@
       }
       if (cancelScan) break;
 
-      const dwell = state.dwellMs;
-      const steps = 20;
-      for (let s = 0; s < steps; s++) {
-        if (cancelScan) break;
-        const pct = Math.round((i + (s + 1) / steps) / total * 100);
-        elScanFill.style.width = pct + '%';
-        elScanLbl.textContent  = `Camera ${scanCamIdx + 1}: waiting on preset ${i + 1} of ${total}`;
-        await sleep(dwell / steps);
+      const dwell = waitMode === 'dwell' ? Math.max(0, state.dwellMs || 0) : 0;
+      if (dwell > 0) {
+        const steps = 20;
+        for (let s = 0; s < steps; s++) {
+          if (cancelScan) break;
+          const pct = Math.round((i + (s + 1) / steps) / total * 100);
+          elScanFill.style.width = pct + '%';
+          elScanLbl.textContent  = `Camera ${scanCamIdx + 1}: manual dwell on preset ${i + 1} of ${total}`;
+          await sleep(dwell / steps);
+        }
       }
       if (cancelScan) break;
 

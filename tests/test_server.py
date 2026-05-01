@@ -75,6 +75,22 @@ class TestAtemPackets(unittest.TestCase):
     def test_parse_commands_empty(self):
         self.assertEqual(list(server._parse_commands(b"")), [])
 
+    def test_cut_atem_to_source_sets_preview_then_cuts(self):
+        with patch(
+            "server._send_atem_command",
+            side_effect=[
+                (True, "preview ok"),
+                (True, "cut ok"),
+            ],
+        ) as mock_send:
+            ok, message = server.cut_atem_to_source(7)
+
+        self.assertTrue(ok)
+        self.assertIn("Cut executed", message)
+        self.assertEqual(mock_send.call_count, 2)
+        self.assertEqual(mock_send.call_args_list[0].args[0], "CPvI")
+        self.assertEqual(mock_send.call_args_list[1].args[0], "DCut")
+
 
 # ── ATEM state ─────────────────────────────────────────────────────────────────
 
@@ -568,8 +584,18 @@ class TestHTTPRoutes(unittest.TestCase):
             {"ip": "10.0.0.1", "port": 52381, "camera": 1, "preset": 4}
         ).encode()
         with patch(
-            "server.send_visca_preset_recall",
-            return_value=(True, "ACK 9041ff • Completion 9051ff"),
+            "server.recall_visca_preset",
+            return_value={
+                "success": True,
+                "message": "ACK 9041ff • Completion 9051ff • Settled pan 1234 tilt 5678 zoom 00AA",
+                "settled": True,
+                "sawCompletion": True,
+                "position": {
+                    "pan_hex": "1234",
+                    "tilt_hex": "5678",
+                    "zoom_hex": "00AA",
+                },
+            },
         ) as mock_recall:
             status, body = self.srv.post("/recall", payload)
 
@@ -577,23 +603,54 @@ class TestHTTPRoutes(unittest.TestCase):
         data = json.loads(body)
         self.assertTrue(data["success"])
         self.assertIn("Completion", data["message"])
-        mock_recall.assert_called_once_with("10.0.0.1", 52381, 4, 1)
+        self.assertTrue(data["settled"])
+        self.assertEqual(data["position"]["zoom_hex"], "00AA")
+        mock_recall.assert_called_once_with("10.0.0.1", 52381, 4, 1, "settle")
 
     def test_recall_failure_propagates_transport_message(self):
         payload = json.dumps(
             {"ip": "10.0.0.1", "port": 52381, "camera": 2, "preset": 6}
         ).encode()
         with patch(
-            "server.send_visca_preset_recall",
-            return_value=(False, "VISCA error 906002ff"),
+            "server.recall_visca_preset",
+            return_value={
+                "success": False,
+                "message": "Motion did not settle in time",
+                "settled": False,
+                "sawCompletion": False,
+                "position": None,
+            },
         ) as mock_recall:
             status, body = self.srv.post("/recall", payload)
 
         self.assertEqual(status, 200)
         data = json.loads(body)
         self.assertFalse(data["success"])
-        self.assertIn("VISCA error", data["message"])
-        mock_recall.assert_called_once_with("10.0.0.1", 52381, 6, 2)
+        self.assertIn("settle", data["message"])
+        mock_recall.assert_called_once_with("10.0.0.1", 52381, 6, 2, "settle")
+
+    def test_recall_dwell_mode_passed_through(self):
+        payload = json.dumps(
+            {"ip": "10.0.0.1", "port": 1259, "camera": 1, "preset": 5, "waitMode": "dwell"}
+        ).encode()
+        with patch(
+            "server.recall_visca_preset",
+            return_value={
+                "success": True,
+                "message": "ACK 9041ff • Manual dwell mode",
+                "settled": False,
+                "sawCompletion": True,
+                "waitMode": "dwell",
+                "position": None,
+            },
+        ) as mock_recall:
+            status, body = self.srv.post("/recall", payload)
+
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["success"])
+        self.assertEqual(data["waitMode"], "dwell")
+        mock_recall.assert_called_once_with("10.0.0.1", 1259, 5, 1, "dwell")
 
     # ── image API ──────────────────────────────────────────────────────────────
 
@@ -658,16 +715,19 @@ class TestHTTPRoutes(unittest.TestCase):
         server.write_settings(settings)
 
         with patch(
-            "server.inquire_visca_pan_tilt_position",
+            "server.inquire_visca_absolute_position",
             return_value=(
                 True,
                 {
                     "pan": 0x1234,
                     "tilt": 0x5678,
+                    "zoom": 0x00AA,
                     "pan_hex": "1234",
                     "tilt_hex": "5678",
-                    "responder": "0x90",
-                    "expected_responder": "0x90",
+                    "zoom_hex": "00AA",
+                    "pan_signed": 0x1234,
+                    "tilt_signed": 0x5678,
+                    "transport": "sony-udp",
                 },
             ),
         ) as mock_inquire:
@@ -678,6 +738,7 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertTrue(data["ok"])
         self.assertEqual(data["pan_hex"], "1234")
         self.assertEqual(data["tilt_hex"], "5678")
+        self.assertEqual(data["zoom_hex"], "00AA")
         mock_inquire.assert_called_once_with("10.0.0.9", 52381, 1)
 
     # ── 404 paths ──────────────────────────────────────────────────────────────
