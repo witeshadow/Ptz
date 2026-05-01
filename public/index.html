@@ -457,6 +457,20 @@
       text-shadow: 0 1px 3px rgba(0,0,0,.9);
     }
 
+    .preset-capture {
+      position: absolute; top: 5px; left: 5px;
+      width: 20px; height: 20px;
+      background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.25);
+      border-radius: 50%; color: #fff; font-size: .75rem; line-height: 1;
+      cursor: pointer; display: none;
+      align-items: center; justify-content: center;
+      transition: background .15s;
+      z-index: 2;
+    }
+    .preset-btn.edit-mode .preset-capture { display: flex; opacity: 0.55; }
+    .preset-btn.edit-mode:hover .preset-capture { opacity: 1; }
+    .preset-capture:hover { background: var(--accent); border-color: var(--accent); }
+
     .preset-clear {
       position: absolute; top: 5px; right: 5px;
       width: 20px; height: 20px;
@@ -2138,6 +2152,38 @@
     return true;
   }
 
+  async function capturePresetImage(cam, preset, btn) {
+    btn.disabled = true;
+    const preset_btn = btn.closest('.preset-btn');
+    if (preset_btn) {
+      preset_btn.classList.add('state-busy');
+      preset_btn.classList.remove('state-ok', 'state-fail');
+    }
+
+    try {
+      const ok = await captureFrame(cam, preset);
+
+      if (ok) {
+        bumpImageVersion(cam, preset);
+        refreshPresetBtn(preset, cam);
+        if (preset_btn) {
+          preset_btn.classList.remove('state-busy');
+          preset_btn.classList.add('state-ok');
+          setTimeout(() => preset_btn.classList.remove('state-ok'), 1000);
+        }
+        setStatus('success', `Captured preset ${preset}`);
+      } else {
+        if (preset_btn) {
+          preset_btn.classList.remove('state-busy');
+          preset_btn.classList.add('state-fail');
+          setTimeout(() => preset_btn.classList.remove('state-fail'), 1500);
+        }
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   // ── Preset grid ────────────────────────────────────────────────────────────
   const elGrid = document.getElementById('preset-grid');
   let editMode = false;
@@ -2339,6 +2385,19 @@
     ov.appendChild(ovNum);
     ov.appendChild(ovName);
     btn.appendChild(ov);
+
+    const captureBtn = document.createElement('button');
+    captureBtn.className = 'preset-capture';
+    captureBtn.type      = 'button';
+    captureBtn.title     = 'Capture snapshot';
+    captureBtn.textContent = '⭐';
+    captureBtn.addEventListener('pointerup', (e) => { e.stopPropagation(); });
+    captureBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const activeCam = state.activeCam;
+      await capturePresetImage(activeCam, n, captureBtn);
+    });
+    btn.appendChild(captureBtn);
 
     const clearBtn = document.createElement('button');
     clearBtn.className   = 'preset-clear';
