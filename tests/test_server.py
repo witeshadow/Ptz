@@ -75,6 +75,98 @@ class TestAtemPackets(unittest.TestCase):
     def test_parse_commands_empty(self):
         self.assertEqual(list(server._parse_commands(b"")), [])
 
+    def test_cut_atem_to_source_sets_preview_then_cuts(self):
+        with patch(
+            "server._get_atem",
+            return_value={"preview": 3, "program": 2},
+        ), patch(
+            "server._send_atem_command",
+            side_effect=[
+                (True, "preview ok"),
+                (True, "cut ok"),
+            ],
+        ) as mock_send, patch(
+            "server._wait_for_atem_preview_source",
+            return_value=True,
+        ) as mock_wait_preview, patch(
+            "server._wait_for_atem_program_source",
+            return_value=True,
+        ) as mock_wait:
+            ok, message = server.cut_atem_to_source(7)
+
+        self.assertTrue(ok)
+        self.assertIn("Cut executed", message)
+        self.assertEqual(mock_send.call_count, 2)
+        self.assertEqual(mock_send.call_args_list[0].args[0], "CPvI")
+        self.assertEqual(mock_send.call_args_list[1].args[0], "DCut")
+        mock_wait_preview.assert_called_once_with(7, timeout_s=1.0)
+        mock_wait.assert_called_once_with(7, timeout_s=1.0)
+
+    def test_cut_atem_to_source_falls_back_to_direct_program_switch(self):
+        with patch(
+            "server._get_atem",
+            return_value={"preview": 3, "program": 2},
+        ), patch(
+            "server._send_atem_command",
+            side_effect=[
+                (True, "preview ok"),
+                (True, "program ok"),
+            ],
+        ) as mock_send, patch(
+            "server._wait_for_atem_preview_source",
+            return_value=False,
+        ) as mock_wait_preview, patch(
+            "server._wait_for_atem_program_source",
+            return_value=True,
+        ) as mock_wait:
+            ok, message = server.cut_atem_to_source(9)
+
+        self.assertTrue(ok)
+        self.assertIn("direct program switch", message)
+        self.assertEqual([call.args[0] for call in mock_send.call_args_list], ["CPvI", "CPgI"])
+        mock_wait_preview.assert_called_once_with(9, timeout_s=1.0)
+        mock_wait.assert_called_once_with(9, timeout_s=1.0)
+
+    def test_cut_atem_to_source_returns_false_when_program_never_confirms(self):
+        with patch(
+            "server._get_atem",
+            return_value={"preview": 3, "program": 2},
+        ), patch(
+            "server._send_atem_command",
+            side_effect=[
+                (True, "preview ok"),
+                (True, "program ok"),
+            ],
+        ), patch(
+            "server._wait_for_atem_preview_source",
+            return_value=False,
+        ), patch(
+            "server._wait_for_atem_program_source",
+            return_value=False,
+        ):
+            ok, message = server.cut_atem_to_source(11)
+
+        self.assertFalse(ok)
+        self.assertIn("preview or program switched", message)
+
+    def test_cut_atem_to_source_cuts_immediately_when_preview_already_matches(self):
+        with patch(
+            "server._get_atem",
+            return_value={"preview": 12, "program": 2},
+        ), patch(
+            "server._send_atem_command",
+            return_value=(True, "cut ok"),
+        ) as mock_send, patch(
+            "server._wait_for_atem_program_source",
+            return_value=True,
+        ):
+            ok, message = server.cut_atem_to_source(12)
+
+        self.assertTrue(ok)
+        self.assertIn("Cut executed", message)
+        self.assertEqual([call.args[0] for call in mock_send.call_args_list], ["DCut"])
+        self.assertEqual(server._get_atem_last_action()["stage"], "cut-confirm")
+
 
 # ── ATEM state ─────────────────────────────────────────────────────────────────
 
@@ -410,6 +502,70 @@ class TestViscaPosition(unittest.TestCase):
         self.assertFalse(ok)
 
 
+
+# ── _try_record_position unit tests ───────────────────────────────────────────
+
+
+class TestTryRecordPosition(unittest.TestCase):
+    _MOCK_POSITION = {
+        "pan": 0xABCD,
+        "tilt": 0x1234,
+        "zoom": 0x0050,
+        "pan_hex": "ABCD",
+        "tilt_hex": "1234",
+        "zoom_hex": "0050",
+        "pan_signed": -0x5433,
+        "tilt_signed": 0x1234,
+        "transport": "sony-udp",
+    }
+
+    def _settings_with_ip(self, ip="10.0.0.1"):
+        s = dict(server.DEFAULT_SETTINGS)
+        s["cameras"] = [dict(server.DEFAULT_SETTINGS["cameras"][0], ip=ip)]
+        return s
+
+    def test_returns_none_when_no_ip(self):
+        settings = dict(server.DEFAULT_SETTINGS)
+        result = server._try_record_position(settings, 0, 1)
+        self.assertIsNone(result)
+
+    def test_returns_none_when_cam_out_of_range(self):
+        settings = self._settings_with_ip()
+        result = server._try_record_position(settings, 99, 1)
+        self.assertIsNone(result)
+
+    def test_returns_none_when_inquiry_fails(self):
+        settings = self._settings_with_ip()
+        with patch("server.inquire_visca_absolute_position", return_value=(False, "timeout")):
+            result = server._try_record_position(settings, 0, 1)
+        self.assertIsNone(result)
+
+    def test_returns_position_and_updates_settings(self):
+        settings = self._settings_with_ip()
+        with patch(
+            "server.inquire_visca_absolute_position",
+            return_value=(True, self._MOCK_POSITION),
+        ):
+            result = server._try_record_position(settings, 0, 5)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["pan_hex"], "ABCD")
+        self.assertEqual(result["tilt_hex"], "1234")
+        self.assertEqual(result["zoom_hex"], "0050")
+        self.assertEqual(settings["positions"]["0:5"]["pan_hex"], "ABCD")
+
+    def test_overwrites_existing_position(self):
+        settings = self._settings_with_ip()
+        settings["positions"] = {"0:5": {"pan_hex": "0000", "tilt_hex": "0000", "zoom_hex": "0000"}}
+        with patch(
+            "server.inquire_visca_absolute_position",
+            return_value=(True, self._MOCK_POSITION),
+        ):
+            result = server._try_record_position(settings, 0, 5)
+        self.assertEqual(result["pan_hex"], "ABCD")
+        self.assertEqual(settings["positions"]["0:5"]["pan_hex"], "ABCD")
+
+
 # ── HTTP integration ───────────────────────────────────────────────────────────
 
 
@@ -542,6 +698,8 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertEqual(status, 200)
         data = json.loads(body)
         self.assertIn("state", data)
+        self.assertIn("connection", data)
+        self.assertIn("last_action", data)
         self.assertIn("sse_clients", data)
         self.assertIn("settings", data)
 
@@ -568,8 +726,18 @@ class TestHTTPRoutes(unittest.TestCase):
             {"ip": "10.0.0.1", "port": 52381, "camera": 1, "preset": 4}
         ).encode()
         with patch(
-            "server.send_visca_preset_recall",
-            return_value=(True, "ACK 9041ff • Completion 9051ff"),
+            "server.recall_visca_preset",
+            return_value={
+                "success": True,
+                "message": "ACK 9041ff • Completion 9051ff • Settled pan 1234 tilt 5678 zoom 00AA",
+                "settled": True,
+                "sawCompletion": True,
+                "position": {
+                    "pan_hex": "1234",
+                    "tilt_hex": "5678",
+                    "zoom_hex": "00AA",
+                },
+            },
         ) as mock_recall:
             status, body = self.srv.post("/recall", payload)
 
@@ -577,23 +745,54 @@ class TestHTTPRoutes(unittest.TestCase):
         data = json.loads(body)
         self.assertTrue(data["success"])
         self.assertIn("Completion", data["message"])
-        mock_recall.assert_called_once_with("10.0.0.1", 52381, 4, 1)
+        self.assertTrue(data["settled"])
+        self.assertEqual(data["position"]["zoom_hex"], "00AA")
+        mock_recall.assert_called_once_with("10.0.0.1", 52381, 4, 1, "settle")
 
     def test_recall_failure_propagates_transport_message(self):
         payload = json.dumps(
             {"ip": "10.0.0.1", "port": 52381, "camera": 2, "preset": 6}
         ).encode()
         with patch(
-            "server.send_visca_preset_recall",
-            return_value=(False, "VISCA error 906002ff"),
+            "server.recall_visca_preset",
+            return_value={
+                "success": False,
+                "message": "Motion did not settle in time",
+                "settled": False,
+                "sawCompletion": False,
+                "position": None,
+            },
         ) as mock_recall:
             status, body = self.srv.post("/recall", payload)
 
         self.assertEqual(status, 200)
         data = json.loads(body)
         self.assertFalse(data["success"])
-        self.assertIn("VISCA error", data["message"])
-        mock_recall.assert_called_once_with("10.0.0.1", 52381, 6, 2)
+        self.assertIn("settle", data["message"])
+        mock_recall.assert_called_once_with("10.0.0.1", 52381, 6, 2, "settle")
+
+    def test_recall_dwell_mode_passed_through(self):
+        payload = json.dumps(
+            {"ip": "10.0.0.1", "port": 1259, "camera": 1, "preset": 5, "waitMode": "dwell"}
+        ).encode()
+        with patch(
+            "server.recall_visca_preset",
+            return_value={
+                "success": True,
+                "message": "ACK 9041ff • Manual dwell mode",
+                "settled": False,
+                "sawCompletion": True,
+                "waitMode": "dwell",
+                "position": None,
+            },
+        ) as mock_recall:
+            status, body = self.srv.post("/recall", payload)
+
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["success"])
+        self.assertEqual(data["waitMode"], "dwell")
+        mock_recall.assert_called_once_with("10.0.0.1", 1259, 5, 1, "dwell")
 
     # ── image API ──────────────────────────────────────────────────────────────
 
@@ -658,16 +857,19 @@ class TestHTTPRoutes(unittest.TestCase):
         server.write_settings(settings)
 
         with patch(
-            "server.inquire_visca_pan_tilt_position",
+            "server.inquire_visca_absolute_position",
             return_value=(
                 True,
                 {
                     "pan": 0x1234,
                     "tilt": 0x5678,
+                    "zoom": 0x00AA,
                     "pan_hex": "1234",
                     "tilt_hex": "5678",
-                    "responder": "0x90",
-                    "expected_responder": "0x90",
+                    "zoom_hex": "00AA",
+                    "pan_signed": 0x1234,
+                    "tilt_signed": 0x5678,
+                    "transport": "sony-udp",
                 },
             ),
         ) as mock_inquire:
@@ -678,7 +880,93 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertTrue(data["ok"])
         self.assertEqual(data["pan_hex"], "1234")
         self.assertEqual(data["tilt_hex"], "5678")
+        self.assertEqual(data["zoom_hex"], "00AA")
         mock_inquire.assert_called_once_with("10.0.0.9", 52381, 1)
+
+    # ── position recording on capture ──────────────────────────────────────────
+
+    _MOCK_POSITION = {
+        "pan": 0x1234,
+        "tilt": 0x5678,
+        "zoom": 0x00AA,
+        "pan_hex": "1234",
+        "tilt_hex": "5678",
+        "zoom_hex": "00AA",
+        "pan_signed": 0x1234,
+        "tilt_signed": 0x5678,
+        "transport": "sony-udp",
+    }
+
+    def _settings_with_camera_ip(self, ip="10.0.0.9"):
+        settings = dict(server.DEFAULT_SETTINGS)
+        settings["cameras"] = [dict(server.DEFAULT_SETTINGS["cameras"][0], ip=ip)]
+        return settings
+
+    def test_post_image_records_position_when_camera_configured(self):
+        server.write_settings(self._settings_with_camera_ip())
+        fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+
+        with patch(
+            "server.inquire_visca_absolute_position",
+            return_value=(True, self._MOCK_POSITION),
+        ):
+            status, body = self.srv.post("/api/image/0/3", fake_jpeg, "image/jpeg")
+
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["position"]["pan_hex"], "1234")
+        self.assertEqual(data["position"]["tilt_hex"], "5678")
+        self.assertEqual(data["position"]["zoom_hex"], "00AA")
+
+        # Position is persisted in settings
+        saved = server.load_settings()
+        self.assertEqual(saved["positions"]["0:3"]["pan_hex"], "1234")
+
+    def test_post_image_position_null_when_no_camera_ip(self):
+        # DEFAULT_SETTINGS cameras have ip=""
+        fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+        status, body = self.srv.post("/api/image/0/3", fake_jpeg, "image/jpeg")
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["ok"])
+        self.assertIsNone(data["position"])
+
+    def test_post_image_position_null_when_inquiry_fails(self):
+        server.write_settings(self._settings_with_camera_ip())
+        fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+
+        with patch(
+            "server.inquire_visca_absolute_position",
+            return_value=(False, "No VISCA response"),
+        ):
+            status, body = self.srv.post("/api/image/0/3", fake_jpeg, "image/jpeg")
+
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["ok"])
+        self.assertIsNone(data["position"])
+
+    def test_delete_image_clears_stored_position(self):
+        server.write_settings(self._settings_with_camera_ip())
+        fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+
+        with patch(
+            "server.inquire_visca_absolute_position",
+            return_value=(True, self._MOCK_POSITION),
+        ):
+            self.srv.post("/api/image/0/5", fake_jpeg, "image/jpeg")
+
+        # Confirm position was saved
+        self.assertEqual(server.load_settings()["positions"].get("0:5", {}).get("pan_hex"), "1234")
+
+        # Delete image
+        status, body = self.srv.delete("/api/image/0/5")
+        self.assertEqual(status, 200)
+
+        # Position should be cleared
+        saved = server.load_settings()
+        self.assertNotIn("0:5", saved.get("positions", {}))
 
     # ── 404 paths ──────────────────────────────────────────────────────────────
 

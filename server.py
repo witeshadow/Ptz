@@ -16,6 +16,13 @@ import tempfile
 import threading
 import time
 
+from scripts.av1281_motion_probe import (
+    ProbeResult,
+    inquire_absolute_position as _probe_inquire_absolute_position,
+    motion_sample_to_dict as _probe_motion_sample_to_dict,
+    probe_preset as _probe_preset,
+)
+
 try:
     from playwright.sync_api import sync_playwright as _sync_playwright
 
@@ -76,11 +83,14 @@ DEFAULT_SETTINGS = {
     ],
     "labels": {"0:1": "Stage Left", "0:5": "Wide"},
     "dwellMs": 3000,
+    "scanWaitMode": "settle",
     "atem": {"ip": "", "enabled": False},
     "liveMode": True,
     "lockLiveMode": False,
     "unlockOnExitLiveMode": True,
     "atemFollows": "preview",
+    "autoCutEnabled": False,
+    "autoCutDelayMs": 0,
     "atemOutputMap": {
         "webcam": {"webcam": "", "streamUrl": ""},
         "sdi1": {"webcam": "", "streamUrl": ""},
@@ -90,7 +100,109 @@ DEFAULT_SETTINGS = {
     },
     "atemSourceLabels": {},
     "captureOutput": "webcam",
+    "positions": {},
 }
+
+VISCA_RAW_UDP_PORT = 1259
+VISCA_COMPLETION_TIMEOUT_S = 2.0
+VISCA_SETTLE_TIMEOUT_S = 8.0
+VISCA_POLL_INTERVAL_S = 0.2
+VISCA_STABLE_COUNT = 3
+VISCA_INQUIRY_TIMEOUT_S = 1.0
+
+
+def _visca_transport_for_port(port: int) -> str:
+    return "raw-udp" if port == VISCA_RAW_UDP_PORT else "sony-udp"
+
+
+def _normalize_scan_wait_mode(wait_mode: str | None) -> str:
+    return "dwell" if wait_mode == "dwell" else "settle"
+
+
+def _format_probe_message(result: ProbeResult, wait_mode: str) -> str:
+    parts = []
+    ack = next((reply for reply in result.replies if reply.kind == "ack"), None)
+    completion = next(
+        (reply for reply in result.replies if reply.kind == "completion"),
+        None,
+    )
+    if ack:
+        parts.append(f"ACK {ack.payload.hex()}")
+    if completion:
+        parts.append(f"Completion {completion.payload.hex()}")
+    if wait_mode == "settle" and result.settled and result.samples:
+        pos = _probe_motion_sample_to_dict(result.samples[-1])
+        parts.append(
+            "Settled "
+            f"pan {pos['pan_hex']} tilt {pos['tilt_hex']} zoom {pos['zoom_hex']}"
+        )
+    elif wait_mode == "settle" and not result.settled:
+        parts.append("Motion did not settle in time")
+    elif wait_mode == "dwell":
+        parts.append("Manual dwell mode")
+    if result.error:
+        parts.append(result.error)
+    if wait_mode == "dwell" and not parts:
+        parts.append("Command sent")
+    return " • ".join(parts) if parts else "VISCA preset recall completed"
+
+
+def recall_visca_preset(
+    ip: str,
+    port: int,
+    preset_number: int,
+    camera_address: int = 1,
+    wait_mode: str = "settle",
+):
+    wait_mode = _normalize_scan_wait_mode(wait_mode)
+    result = _probe_preset(
+        ip=ip,
+        port=port,
+        camera_address=camera_address,
+        preset=preset_number,
+        transport=_visca_transport_for_port(port),
+        local_port=None,
+        completion_timeout=VISCA_COMPLETION_TIMEOUT_S,
+        settle_timeout=VISCA_SETTLE_TIMEOUT_S,
+        poll_interval=VISCA_POLL_INTERVAL_S,
+        stable_count=VISCA_STABLE_COUNT,
+        inquiry_timeout=VISCA_INQUIRY_TIMEOUT_S,
+        include_focus=False,
+        require_settle=wait_mode == "settle",
+        verbose=False,
+    )
+    success = result.error is None and (
+        result.settled if wait_mode == "settle" else True
+    )
+    payload = {
+        "success": success,
+        "message": _format_probe_message(result, wait_mode),
+        "settled": result.settled,
+        "sawCompletion": result.saw_completion,
+        "waitMode": wait_mode,
+        "position": (
+            _probe_motion_sample_to_dict(result.samples[-1]) if result.samples else None
+        ),
+    }
+    return payload
+
+
+def inquire_visca_absolute_position(
+    ip: str, port: int, camera_address: int = 1
+) -> tuple[bool, dict | str]:
+    try:
+        result = _probe_inquire_absolute_position(
+            ip=ip,
+            port=port,
+            camera_address=camera_address,
+            transport=_visca_transport_for_port(port),
+            local_port=None,
+            inquiry_timeout=VISCA_INQUIRY_TIMEOUT_S,
+            include_focus=False,
+        )
+        return True, result
+    except Exception as exc:
+        return False, str(exc)
 
 
 # ── Settings ───────────────────────────────────────────────────────────────────
@@ -139,6 +251,23 @@ _atem_state = {
     "aux4": 0,
 }
 _atem_state_lock = threading.Lock()
+_atem_last_action = {
+    "name": "",
+    "stage": "",
+    "source": 0,
+    "reason": "",
+    "ok": None,
+    "message": "",
+    "timestamp": 0.0,
+}
+_atem_last_action_lock = threading.Lock()
+_atem_conn = {
+    "sock": None,
+    "addr": None,
+    "session_id": 0,
+    "packet_id": 0,
+}
+_atem_conn_lock = threading.Lock()
 
 
 def _set_atem(
@@ -162,6 +291,60 @@ def _set_atem(
 def _get_atem() -> dict:
     with _atem_state_lock:
         return dict(_atem_state)
+
+
+def _set_atem_last_action(
+    name: str,
+    stage: str,
+    source: int,
+    reason: str,
+    ok: bool | None,
+    message: str,
+):
+    with _atem_last_action_lock:
+        _atem_last_action.update(
+            {
+                "name": name,
+                "stage": stage,
+                "source": source,
+                "reason": reason,
+                "ok": ok,
+                "message": message,
+                "timestamp": time.time(),
+            }
+        )
+
+
+def _get_atem_last_action() -> dict:
+    with _atem_last_action_lock:
+        return dict(_atem_last_action)
+
+
+def _get_atem_connection_debug() -> dict:
+    with _atem_conn_lock:
+        addr = _atem_conn["addr"]
+        return {
+            "session_id": int(_atem_conn["session_id"] or 0),
+            "packet_id": int(_atem_conn["packet_id"] or 0),
+            "address": f"{addr[0]}:{addr[1]}" if addr else "",
+        }
+
+
+def _clear_atem_conn():
+    with _atem_conn_lock:
+        _atem_conn["sock"] = None
+        _atem_conn["addr"] = None
+        _atem_conn["session_id"] = 0
+        _atem_conn["packet_id"] = 0
+
+
+def _update_atem_conn(sock, addr, session_id: int):
+    with _atem_conn_lock:
+        _atem_conn["sock"] = sock
+        _atem_conn["addr"] = addr
+        _atem_conn["session_id"] = session_id
+        if not _atem_conn["packet_id"]:
+            _atem_conn["packet_id"] = 0
 
 
 # ── ATEM UDP client ────────────────────────────────────────────────────────────
@@ -216,6 +399,189 @@ def _parse_commands(payload: bytes):
         pos += cmd_len
 
 
+def _build_atem_command(name: str, payload: bytes) -> bytes:
+    cmd_name = name.encode("ascii")
+    if len(cmd_name) != 4:
+        raise ValueError("ATEM command names must be 4 ASCII bytes")
+    total_len = 8 + len(payload)
+    return struct.pack(">H2x4s", total_len, cmd_name) + payload
+
+
+def _send_atem_command(name: str, payload: bytes) -> tuple[bool, str]:
+    packet_payload = _build_atem_command(name, payload)
+    with _atem_conn_lock:
+        sock = _atem_conn["sock"]
+        addr = _atem_conn["addr"]
+        session_id = int(_atem_conn["session_id"] or 0)
+        if not sock or not addr or session_id <= 0:
+            return False, "ATEM is not connected"
+        packet_id = (int(_atem_conn["packet_id"] or 0) + 1) & 0x7FFF
+        if packet_id == 0:
+            packet_id = 1
+        _atem_conn["packet_id"] = packet_id
+        packet_len = 12 + len(packet_payload)
+        word0 = (0x01 << 11) | packet_len
+        packet = (
+            struct.pack(">HHHHHH", word0, session_id, 0, 0, 0, packet_id)
+            + packet_payload
+        )
+        try:
+            sock.sendto(packet, addr)
+        except OSError as exc:
+            return False, str(exc)
+    return True, f"ATEM packet {packet_id} sent"
+
+
+def _send_atem_preview(source_id: int) -> tuple[bool, str]:
+    """Set ATEM ME1 preview bus to source_id via CPvI command."""
+    # CPvI payload: ME index (1 byte), padding (1 byte), source (2 bytes big-endian)
+    return _send_atem_command("CPvI", b"\x00\x00" + struct.pack(">H", source_id))
+
+
+def _wait_for_atem_program_source(source: int, timeout_s: float = 1.0) -> bool:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if _get_atem().get("program") == source:
+            return True
+        time.sleep(0.05)
+    return _get_atem().get("program") == source
+
+
+def _wait_for_atem_preview_source(source: int, timeout_s: float = 1.0) -> bool:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if _get_atem().get("preview") == source:
+            return True
+        time.sleep(0.05)
+    return _get_atem().get("preview") == source
+
+
+def cut_atem_to_source(source: int, reason: str = "manual") -> tuple[bool, str]:
+    if source <= 0:
+        _set_atem_last_action(
+            "cut", "invalid", source, reason, False, "Invalid ATEM source"
+        )
+        return False, "Invalid ATEM source"
+    preview_payload = bytes([0, 0]) + struct.pack(">H", source)
+    current = _get_atem()
+    _set_atem_last_action(
+        "cut",
+        "start",
+        source,
+        reason,
+        None,
+        f"Starting cut request for source {source} (preview={current.get('preview')} program={current.get('program')})",
+    )
+    if current.get("preview") != source:
+        ok, message = _send_atem_command("CPvI", preview_payload)
+        if not ok:
+            _set_atem_last_action(
+                "cut",
+                "preview-send",
+                source,
+                reason,
+                False,
+                f"Preview command failed: {message}",
+            )
+            return False, message
+        if not _wait_for_atem_preview_source(source, timeout_s=1.0):
+            _set_atem_last_action(
+                "cut",
+                "preview-confirm",
+                source,
+                reason,
+                False,
+                f"Preview did not confirm on source {source}",
+            )
+            ok, program_message = _send_atem_command("CPgI", preview_payload)
+            if not ok:
+                _set_atem_last_action(
+                    "cut",
+                    "program-fallback-send",
+                    source,
+                    reason,
+                    False,
+                    f"Direct program switch failed: {program_message}",
+                )
+                return (
+                    False,
+                    f"Preview did not change to {source} and direct program switch failed: {program_message}",
+                )
+            if _wait_for_atem_program_source(source, timeout_s=1.0):
+                msg = f"Preview did not change • direct program switch moved program to {source}"
+                _set_atem_last_action(
+                    "cut", "program-fallback-confirm", source, reason, True, msg
+                )
+                return (
+                    True,
+                    msg,
+                )
+            _set_atem_last_action(
+                "cut",
+                "program-fallback-confirm",
+                source,
+                reason,
+                False,
+                f"ATEM did not confirm preview or program switched to {source}",
+            )
+            return (
+                False,
+                f"ATEM did not confirm preview or program switched to {source}",
+            )
+
+    ok, cut_message = _send_atem_command("DCut", bytes([0, 0, 0, 0]))
+    if not ok:
+        _set_atem_last_action(
+            "cut",
+            "cut-send",
+            source,
+            reason,
+            False,
+            f"Cut command failed: {cut_message}",
+        )
+        return False, cut_message
+    if _wait_for_atem_program_source(source, timeout_s=1.0):
+        msg = f"Preview set to {source} • Cut executed"
+        _set_atem_last_action("cut", "cut-confirm", source, reason, True, msg)
+        return True, msg
+
+    ok, program_message = _send_atem_command("CPgI", preview_payload)
+    if not ok:
+        _set_atem_last_action(
+            "cut",
+            "program-fallback-send",
+            source,
+            reason,
+            False,
+            f"Cut did not take and direct program switch failed: {program_message}",
+        )
+        return (
+            False,
+            f"Cut did not take and direct program switch failed: {program_message}",
+        )
+    if _wait_for_atem_program_source(source, timeout_s=1.0):
+        msg = f"Cut did not take • direct program switch moved program to {source}"
+        _set_atem_last_action(
+            "cut", "program-fallback-confirm", source, reason, True, msg
+        )
+        return (
+            True,
+            msg,
+        )
+    _set_atem_last_action(
+        "cut",
+        "program-fallback-confirm",
+        source,
+        reason,
+        False,
+        f"ATEM did not confirm program switched to {source} after cut or direct switch",
+    )
+    return (
+        False,
+        f"ATEM did not confirm program switched to {source} after cut or direct switch",
+    )
+
+
 def _atem_loop():
     while True:
         cfg = load_settings().get("atem", {})
@@ -229,12 +595,13 @@ def _atem_loop():
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.settimeout(5.0)
-            sock.sendto(ATEM_HELLO, (ip, ATEM_PORT))
+            atem_addr = (ip, ATEM_PORT)
+            sock.sendto(ATEM_HELLO, atem_addr)
             data, _ = sock.recvfrom(2048)
             print(f"[ATEM] HELLO response raw={data[:12].hex()}")
             # ACK the HELLO response with session_id=0 (not yet assigned)
             _, hello_seq = _parse_header(data)
-            sock.sendto(_make_ack(0, hello_seq), (ip, ATEM_PORT))
+            sock.sendto(_make_ack(0, hello_seq), atem_addr)
 
             # drain init dump; pick up actual session_id from first data packet
             session_id = 0
@@ -250,9 +617,10 @@ def _atem_loop():
                     pkt_sid = struct.unpack(">H", data[2:4])[0]
                     if pkt_sid != 0:
                         session_id = pkt_sid
+                        _update_atem_conn(sock, atem_addr, session_id)
                     flags, seq_num = _parse_header(data)
                     if flags & 0x01:  # ATEM wants ACK (RELIABLE flag)
-                        sock.sendto(_make_ack(session_id, seq_num), (ip, ATEM_PORT))
+                        sock.sendto(_make_ack(session_id, seq_num), atem_addr)
                     for cmd, cmd_data in _parse_commands(
                         data[12:] if len(data) > 12 else b""
                     ):
@@ -279,6 +647,7 @@ def _atem_loop():
                     break  # proceed even if InCm wasn't seen
 
             _set_atem(True, preview=init_preview, program=init_program)
+            _update_atem_conn(sock, atem_addr, session_id)
             _broadcast({"type": "atem", **_get_atem()})
             print(
                 f"[ATEM] Connected — init preview={init_preview} program={init_program}"
@@ -310,7 +679,7 @@ def _atem_loop():
                     flags, seq_num = _parse_header(data)
                     last_seq = seq_num
                     if flags & 0x01:  # ATEM wants ACK (RELIABLE flag)
-                        sock.sendto(_make_ack(session_id, seq_num), (ip, ATEM_PORT))
+                        sock.sendto(_make_ack(session_id, seq_num), atem_addr)
                     for cmd, cmd_data in _parse_commands(
                         data[12:] if len(data) > 12 else b""
                     ):
@@ -348,12 +717,13 @@ def _atem_loop():
                     print("[ATEM] No data for 5 s — reconnecting")
                     break
                 if now - last_keepalive >= 0.5:
-                    sock.sendto(_make_ack(session_id, last_seq), (ip, ATEM_PORT))
+                    sock.sendto(_make_ack(session_id, last_seq), atem_addr)
                     last_keepalive = time.monotonic()
 
         except Exception as exc:
             print(f"[ATEM] Error: {exc!r}")
         finally:
+            _clear_atem_conn()
             _set_atem(False)
             print("[ATEM] Disconnected — will retry in 3 s")
             try:
@@ -696,6 +1066,39 @@ _MIME = {
 }
 
 
+def _try_record_position(settings: dict, cam: int, preset: int) -> dict | None:
+    """Query the camera's absolute position and persist it in settings['positions'].
+
+    Returns the position dict on success, or None if the camera is unconfigured
+    or the inquiry fails (e.g. camera offline). Caller must write_settings() if
+    a non-None value is returned.
+    """
+    cams = settings.get("cameras", [])
+    if cam < 0 or cam >= len(cams):
+        return None
+    cfg = cams[cam]
+    ip = str(cfg.get("ip", "")).strip()
+    if not ip:
+        return None
+    port = int(cfg.get("port", 52381) or 52381)
+    visca_addr = int(cfg.get("viscaAddr", 1) or 1)
+    ok, result = inquire_visca_absolute_position(ip, port, visca_addr)
+    if not ok or not isinstance(result, dict):
+        return None
+    pos = {
+        "pan": result.get("pan"),
+        "tilt": result.get("tilt"),
+        "zoom": result.get("zoom"),
+        "pan_hex": result.get("pan_hex"),
+        "tilt_hex": result.get("tilt_hex"),
+        "zoom_hex": result.get("zoom_hex"),
+    }
+    if "positions" not in settings:
+        settings["positions"] = {}
+    settings["positions"][f"{cam}:{preset}"] = pos
+    return pos
+
+
 # ── HTTP handler ───────────────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):  # noqa: A002
@@ -718,6 +1121,8 @@ class Handler(BaseHTTPRequestHandler):
                 200,
                 {
                     "state": _get_atem(),
+                    "connection": _get_atem_connection_debug(),
+                    "last_action": _get_atem_last_action(),
                     "sse_clients": n_clients,
                     "settings": {
                         "ip": cfg.get("ip", ""),
@@ -731,6 +1136,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, list_usb_devices())
         elif m := re.match(r"^/api/position/(\d+)$", path):
             self._get_position(int(m.group(1)))
+        elif m := re.match(r"^/api/image/(\d+)/(\d+)/position$", path):
+            self._get_image_position(int(m.group(1)), int(m.group(2)))
         elif m := re.match(r"^/api/image/(\d+)/(\d+)$", path):
             self._get_image(int(m.group(1)), int(m.group(2)))
         else:
@@ -744,6 +1151,10 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/recall":
             self._handle_recall()
+        elif path == "/atem/cut":
+            self._handle_atem_cut()
+        elif path == "/api/atem/preview":
+            self._handle_atem_preview_post()
         elif path == "/settings":
             self._handle_settings_post()
         elif m := re.match(r"^/api/image/(\d+)/(\d+)$", path):
@@ -776,11 +1187,12 @@ class Handler(BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             self._json(400, {"success": False, "message": "Invalid numeric parameter"})
             return
+        wait_mode = _normalize_scan_wait_mode(str(data.get("waitMode", "settle")))
         if not ip:
             self._json(400, {"success": False, "message": "Camera IP is required"})
             return
-        ok, msg = send_visca_preset_recall(ip, port, preset, camera)
-        self._json(200, {"success": ok, "message": msg})
+        result = recall_visca_preset(ip, port, preset, camera, wait_mode)
+        self._json(200, result)
 
     def _handle_settings_post(self):
         body = self._read_body()
@@ -790,6 +1202,88 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True})
         except Exception as e:
             self._json(400, {"ok": False, "error": str(e)})
+
+    def _handle_atem_cut(self):
+        body = self._read_body()
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            self._json(400, {"ok": False, "error": "Invalid JSON"})
+            return
+
+        try:
+            source = int(data.get("source", 0))
+        except (TypeError, ValueError):
+            self._json(400, {"ok": False, "error": "Invalid ATEM source"})
+            return
+        reason = str(data.get("reason", "manual")).strip().lower()
+        if reason not in {"manual", "auto"}:
+            reason = "manual"
+
+        cfg = load_settings().get("atem", {})
+        if not cfg.get("enabled"):
+            self._json(409, {"ok": False, "error": "ATEM is disabled in settings"})
+            return
+
+        if not _get_atem().get("connected"):
+            self._json(409, {"ok": False, "error": "ATEM is not connected"})
+            return
+
+        ok, message = cut_atem_to_source(source, reason=reason)
+        status = 200 if ok else 502
+        self._json(
+            status,
+            {
+                "ok": ok,
+                "message": message,
+                "source": source,
+                "reason": reason,
+                "lastAction": _get_atem_last_action(),
+            },
+        )
+
+    def _handle_atem_preview_post(self):
+        body = self._read_body()
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            self._json(400, {"ok": False, "error": "Invalid JSON"})
+            return
+
+        try:
+            cam_idx = int(data.get("camIdx", -1))
+        except (TypeError, ValueError):
+            self._json(400, {"ok": False, "error": "Invalid camIdx"})
+            return
+
+        settings = load_settings()
+        cfg = settings.get("atem", {})
+        if not cfg.get("enabled"):
+            self._json(409, {"ok": False, "error": "ATEM is disabled in settings"})
+            return
+
+        if not _get_atem().get("connected"):
+            self._json(409, {"ok": False, "error": "ATEM is not connected"})
+            return
+
+        cams = settings.get("cameras", [])
+        if cam_idx < 0 or cam_idx >= len(cams):
+            self._json(404, {"ok": False, "error": "Camera not found"})
+            return
+
+        try:
+            atem_input = int(cams[cam_idx].get("atemInput") or 0)
+        except (TypeError, ValueError):
+            atem_input = 0
+        if not atem_input:
+            self._json(
+                400, {"ok": False, "error": "Camera has no ATEM input configured"}
+            )
+            return
+
+        ok, message = _send_atem_preview(atem_input)
+        status = 200 if ok else 502
+        self._json(status, {"ok": ok, "message": message, "source": atem_input})
 
     def _get_image(self, cam: int, preset: int):
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
@@ -820,11 +1314,19 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"ok": False, "error": "Camera IP is not configured"})
             return
 
-        ok, result = inquire_visca_pan_tilt_position(ip, port, visca_addr)
+        ok, result = inquire_visca_absolute_position(ip, port, visca_addr)
         if ok:
             self._json(200, {"ok": True, **result})
         else:
             self._json(502, {"ok": False, "error": result})
+
+    def _get_image_position(self, cam: int, preset: int):
+        positions = load_settings().get("positions", {})
+        pos = positions.get(f"{cam}:{preset}")
+        if pos is None:
+            self._json(404, {"ok": False, "error": "No position data for this preset"})
+            return
+        self._json(200, {"ok": True, **pos})
 
     def _post_image(self, cam: int, preset: int):
         _ensure_dirs()
@@ -832,7 +1334,11 @@ class Handler(BaseHTTPRequestHandler):
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
         with open(fpath, "wb") as f:
             f.write(data)
-        self._json(200, {"ok": True})
+        settings = load_settings()
+        position = _try_record_position(settings, cam, preset)
+        if position is not None:
+            write_settings(settings)
+        self._json(200, {"ok": True, "position": position})
 
     def _capture_image(self, cam: int, preset: int):
         try:
@@ -877,7 +1383,11 @@ class Handler(BaseHTTPRequestHandler):
             fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
             with open(fpath, "wb") as f:
                 f.write(jpeg)
-            self._json(200, {"ok": True})
+            settings = load_settings()
+            position = _try_record_position(settings, cam, preset)
+            if position is not None:
+                write_settings(settings)
+            self._json(200, {"ok": True, "position": position})
         except Exception as e:
             self._json(500, {"ok": False, "error": str(e)})
 
@@ -885,6 +1395,11 @@ class Handler(BaseHTTPRequestHandler):
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
         if os.path.exists(fpath):
             os.remove(fpath)
+        settings = load_settings()
+        key = f"{cam}:{preset}"
+        if key in settings.get("positions", {}):
+            del settings["positions"][key]
+            write_settings(settings)
         self._json(200, {"ok": True})
 
     def _sse(self):
