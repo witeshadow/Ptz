@@ -80,6 +80,16 @@ DEFAULT_SETTINGS = {
             "usbDevice": "",
             "enabled": True,
         },
+        {
+            "name": "Camera 4",
+            "ip": "",
+            "port": 52381,
+            "viscaAddr": 1,
+            "atemInput": 4,
+            "streamUrl": "",
+            "usbDevice": "",
+            "enabled": False,
+        },
     ],
     "labels": {"0:1": "Stage Left", "0:5": "Wide"},
     "dwellMs": 3000,
@@ -89,7 +99,6 @@ DEFAULT_SETTINGS = {
     "lockLiveMode": False,
     "unlockOnExitLiveMode": True,
     "atemFollows": "preview",
-    "autoCutEnabled": False,
     "autoCutDelayMs": 0,
     "atemOutputMap": {
         "webcam": {"webcam": "", "streamUrl": ""},
@@ -120,6 +129,8 @@ def _normalize_recall_wait_mode(wait_mode: str | None) -> str:
         return "dwell"
     if wait_mode == "confirm":
         return "confirm"
+    if wait_mode == "autocut":
+        return "autocut"
     return "settle"
 
 
@@ -130,6 +141,10 @@ def _normalize_scan_wait_mode(wait_mode: str | None) -> str:
 
 def _probe_recall_command_succeeded(result: ProbeResult) -> bool:
     return result.error is None
+
+
+def _probe_autocut_ready(result: ProbeResult) -> bool:
+    return result.error is None and (result.settled or result.saw_completion)
 
 
 def _format_probe_message(result: ProbeResult, wait_mode: str) -> str:
@@ -154,6 +169,17 @@ def _format_probe_message(result: ProbeResult, wait_mode: str) -> str:
     elif wait_mode == "confirm":
         if completion is None and ack is None:
             parts.append("Command sent")
+    elif wait_mode == "autocut":
+        if result.settled and result.samples:
+            pos = _probe_motion_sample_to_dict(result.samples[-1])
+            parts.append(
+                "Settled "
+                f"pan {pos['pan_hex']} tilt {pos['tilt_hex']} zoom {pos['zoom_hex']}"
+            )
+        elif result.saw_completion:
+            parts.append("VISCA completion confirmed")
+        else:
+            parts.append("Motion stop was not confirmed")
     elif wait_mode == "dwell":
         parts.append("Manual dwell mode")
     if result.error:
@@ -190,6 +216,8 @@ def recall_visca_preset(
     success = (
         result.error is None and result.settled
         if wait_mode == "settle"
+        else _probe_autocut_ready(result)
+        if wait_mode == "autocut"
         else _probe_recall_command_succeeded(result)
     )
     payload = {

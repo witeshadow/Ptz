@@ -333,6 +333,9 @@ class TestDefaultSettings(unittest.TestCase):
         for key in ("name", "ip", "port", "viscaAddr", "atemInput", "streamUrl", "usbDevice", "enabled"):
             self.assertIn(key, cam)
 
+    def test_default_has_four_cameras(self):
+        self.assertEqual(len(server.DEFAULT_SETTINGS["cameras"]), 4)
+
     def test_atem_shape(self):
         atem = server.DEFAULT_SETTINGS["atem"]
         self.assertIn("ip", atem)
@@ -494,6 +497,23 @@ class TestRecallProbeModes(unittest.TestCase):
         self.assertFalse(payload["success"])
         self.assertEqual(payload["message"], "Motion did not settle in time")
         self.assertEqual(payload["waitMode"], "settle")
+
+    def test_autocut_mode_accepts_visca_completion_without_settle(self):
+        probe_result = SimpleNamespace(
+            replies=[],
+            saw_completion=True,
+            settled=False,
+            samples=[],
+            error=None,
+        )
+        with patch("server._probe_preset", return_value=probe_result):
+            payload = server.recall_visca_preset(
+                "10.0.0.1", 52381, 4, 1, wait_mode="autocut"
+            )
+
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["message"], "VISCA completion confirmed")
+        self.assertEqual(payload["waitMode"], "autocut")
 
 
 # ── VISCA position inquiry ─────────────────────────────────────────────────────
@@ -806,6 +826,35 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertTrue(data["success"])
         self.assertEqual(data["waitMode"], "confirm")
         mock_recall.assert_called_once_with("10.0.0.1", 52381, 5, 1, "confirm")
+
+    def test_recall_autocut_mode_passed_through(self):
+        payload = json.dumps(
+            {
+                "ip": "10.0.0.1",
+                "port": 52381,
+                "camera": 1,
+                "preset": 5,
+                "waitMode": "autocut",
+            }
+        ).encode()
+        with patch(
+            "server.recall_visca_preset",
+            return_value={
+                "success": True,
+                "message": "VISCA completion confirmed",
+                "settled": False,
+                "sawCompletion": True,
+                "waitMode": "autocut",
+                "position": None,
+            },
+        ) as mock_recall:
+            status, body = self.srv.post("/recall", payload)
+
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["success"])
+        self.assertEqual(data["waitMode"], "autocut")
+        mock_recall.assert_called_once_with("10.0.0.1", 52381, 5, 1, "autocut")
 
     # ── image API ──────────────────────────────────────────────────────────────
 
