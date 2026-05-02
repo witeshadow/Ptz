@@ -2168,7 +2168,19 @@
   }
 
   function canArmAutoCut() {
-    return !state.liveMode && !!state.atem.enabled && !!state.autoCutEnabled && !!atemConnected;
+    return !!state.atem.enabled && !!state.autoCutEnabled && !!atemConnected;
+  }
+
+  function getAutoCutPlan(camIdx) {
+    if (!autoCutArmed || !canArmAutoCut()) return null;
+    const source = getCameraAtemInput(camIdx);
+    if (!source) return null;
+    return {
+      source,
+      camIdx,
+      camName: state.cameras[camIdx]?.name || `Camera ${camIdx + 1}`,
+      delayMs: Math.max(0, state.autoCutDelayMs || 0),
+    };
   }
 
   function canManualCut() {
@@ -2211,8 +2223,6 @@
       elAutoCutBtn.title = 'Wait for ATEM to connect';
     } else if (!state.autoCutEnabled) {
       elAutoCutBtn.title = 'Turn on Enable Auto Cut in Settings';
-    } else if (state.liveMode) {
-      elAutoCutBtn.title = 'Auto Cut can only be armed in Edit mode';
     } else if (!source) {
       elAutoCutBtn.title = 'Set an ATEM source number for this camera first';
     } else if (autoCutArmed) {
@@ -2277,20 +2287,13 @@
     }
   }
 
-  function scheduleAutoCut(preset, camIdx) {
-    if (!autoCutArmed || !canArmAutoCut()) return;
-    const source = getCameraAtemInput(camIdx);
-    if (!source) {
-      setStatus('error', 'Set an ATEM source number for this camera before using Auto Cut');
-      setAutoCutArmed(false);
-      return;
-    }
+  function scheduleAutoCut(preset, autoCutPlan) {
+    if (!autoCutPlan || !autoCutPlan.source) return;
     clearPendingAutoCut();
-    const camName = state.cameras[camIdx]?.name || `Camera ${camIdx + 1}`;
-    const delayMs = Math.max(0, state.autoCutDelayMs || 0);
+    const { source, camName, delayMs } = autoCutPlan;
     autoCutPending = { source, camName, preset };
     if (delayMs > 0) {
-      setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} after confirmed stop + ${getAutoCutDelaySeconds()}s`, false);
+      setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} after confirmed stop + ${(delayMs / 1000).toFixed(1).replace(/\.0$/, '')}s`, false);
     } else {
       setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} when camera stop is confirmed`, false);
     }
@@ -2331,7 +2334,7 @@
   function updateToolbarVisibility() {
     const btnScanEl = document.getElementById('btn-scan');
     if (btnScanEl) btnScanEl.style.display = state.liveMode ? 'none' : '';
-    if (elAutoCutBtn) elAutoCutBtn.style.display = (!state.liveMode && state.atem.enabled) ? '' : 'none';
+    if (elAutoCutBtn) elAutoCutBtn.style.display = state.atem.enabled ? '' : 'none';
     if (elCaptureToggle) {
       elCaptureToggle.style.display =
         (!state.liveMode && state.atem.enabled) ? 'flex' : 'none';
@@ -2389,7 +2392,6 @@
       state.liveMode = !state.liveMode;
       if (state.liveMode) {
         state.lockLiveMode = true;
-        setAutoCutArmed(false);
         setStatus('success', 'Live mode activated - camera locked to prevent accidental movement');
       } else {
         if (state.unlockOnExitLiveMode) {
@@ -3268,6 +3270,7 @@
 
   async function recallPreset(n, btn) {
     const recallCamIdx = state.activeCam;
+    const autoCutPlan = getAutoCutPlan(recallCamIdx);
     if (state.liveMode && state.lockLiveMode) {
       const isLiveCamera = cameraMatchesAtemSource(recallCamIdx, state.programSource);
       if (isLiveCamera) {
@@ -3292,7 +3295,7 @@
         ? `Preset ${n} recalled — ${data.message}`
         : `Preset ${n} recalled`;
       setStatus('success', msg);
-      scheduleAutoCut(n, recallCamIdx);
+      scheduleAutoCut(n, autoCutPlan);
     } else {
       flash(btn, 'fail', 1100);
       const msg = state.showAtemDebug
