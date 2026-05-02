@@ -254,6 +254,7 @@ _atem_last_action = {
     "name": "",
     "stage": "",
     "source": 0,
+    "reason": "",
     "ok": None,
     "message": "",
     "timestamp": 0.0,
@@ -295,6 +296,7 @@ def _set_atem_last_action(
     name: str,
     stage: str,
     source: int,
+    reason: str,
     ok: bool | None,
     message: str,
 ):
@@ -304,6 +306,7 @@ def _set_atem_last_action(
                 "name": name,
                 "stage": stage,
                 "source": source,
+                "reason": reason,
                 "ok": ok,
                 "message": message,
                 "timestamp": time.time(),
@@ -446,9 +449,11 @@ def _wait_for_atem_preview_source(source: int, timeout_s: float = 1.0) -> bool:
     return _get_atem().get("preview") == source
 
 
-def cut_atem_to_source(source: int) -> tuple[bool, str]:
+def cut_atem_to_source(source: int, reason: str = "manual") -> tuple[bool, str]:
     if source <= 0:
-        _set_atem_last_action("cut", "invalid", source, False, "Invalid ATEM source")
+        _set_atem_last_action(
+            "cut", "invalid", source, reason, False, "Invalid ATEM source"
+        )
         return False, "Invalid ATEM source"
     preview_payload = bytes([0, 0]) + struct.pack(">H", source)
     current = _get_atem()
@@ -456,6 +461,7 @@ def cut_atem_to_source(source: int) -> tuple[bool, str]:
         "cut",
         "start",
         source,
+        reason,
         None,
         f"Starting cut request for source {source} (preview={current.get('preview')} program={current.get('program')})",
     )
@@ -466,6 +472,7 @@ def cut_atem_to_source(source: int) -> tuple[bool, str]:
                 "cut",
                 "preview-send",
                 source,
+                reason,
                 False,
                 f"Preview command failed: {message}",
             )
@@ -475,6 +482,7 @@ def cut_atem_to_source(source: int) -> tuple[bool, str]:
                 "cut",
                 "preview-confirm",
                 source,
+                reason,
                 False,
                 f"Preview did not confirm on source {source}",
             )
@@ -484,6 +492,7 @@ def cut_atem_to_source(source: int) -> tuple[bool, str]:
                     "cut",
                     "program-fallback-send",
                     source,
+                    reason,
                     False,
                     f"Direct program switch failed: {program_message}",
                 )
@@ -494,7 +503,7 @@ def cut_atem_to_source(source: int) -> tuple[bool, str]:
             if _wait_for_atem_program_source(source, timeout_s=1.0):
                 msg = f"Preview did not change • direct program switch moved program to {source}"
                 _set_atem_last_action(
-                    "cut", "program-fallback-confirm", source, True, msg
+                    "cut", "program-fallback-confirm", source, reason, True, msg
                 )
                 return (
                     True,
@@ -504,6 +513,7 @@ def cut_atem_to_source(source: int) -> tuple[bool, str]:
                 "cut",
                 "program-fallback-confirm",
                 source,
+                reason,
                 False,
                 f"ATEM did not confirm preview or program switched to {source}",
             )
@@ -515,12 +525,17 @@ def cut_atem_to_source(source: int) -> tuple[bool, str]:
     ok, cut_message = _send_atem_command("DCut", bytes([0, 0, 0, 0]))
     if not ok:
         _set_atem_last_action(
-            "cut", "cut-send", source, False, f"Cut command failed: {cut_message}"
+            "cut",
+            "cut-send",
+            source,
+            reason,
+            False,
+            f"Cut command failed: {cut_message}",
         )
         return False, cut_message
     if _wait_for_atem_program_source(source, timeout_s=1.0):
         msg = f"Preview set to {source} • Cut executed"
-        _set_atem_last_action("cut", "cut-confirm", source, True, msg)
+        _set_atem_last_action("cut", "cut-confirm", source, reason, True, msg)
         return True, msg
 
     ok, program_message = _send_atem_command("CPgI", preview_payload)
@@ -529,6 +544,7 @@ def cut_atem_to_source(source: int) -> tuple[bool, str]:
             "cut",
             "program-fallback-send",
             source,
+            reason,
             False,
             f"Cut did not take and direct program switch failed: {program_message}",
         )
@@ -538,7 +554,9 @@ def cut_atem_to_source(source: int) -> tuple[bool, str]:
         )
     if _wait_for_atem_program_source(source, timeout_s=1.0):
         msg = f"Cut did not take • direct program switch moved program to {source}"
-        _set_atem_last_action("cut", "program-fallback-confirm", source, True, msg)
+        _set_atem_last_action(
+            "cut", "program-fallback-confirm", source, reason, True, msg
+        )
         return (
             True,
             msg,
@@ -547,6 +565,7 @@ def cut_atem_to_source(source: int) -> tuple[bool, str]:
         "cut",
         "program-fallback-confirm",
         source,
+        reason,
         False,
         f"ATEM did not confirm program switched to {source} after cut or direct switch",
     )
@@ -1153,6 +1172,9 @@ class Handler(BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             self._json(400, {"ok": False, "error": "Invalid ATEM source"})
             return
+        reason = str(data.get("reason", "manual")).strip().lower()
+        if reason not in {"manual", "auto"}:
+            reason = "manual"
 
         cfg = load_settings().get("atem", {})
         if not cfg.get("enabled"):
@@ -1163,7 +1185,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(409, {"ok": False, "error": "ATEM is not connected"})
             return
 
-        ok, message = cut_atem_to_source(source)
+        ok, message = cut_atem_to_source(source, reason=reason)
         status = 200 if ok else 502
         self._json(
             status,
@@ -1171,6 +1193,7 @@ class Handler(BaseHTTPRequestHandler):
                 "ok": ok,
                 "message": message,
                 "source": source,
+                "reason": reason,
                 "lastAction": _get_atem_last_action(),
             },
         )

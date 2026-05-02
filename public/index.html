@@ -1258,6 +1258,7 @@
         TILT <span id="dbg-tilt">—</span> &nbsp;
         ZOOM <span id="dbg-zoom">—</span> &nbsp;
         VISCA <span id="dbg-visca">—</span> &nbsp;
+        ACUT <span id="dbg-autocut">—</span> &nbsp;
         <span id="dbg-inputs"></span>
       </div>
     </div>
@@ -1684,15 +1685,22 @@
   const elDbgTilt   = document.getElementById('dbg-tilt');
   const elDbgZoom   = document.getElementById('dbg-zoom');
   const elDbgVisca  = document.getElementById('dbg-visca');
+  const elDbgAutoCut = document.getElementById('dbg-autocut');
   const elDbgInputs = document.getElementById('dbg-inputs');
   let debugPositionTimer = null;
   let debugPositionRequestId = 0;
+  let autoCutDebugText = 'IDLE';
 
   function setDebugPosition(pan = '—', tilt = '—', zoom = '—', visca = '—') {
     elDbgPan.textContent = pan;
     elDbgTilt.textContent = tilt;
     elDbgZoom.textContent = zoom;
     elDbgVisca.textContent = visca;
+  }
+
+  function setAutoCutDebug(message = 'IDLE') {
+    autoCutDebugText = message;
+    if (elDbgAutoCut) elDbgAutoCut.textContent = message;
   }
 
   function formatDebugAxis(hexValue, signedValue) {
@@ -1757,6 +1765,7 @@
     elDbgCam.textContent = `CAM ${state.activeCam + 1}`;
     elDbgPgm.textContent = state.programSource != null ? state.programSource : '—';
     elDbgPvw.textContent = state.previewSource != null ? state.previewSource : '—';
+    if (elDbgAutoCut) elDbgAutoCut.textContent = autoCutDebugText;
     elDbgInputs.textContent = state.cameras
       .filter(c => c.enabled !== false)
       .map((c, i) => `CAM${i + 1}=${getCameraAtemInput(c) ?? '—'}`)
@@ -2161,6 +2170,7 @@
       autoCutTimer = null;
     }
     autoCutPending = null;
+    if (!autoCutArmed) setAutoCutDebug('OFF');
   }
 
   function getActiveCameraCutSource() {
@@ -2245,17 +2255,21 @@
   async function fireAutoCut(source, camName, preset) {
     try {
       setStatus('busy', `Auto Cut: switching ${camName} preset ${preset} to ATEM source ${source}…`, false);
+      setAutoCutDebug(`FIRE ${source}`);
       const res = await fetch('/atem/cut', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source }),
+        body: JSON.stringify({ source, reason: 'auto' }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
+        setAutoCutDebug(`ERR ${source}`);
         throw new Error(data.error || data.message || `HTTP ${res.status}`);
       }
+      setAutoCutDebug(`OK ${source}`);
       setStatus('success', `Auto Cut: ${camName} preset ${preset} is now live on source ${source}`);
     } catch (err) {
+      setAutoCutDebug(`FAIL ${source}`);
       setStatus('error', `Auto Cut failed: ${err.message || err}`);
     } finally {
       autoCutTimer = null;
@@ -2275,7 +2289,7 @@
       const res = await fetch('/atem/cut', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source }),
+        body: JSON.stringify({ source, reason: 'manual' }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
@@ -2293,6 +2307,7 @@
     const { source, camName, delayMs } = autoCutPlan;
     if (delayMs > 0) {
       autoCutPending = { source, camName, preset };
+      setAutoCutDebug(`WAIT ${source}`);
       setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} after confirmed stop + ${(delayMs / 1000).toFixed(1).replace(/\.0$/, '')}s`, false);
       autoCutTimer = setTimeout(() => {
         const pending = autoCutPending;
@@ -2301,6 +2316,7 @@
       }, delayMs);
       return;
     }
+    setAutoCutDebug(`READY ${source}`);
     setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} when camera stop is confirmed`, false);
     void fireAutoCut(source, camName, preset);
   }
@@ -2316,11 +2332,14 @@
       setAutoCutArmed(!autoCutArmed);
       if (autoCutArmed) {
         const camName = state.cameras[state.activeCam]?.name || 'camera';
+        setAutoCutDebug(`ARM ${source}`);
         if ((state.autoCutDelayMs || 0) > 0) {
           setStatus('success', `Auto Cut armed for ${camName} after confirmed stop + ${getAutoCutDelaySeconds()}s`);
         } else {
           setStatus('success', `Auto Cut armed for ${camName} on confirmed camera stop`);
         }
+      } else {
+        setAutoCutDebug('OFF');
       }
     });
   }
