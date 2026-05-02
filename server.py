@@ -478,6 +478,12 @@ def _send_atem_command(name: str, payload: bytes) -> tuple[bool, str]:
     return True, f"ATEM packet {packet_id} sent"
 
 
+def _send_atem_preview(source_id: int) -> tuple[bool, str]:
+    """Set ATEM ME1 preview bus to source_id via CPvI command."""
+    payload = bytes([0, 0]) + struct.pack(">H", source_id)
+    return _send_atem_command("CPvI", payload)
+
+
 def _wait_for_atem_program_source(source: int, timeout_s: float = 1.0) -> bool:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
@@ -584,9 +590,7 @@ def cut_atem_to_source(source: int, reason: str = "manual") -> tuple[bool, str]:
             f"Cut command failed: {cut_message}",
         )
         return False, cut_message
-    if _wait_for_atem_program_source(
-        source, timeout_s=ATEM_STATE_CONFIRM_TIMEOUT_S
-    ):
+    if _wait_for_atem_program_source(source, timeout_s=ATEM_STATE_CONFIRM_TIMEOUT_S):
         msg = f"Preview set to {source} • Cut executed"
         _set_atem_last_action("cut", "cut-confirm", source, reason, True, msg)
         return True, msg
@@ -605,9 +609,7 @@ def cut_atem_to_source(source: int, reason: str = "manual") -> tuple[bool, str]:
             False,
             f"Cut did not take and direct program switch failed: {program_message}",
         )
-    if _wait_for_atem_program_source(
-        source, timeout_s=ATEM_STATE_CONFIRM_TIMEOUT_S
-    ):
+    if _wait_for_atem_program_source(source, timeout_s=ATEM_STATE_CONFIRM_TIMEOUT_S):
         msg = f"Cut did not take • direct program switch moved program to {source}"
         _set_atem_last_action(
             "cut", "program-fallback-confirm", source, reason, True, msg
@@ -1166,6 +1168,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_recall()
         elif path == "/atem/cut":
             self._handle_atem_cut()
+        elif path == "/api/atem/preview":
+            self._handle_atem_preview_post()
         elif path == "/settings":
             self._handle_settings_post()
         elif m := re.match(r"^/api/image/(\d+)/(\d+)$", path):
@@ -1252,6 +1256,31 @@ class Handler(BaseHTTPRequestHandler):
                 "lastAction": _get_atem_last_action(),
             },
         )
+
+    def _handle_atem_preview_post(self):
+        body = self._read_body()
+        try:
+            data = json.loads(body)
+            cam_idx = int(data.get("camIdx", -1))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            self._json(400, {"ok": False, "error": "Invalid JSON"})
+            return
+        cameras = load_settings().get("cameras", [])
+        if cam_idx < 0 or cam_idx >= len(cameras):
+            self._json(400, {"ok": False, "error": "Invalid camera index"})
+            return
+        atem_input = cameras[cam_idx].get("atemInput")
+        if not atem_input:
+            self._json(
+                400, {"ok": False, "error": "Camera has no ATEM input configured"}
+            )
+            return
+        if not _get_atem().get("connected"):
+            self._json(503, {"ok": False, "error": "ATEM not connected"})
+            return
+        ok, message = _send_atem_preview(int(atem_input))
+        status = 200 if ok else 503
+        self._json(status, {"ok": ok, "message": message})
 
     def _get_image(self, cam: int, preset: int):
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")

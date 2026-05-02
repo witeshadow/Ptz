@@ -110,6 +110,16 @@
       background: rgba(34, 197, 94, 0.12);
     }
 
+    @keyframes pvw-set-flash {
+      0%   { box-shadow: 0 0 0 0 rgba(34,197,94,.8); border-color: var(--success); }
+      60%  { box-shadow: 0 0 0 6px rgba(34,197,94,0); border-color: var(--success); }
+      100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+    }
+
+    .fill-cam-indicator.setting-preview {
+      animation: pvw-set-flash 0.8s ease-out;
+    }
+
     .fill-cam-num {
       font-size: 0.68rem;
       font-weight: 700;
@@ -1946,6 +1956,18 @@
     return { text: 'IDLE', className: 'idle' };
   }
 
+  async function setAtemPreview(idx) {
+    if (!state.atem.enabled || !atemConnected) return;
+    const atemInput = getCameraAtemInput(idx);
+    if (!atemInput) return;
+    if (cameraMatchesAtemSource(idx, state.previewSource)) return;
+    await fetch('/api/atem/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ camIdx: idx }),
+    }).catch(() => ({}));
+  }
+
   function renderFillCamStrip() {
     if (!elFillCamStrip) return;
     elFillCamStrip.innerHTML = '';
@@ -1968,9 +1990,29 @@
 
       btn.appendChild(num);
       btn.appendChild(stateEl);
+
+      // Long-press (500 ms) to set ATEM preview
+      let lpTimer = null;
+      let lpHandled = false;
+      btn.addEventListener('pointerdown', () => {
+        lpTimer = setTimeout(() => {
+          lpTimer = null;
+          lpHandled = true;
+          btn.classList.add('setting-preview');
+          setTimeout(() => btn.classList.remove('setting-preview'), 800);
+          setAtemPreview(idx);
+        }, 500);
+      });
+      btn.addEventListener('pointerup',    () => { clearTimeout(lpTimer); lpTimer = null; });
+      btn.addEventListener('pointerleave', () => { clearTimeout(lpTimer); lpTimer = null; });
+      btn.addEventListener('pointermove',  () => { clearTimeout(lpTimer); lpTimer = null; });
+
       btn.addEventListener('click', () => {
+        if (lpHandled) { lpHandled = false; return; }
         if (idx !== state.activeCam) switchCamera(idx);
       });
+
+      btn.title = state.atem.enabled ? 'Click to switch · Hold to set preview' : 'Click to switch';
 
       elFillCamStrip.appendChild(btn);
     });
@@ -2009,19 +2051,41 @@
       nameWrap.appendChild(nameEl);
       btn.appendChild(nameWrap);
 
-      // Long-press rename for touch devices (500 ms hold)
+      // Long-press for touch devices:
+      // - 500 ms: set ATEM preview (when ATEM enabled and connected)
+      // - 700 ms: rename tab (always available)
       let longPressTimer = null;
       let longPressHandled = false;
       btn.addEventListener('pointerdown', () => {
         longPressTimer = setTimeout(() => {
           longPressTimer = null;
           longPressHandled = true;
-          openTabNameEditor(idx, nameEl, nameWrap);
+          if (state.atem.enabled && atemConnected) {
+            setAtemPreview(idx);
+            // schedule rename after an additional 200 ms (700 ms total)
+            longPressTimer = setTimeout(() => {
+              longPressTimer = null;
+              openTabNameEditor(idx, nameEl, nameWrap);
+            }, 200);
+          } else {
+            openTabNameEditor(idx, nameEl, nameWrap);
+          }
         }, 500);
       });
-      btn.addEventListener('pointerup',    () => clearTimeout(longPressTimer));
-      btn.addEventListener('pointerleave', () => clearTimeout(longPressTimer));
-      btn.addEventListener('pointermove',  () => clearTimeout(longPressTimer));
+      btn.addEventListener('pointerup', () => {
+        if (longPressTimer !== null) {
+          // In the 500–700 ms window: rename was pending, cancel it and
+          // reset longPressHandled so the click event can still fire normally.
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+          longPressHandled = false;
+        } else {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+      });
+      btn.addEventListener('pointerleave', () => { clearTimeout(longPressTimer); longPressTimer = null; });
+      btn.addEventListener('pointermove',  () => { clearTimeout(longPressTimer); longPressTimer = null; });
 
       btn.addEventListener('click', () => {
         if (longPressHandled) { longPressHandled = false; return; }
