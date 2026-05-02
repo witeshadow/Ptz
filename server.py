@@ -108,14 +108,28 @@ VISCA_SETTLE_TIMEOUT_S = 8.0
 VISCA_POLL_INTERVAL_S = 0.2
 VISCA_STABLE_COUNT = 3
 VISCA_INQUIRY_TIMEOUT_S = 1.0
+ATEM_STATE_CONFIRM_TIMEOUT_S = 2.0
 
 
 def _visca_transport_for_port(port: int) -> str:
     return "raw-udp" if port == VISCA_RAW_UDP_PORT else "sony-udp"
 
 
+def _normalize_recall_wait_mode(wait_mode: str | None) -> str:
+    if wait_mode == "dwell":
+        return "dwell"
+    if wait_mode == "confirm":
+        return "confirm"
+    return "settle"
+
+
 def _normalize_scan_wait_mode(wait_mode: str | None) -> str:
-    return "dwell" if wait_mode == "dwell" else "settle"
+    normalized = _normalize_recall_wait_mode(wait_mode)
+    return normalized if normalized in {"dwell", "settle"} else "settle"
+
+
+def _probe_recall_command_succeeded(result: ProbeResult) -> bool:
+    return result.error is None
 
 
 def _format_probe_message(result: ProbeResult, wait_mode: str) -> str:
@@ -137,6 +151,9 @@ def _format_probe_message(result: ProbeResult, wait_mode: str) -> str:
         )
     elif wait_mode == "settle" and not result.settled:
         parts.append("Motion did not settle in time")
+    elif wait_mode == "confirm":
+        if completion is None and ack is None:
+            parts.append("Command sent")
     elif wait_mode == "dwell":
         parts.append("Manual dwell mode")
     if result.error:
@@ -153,7 +170,7 @@ def recall_visca_preset(
     camera_address: int = 1,
     wait_mode: str = "settle",
 ):
-    wait_mode = _normalize_scan_wait_mode(wait_mode)
+    wait_mode = _normalize_recall_wait_mode(wait_mode)
     result = _probe_preset(
         ip=ip,
         port=port,
@@ -170,8 +187,10 @@ def recall_visca_preset(
         require_settle=wait_mode == "settle",
         verbose=False,
     )
-    success = result.error is None and (
-        result.settled if wait_mode == "settle" else True
+    success = (
+        result.error is None and result.settled
+        if wait_mode == "settle"
+        else _probe_recall_command_succeeded(result)
     )
     payload = {
         "success": success,
@@ -477,7 +496,9 @@ def cut_atem_to_source(source: int, reason: str = "manual") -> tuple[bool, str]:
                 f"Preview command failed: {message}",
             )
             return False, message
-        if not _wait_for_atem_preview_source(source, timeout_s=1.0):
+        if not _wait_for_atem_preview_source(
+            source, timeout_s=ATEM_STATE_CONFIRM_TIMEOUT_S
+        ):
             _set_atem_last_action(
                 "cut",
                 "preview-confirm",
@@ -500,7 +521,9 @@ def cut_atem_to_source(source: int, reason: str = "manual") -> tuple[bool, str]:
                     False,
                     f"Preview did not change to {source} and direct program switch failed: {program_message}",
                 )
-            if _wait_for_atem_program_source(source, timeout_s=1.0):
+            if _wait_for_atem_program_source(
+                source, timeout_s=ATEM_STATE_CONFIRM_TIMEOUT_S
+            ):
                 msg = f"Preview did not change • direct program switch moved program to {source}"
                 _set_atem_last_action(
                     "cut", "program-fallback-confirm", source, reason, True, msg
@@ -533,7 +556,9 @@ def cut_atem_to_source(source: int, reason: str = "manual") -> tuple[bool, str]:
             f"Cut command failed: {cut_message}",
         )
         return False, cut_message
-    if _wait_for_atem_program_source(source, timeout_s=1.0):
+    if _wait_for_atem_program_source(
+        source, timeout_s=ATEM_STATE_CONFIRM_TIMEOUT_S
+    ):
         msg = f"Preview set to {source} • Cut executed"
         _set_atem_last_action("cut", "cut-confirm", source, reason, True, msg)
         return True, msg
@@ -552,7 +577,9 @@ def cut_atem_to_source(source: int, reason: str = "manual") -> tuple[bool, str]:
             False,
             f"Cut did not take and direct program switch failed: {program_message}",
         )
-    if _wait_for_atem_program_source(source, timeout_s=1.0):
+    if _wait_for_atem_program_source(
+        source, timeout_s=ATEM_STATE_CONFIRM_TIMEOUT_S
+    ):
         msg = f"Cut did not take • direct program switch moved program to {source}"
         _set_atem_last_action(
             "cut", "program-fallback-confirm", source, reason, True, msg
@@ -1143,7 +1170,7 @@ class Handler(BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             self._json(400, {"success": False, "message": "Invalid numeric parameter"})
             return
-        wait_mode = _normalize_scan_wait_mode(str(data.get("waitMode", "settle")))
+        wait_mode = _normalize_recall_wait_mode(str(data.get("waitMode", "settle")))
         if not ip:
             self._json(400, {"success": False, "message": "Camera IP is required"})
             return

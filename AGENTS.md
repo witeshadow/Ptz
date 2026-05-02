@@ -80,6 +80,15 @@ Frontend event types:
 
 In Live mode, the UI can follow either preview or program via `atemFollows`.
 
+ATEM status must reflect the switcher state observed from ATEM polling and inbound updates, not optimistic assumptions based on app actions. Outside actors can change preview/program selection or cut between cameras at any time, so the UI should treat app-issued commands as requests and ATEM-reported state as the source of truth.
+
+### Action ordering
+
+Explore serializing ATEM actions and camera recalls through a queue or equivalent coordinator when workflows become more concurrent.
+
+- Queueing may help prevent overlapping recall, preview-select, and cut requests from producing misleading UI state.
+- Any queue design should preserve live-safety guardrails, surface pending/running/failed state clearly, and still reconcile final state against what ATEM and the cameras actually report.
+
 ### Capture priority
 
 Preset image capture uses this order:

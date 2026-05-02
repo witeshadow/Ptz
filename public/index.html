@@ -3361,6 +3361,7 @@
   async function recallPreset(n, btn) {
     const recallCamIdx = state.activeCam;
     const autoCutPlan = getAutoCutPlan(recallCamIdx);
+    const waitMode = autoCutPlan ? 'settle' : 'confirm';
     if (state.liveMode && state.lockLiveMode) {
       const isLiveCamera = cameraMatchesAtemSource(recallCamIdx, state.programSource);
       if (isLiveCamera) {
@@ -3375,17 +3376,22 @@
     }
     flash(btn, 'busy');
     setStatus('busy', `Recalling preset ${n}…`, false);
-    const data = await doRecall(n, recallCamIdx, 'settle');
+    const data = await doRecall(n, recallCamIdx, waitMode);
     if (data.success) {
       flash(btn, 'ok', 900);
       if (state.showAtemDebug && recallCamIdx === state.activeCam && data.position) {
         applyDebugPositionData(data.position);
       }
-      const msg = state.showAtemDebug
+      let msg = state.showAtemDebug
         ? `Preset ${n} recalled — ${data.message}`
         : `Preset ${n} recalled`;
+      if (autoCutPlan && !data.settled) {
+        msg += ' — Auto Cut skipped because camera stop was not confirmed';
+      }
       setStatus('success', msg);
-      scheduleAutoCut(n, autoCutPlan);
+      if (autoCutPlan && data.settled) {
+        scheduleAutoCut(n, autoCutPlan);
+      }
     } else {
       flash(btn, 'fail', 1100);
       const msg = state.showAtemDebug
