@@ -205,10 +205,9 @@ def _send_atem_command(cmd_name: bytes, payload: bytes) -> bool:
     )
 
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(0.5)
-        sock.sendto(header + cmd_block, sock_addr)
-        sock.close()
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.settimeout(0.5)
+            sock.sendto(header + cmd_block, sock_addr)
         return True
     except OSError:
         return False

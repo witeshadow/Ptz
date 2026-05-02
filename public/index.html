@@ -1521,9 +1521,9 @@
           setAtemPreview(idx);
         }, 500);
       });
-      btn.addEventListener('pointerup',    () => clearTimeout(lpTimer));
-      btn.addEventListener('pointerleave', () => clearTimeout(lpTimer));
-      btn.addEventListener('pointermove',  () => clearTimeout(lpTimer));
+      btn.addEventListener('pointerup',    () => { clearTimeout(lpTimer); lpTimer = null; });
+      btn.addEventListener('pointerleave', () => { clearTimeout(lpTimer); lpTimer = null; });
+      btn.addEventListener('pointermove',  () => { clearTimeout(lpTimer); lpTimer = null; });
 
       btn.addEventListener('click', () => {
         if (lpHandled) { lpHandled = false; return; }
@@ -1610,9 +1610,20 @@
           }
         }, 500);
       });
-      btn.addEventListener('pointerup',    () => clearTimeout(longPressTimer));
-      btn.addEventListener('pointerleave', () => clearTimeout(longPressTimer));
-      btn.addEventListener('pointermove',  () => clearTimeout(longPressTimer));
+      btn.addEventListener('pointerup', () => {
+        if (longPressTimer !== null) {
+          // In the 500–700 ms window: rename was pending, cancel it and
+          // reset longPressHandled so the click event can still fire normally.
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+          longPressHandled = false;
+        } else {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+      });
+      btn.addEventListener('pointerleave', () => { clearTimeout(longPressTimer); longPressTimer = null; });
+      btn.addEventListener('pointermove',  () => { clearTimeout(longPressTimer); longPressTimer = null; });
 
       btn.addEventListener('click', () => {
         if (longPressHandled) { longPressHandled = false; return; }
