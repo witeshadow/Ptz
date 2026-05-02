@@ -53,6 +53,20 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("Scan source:", self.html)
         self.assertIn("Scan Output", self.html)
 
+    def test_positions_state_and_capture_integration(self):
+        # positions initialized in state
+        self.assertIn("positions: {},", self.html)
+        # positions loaded from settings response
+        self.assertIn("if (s.positions) state.positions = { ...s.positions };", self.html)
+        # position stored from /api/capture response
+        self.assertIn("if (data.position) state.positions[presetKey(cam, preset)] = data.position;", self.html)
+        # position stored from /api/image (webcam fallback) response
+        self.assertIn("if (webcamData.position) state.positions[presetKey(cam, preset)] = webcamData.position;", self.html)
+        # position cleared on image delete
+        self.assertIn("delete state.positions[presetKey(activeCam, n)];", self.html)
+        # position shown as tooltip on preset button
+        self.assertIn("Pan: ${pos.pan_hex}  Tilt: ${pos.tilt_hex}  Zoom: ${pos.zoom_hex}", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()
