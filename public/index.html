@@ -570,6 +570,20 @@
     .preset-btn.edit-mode:hover { border-color: var(--border); }
     .preset-btn.edit-mode:hover .preset-num { color: var(--border); }
 
+    /* ── Position-changed snap indicator ────────────────── */
+    @keyframes snap-pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
+    .preset-btn.needs-snap:not(.edit-mode) .preset-capture {
+      display: flex;
+      background: rgba(234,179,8,.85);
+      border-color: rgba(234,179,8,.85);
+      animation: snap-pulse 1.5s ease-in-out infinite;
+    }
+    .preset-btn.needs-snap:not(.edit-mode) .preset-capture:hover {
+      background: #eab308;
+      border-color: #eab308;
+      animation: none;
+    }
+
     /* ── Toolbar ─────────────────────────────────────── */
     #toolbar {
       display: flex;
@@ -2387,6 +2401,8 @@
 
       if (ok) {
         bumpImageVersion(cam, preset);
+        clearSnapNeeded(cam, preset);
+        savePresetPosition(cam, preset);
         refreshPresetBtn(preset, cam);
         if (preset_btn) {
           preset_btn.classList.remove('state-busy');
@@ -2410,6 +2426,8 @@
   const elGrid = document.getElementById('preset-grid');
   let editMode = false;
   const imageVersions = Object.create(null);
+  const snapNeeded = Object.create(null);
+  const SNAP_POSITION_THRESHOLD = 10;
 
   function presetKey(cam, preset) {
     return `${cam}:${preset}`;
@@ -2590,6 +2608,8 @@
     const ok = await captureFrame(cam, n);
     if (ok) {
       bumpImageVersion(cam, n);
+      clearSnapNeeded(cam, n);
+      savePresetPosition(cam, n);
       if (cam === state.activeCam) {
         refreshPresetBtn(n, cam);
       } else {
@@ -2604,7 +2624,7 @@
 
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className  = 'preset-btn' + (editMode ? ' edit-mode' : '');
+    btn.className  = 'preset-btn' + (editMode ? ' edit-mode' : '') + (snapNeeded[presetKey(cam, n)] ? ' needs-snap' : '');
     btn.dataset.preset = n;
     btn.dataset.displayCam = cam;
 
@@ -2729,6 +2749,62 @@
 
   // ── Recall ─────────────────────────────────────────────────────────────────
   // camIdx defaults to the current active camera; pass explicitly to lock during scan
+
+  function posDiff(a, b) {
+    // VISCA pan/tilt values are 16-bit unsigned and can wrap; take the shorter arc
+    const d = Math.abs(a - b);
+    return Math.min(d, 0x10000 - d);
+  }
+
+  async function savePresetPosition(cam, preset) {
+    try {
+      const posRes = await fetch(`/api/position/${cam}`);
+      if (!posRes.ok) return;
+      const pos = await posRes.json().catch(() => null);
+      if (!pos?.ok || pos.pan == null || pos.tilt == null) return;
+      await fetch(`/api/image/${cam}/${preset}/position`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ pan: pos.pan, tilt: pos.tilt }),
+      }).catch(() => {});
+    } catch (_) {}
+  }
+
+  function clearSnapNeeded(cam, preset) {
+    const key = presetKey(cam, preset);
+    delete snapNeeded[key];
+    const btn = elGrid.querySelector(`[data-preset="${preset}"]`);
+    if (btn) btn.classList.remove('needs-snap');
+  }
+
+  async function checkPositionAfterRecall(preset, camIdx) {
+    const cam = state.cameras[camIdx];
+    if (!cam?.ip) return;
+    const key = presetKey(camIdx, preset);
+    try {
+      const [savedRes, curRes] = await Promise.all([
+        fetch(`/api/image/${camIdx}/${preset}/position`).catch(() => null),
+        fetch(`/api/position/${camIdx}`).catch(() => null),
+      ]);
+      if (!savedRes?.ok || !curRes?.ok) return;
+      const savedPos = await savedRes.json().catch(() => null);
+      const curPos   = await curRes.json().catch(() => null);
+      if (!savedPos?.ok || savedPos.pan == null || savedPos.tilt == null) return;
+      if (!curPos?.ok  || curPos.pan  == null || curPos.tilt  == null) return;
+      const changed = posDiff(savedPos.pan, curPos.pan)   > SNAP_POSITION_THRESHOLD
+                   || posDiff(savedPos.tilt, curPos.tilt) > SNAP_POSITION_THRESHOLD;
+      if (changed) {
+        snapNeeded[key] = true;
+      } else {
+        delete snapNeeded[key];
+      }
+      // Only update the DOM if the user is still viewing the same camera
+      if (state.activeCam !== camIdx) return;
+      const btn = elGrid.querySelector(`[data-preset="${preset}"]`);
+      if (btn) btn.classList.toggle('needs-snap', !!snapNeeded[key]);
+    } catch (_) {}
+  }
+
   async function doRecall(preset, camIdx = state.activeCam) {
     const cam = state.cameras[camIdx];
     try {
@@ -2768,6 +2844,7 @@
         ? `Preset ${n} recalled — ${data.message}`
         : `Preset ${n} recalled`;
       setStatus('success', msg);
+      checkPositionAfterRecall(n, state.activeCam);
     } else {
       flash(btn, 'fail', 1100);
       const msg = state.showAtemDebug

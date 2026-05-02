@@ -94,6 +94,11 @@ DEFAULT_SETTINGS = {
 
 
 # ── Settings ───────────────────────────────────────────────────────────────────
+def _image_meta_path(cam: int, preset: int) -> str:
+    """Return the path to the position sidecar JSON for a preset image."""
+    return os.path.join(IMAGES_DIR, f"{cam}_{preset}.json")
+
+
 def _ensure_dirs():
     os.makedirs(IMAGES_DIR, exist_ok=True)
 
@@ -792,6 +797,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, list_usb_devices())
         elif m := re.match(r"^/api/position/(\d+)$", path):
             self._get_position(int(m.group(1)))
+        elif m := re.match(r"^/api/image/(\d+)/(\d+)/position$", path):
+            self._get_image_position(int(m.group(1)), int(m.group(2)))
         elif m := re.match(r"^/api/image/(\d+)/(\d+)$", path):
             self._get_image(int(m.group(1)), int(m.group(2)))
         else:
@@ -809,6 +816,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_settings_post()
         elif path == "/api/atem/preview":
             self._handle_atem_preview_post()
+        elif m := re.match(r"^/api/image/(\d+)/(\d+)/position$", path):
+            self._post_image_position(int(m.group(1)), int(m.group(2)))
         elif m := re.match(r"^/api/image/(\d+)/(\d+)$", path):
             self._post_image(int(m.group(1)), int(m.group(2)))
         elif m := re.match(r"^/api/capture/(\d+)/(\d+)$", path):
@@ -916,6 +925,38 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._json(502, {"ok": False, "error": result})
 
+    def _get_image_position(self, cam: int, preset: int):
+        mpath = _image_meta_path(cam, preset)
+        if not os.path.exists(mpath):
+            self._json(404, {"ok": False, "error": "No position data for this preset"})
+            return
+        try:
+            with open(mpath) as f:
+                data = json.load(f)
+            self._json(200, {"ok": True, **data})
+        except Exception as e:
+            self._json(500, {"ok": False, "error": str(e)})
+
+    def _post_image_position(self, cam: int, preset: int):
+        body = self._read_body()
+        try:
+            data = json.loads(body)
+            pan = int(data["pan"])
+            tilt = int(data["tilt"])
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+            self._json(
+                400, {"ok": False, "error": "Expected JSON with pan and tilt fields"}
+            )
+            return
+        try:
+            _ensure_dirs()
+            mpath = _image_meta_path(cam, preset)
+            with open(mpath, "w") as f:
+                json.dump({"pan": pan, "tilt": tilt}, f)
+            self._json(200, {"ok": True})
+        except Exception as e:
+            self._json(500, {"ok": False, "error": str(e)})
+
     def _post_image(self, cam: int, preset: int):
         _ensure_dirs()
         data = self._read_body()
@@ -975,6 +1016,9 @@ class Handler(BaseHTTPRequestHandler):
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
         if os.path.exists(fpath):
             os.remove(fpath)
+        mpath = _image_meta_path(cam, preset)
+        if os.path.exists(mpath):
+            os.remove(mpath)
         self._json(200, {"ok": True})
 
     def _sse(self):
