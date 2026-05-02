@@ -2232,6 +2232,16 @@
     return !!state.atem.enabled && !!atemConnected && !!getActiveCameraCutSource();
   }
 
+  function getAutoCutDebugState() {
+    const source = getActiveCameraCutSource();
+    if (!state.atem.enabled) return 'ATEM OFF';
+    if (!state.autoCutEnabled) return 'AUTO DISABLED';
+    if (!atemConnected) return 'ATEM WAIT';
+    if (!source) return 'NO SRC';
+    if (autoCutArmed) return `ARM ${source}`;
+    return `READY ${source}`;
+  }
+
   function updateManualCutButton() {
     if (!elCutLiveBtn) return;
     const source = getActiveCameraCutSource();
@@ -2258,6 +2268,7 @@
     const delayText = `${getAutoCutDelaySeconds()}s`;
     const source = getActiveCameraCutSource();
     const armable = canArmAutoCut();
+    if (!autoCutPending && !autoCutTimer) setAutoCutDebug(getAutoCutDebugState());
     elAutoCutBtn.textContent = 'Auto Cut';
     elAutoCutBtn.classList.toggle('active', autoCutArmed);
     elAutoCutBtn.setAttribute('aria-pressed', autoCutArmed ? 'true' : 'false');
@@ -2360,10 +2371,25 @@
 
   if (elAutoCutBtn) {
     elAutoCutBtn.addEventListener('click', () => {
-      if (!canArmAutoCut()) return;
+      if (!state.atem.enabled) {
+        setStatus('error', 'Enable ATEM first');
+        setAutoCutDebug('ATEM OFF');
+        return;
+      }
+      if (!state.autoCutEnabled) {
+        setStatus('error', 'Turn on Auto Enabled first');
+        setAutoCutDebug('AUTO DISABLED');
+        return;
+      }
+      if (!atemConnected) {
+        setStatus('error', 'Wait for ATEM to connect first');
+        setAutoCutDebug('ATEM WAIT');
+        return;
+      }
       const source = getActiveCameraCutSource();
       if (!source) {
         setStatus('error', 'Set an ATEM source number for this camera first');
+        setAutoCutDebug('NO SRC');
         return;
       }
       setAutoCutArmed(!autoCutArmed);
