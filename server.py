@@ -137,6 +137,8 @@ _atem_state = {
     "aux2": 0,
     "aux3": 0,
     "aux4": 0,
+    "session_id": None,
+    "sock_addr": None,
 }
 _atem_state_lock = threading.Lock()
 
@@ -146,9 +148,18 @@ def _set_atem(
     preview: int | None = None,
     program: int | None = None,
     aux: tuple[int, int] | None = None,
+    session_id: int | None = None,
+    sock_addr: tuple[str, int] | None = None,
 ):
     with _atem_state_lock:
         _atem_state["connected"] = connected
+        if not connected:
+            _atem_state["session_id"] = None
+            _atem_state["sock_addr"] = None
+        if session_id is not None:
+            _atem_state["session_id"] = session_id
+        if sock_addr is not None:
+            _atem_state["sock_addr"] = sock_addr
         if preview is not None:
             _atem_state["preview"] = preview
         if program is not None:
@@ -162,6 +173,51 @@ def _set_atem(
 def _get_atem() -> dict:
     with _atem_state_lock:
         return dict(_atem_state)
+
+
+def _send_atem_command(cmd_name: bytes, payload: bytes) -> bool:
+    """Send a one-shot ATEM command using the established connection context."""
+    cur = _get_atem()
+    session_id = cur.get("session_id")
+    sock_addr = cur.get("sock_addr")
+    if session_id is None or sock_addr is None:
+        return False
+
+    cmd_block_len = 8 + len(payload)  # 4 len+reserved + 4 name + payload
+    packet_len = 12 + cmd_block_len  # 12-byte header + command block
+
+    # Header: flags=RELIABLE (bit 0 of 5-bit field) in upper 5 bits of word0
+    word0 = (0x01 << 11) | packet_len
+    header = (
+        struct.pack(">H", word0)  # bytes 0-1: flags | length
+        + struct.pack(">H", session_id)  # bytes 2-3: session_id
+        + b"\x00\x00"  # bytes 4-5: remote_ack
+        + b"\x00\x00"  # bytes 6-7
+        + b"\x00\x00"  # bytes 8-9
+        + b"\x00\x01"  # bytes 10-11: local seq=1
+    )
+    name_bytes = (cmd_name + b"\x00\x00\x00\x00")[:4]
+    cmd_block = (
+        struct.pack(">H", cmd_block_len)  # command length
+        + b"\x00\x00"  # reserved
+        + name_bytes  # 4-byte command name
+        + payload
+    )
+
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(0.5)
+        sock.sendto(header + cmd_block, sock_addr)
+        sock.close()
+        return True
+    except OSError:
+        return False
+
+
+def _send_atem_preview(source_id: int) -> bool:
+    """Set ATEM ME1 preview bus to source_id via CPvI command."""
+    # CPvI payload: ME index (1 byte), padding (1 byte), source (2 bytes big-endian)
+    return _send_atem_command(b"CPvI", b"\x00\x00" + struct.pack(">H", source_id))
 
 
 # ── ATEM UDP client ────────────────────────────────────────────────────────────
@@ -278,7 +334,13 @@ def _atem_loop():
                     print(f"[ATEM] init drain timeout after {pkt_count} pkts")
                     break  # proceed even if InCm wasn't seen
 
-            _set_atem(True, preview=init_preview, program=init_program)
+            _set_atem(
+                True,
+                preview=init_preview,
+                program=init_program,
+                session_id=session_id,
+                sock_addr=(ip, ATEM_PORT),
+            )
             _broadcast({"type": "atem", **_get_atem()})
             print(
                 f"[ATEM] Connected — init preview={init_preview} program={init_program}"
@@ -746,6 +808,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_recall()
         elif path == "/settings":
             self._handle_settings_post()
+        elif path == "/api/atem/preview":
+            self._handle_atem_preview_post()
         elif m := re.match(r"^/api/image/(\d+)/(\d+)$", path):
             self._post_image(int(m.group(1)), int(m.group(2)))
         elif m := re.match(r"^/api/capture/(\d+)/(\d+)$", path):
@@ -790,6 +854,33 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True})
         except Exception as e:
             self._json(400, {"ok": False, "error": str(e)})
+
+    def _handle_atem_preview_post(self):
+        body = self._read_body()
+        try:
+            data = json.loads(body)
+            cam_idx = int(data.get("camIdx", -1))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            self._json(400, {"ok": False, "error": "Invalid JSON"})
+            return
+        cameras = load_settings().get("cameras", [])
+        if cam_idx < 0 or cam_idx >= len(cameras):
+            self._json(400, {"ok": False, "error": "Invalid camera index"})
+            return
+        atem_input = cameras[cam_idx].get("atemInput")
+        if not atem_input:
+            self._json(
+                400, {"ok": False, "error": "Camera has no ATEM input configured"}
+            )
+            return
+        if not _get_atem().get("connected"):
+            self._json(503, {"ok": False, "error": "ATEM not connected"})
+            return
+        ok = _send_atem_preview(int(atem_input))
+        if ok:
+            self._json(200, {"ok": True})
+        else:
+            self._json(503, {"ok": False, "error": "Failed to send ATEM command"})
 
     def _get_image(self, cam: int, preset: int):
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
