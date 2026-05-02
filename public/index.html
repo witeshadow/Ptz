@@ -639,6 +639,27 @@
     #capture-source-toggle .csrc-btn.active {
       border-color: var(--accent); color: var(--accent);
     }
+    #toolbar-auto-cut-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--surf2);
+      color: var(--muted);
+      font-size: .78rem;
+      font-weight: 600;
+      user-select: none;
+    }
+    #toolbar-auto-cut-toggle input {
+      margin: 0;
+    }
+    #toolbar-auto-cut-toggle.enabled {
+      border-color: var(--success);
+      color: var(--success);
+      background: rgba(16, 185, 129, 0.08);
+    }
 
     .btn-primary {
       background: var(--accent); border: none; border-radius: 7px;
@@ -1113,6 +1134,10 @@
   <div id="preset-grid"><!-- rendered by JS --></div>
   <div id="toolbar">
     <button class="btn-primary" id="btn-scan">Scan All Presets</button>
+    <label id="toolbar-auto-cut-toggle" style="display:none">
+      <input id="f-auto-cut-enabled" type="checkbox" />
+      <span>Auto Enabled</span>
+    </label>
     <button class="btn-ghost"    id="btn-auto-cut" style="display:none">Auto Cut</button>
     <button class="btn-ghost"    id="btn-edit">Edit Labels / Snap</button>
     <div id="capture-source-toggle" style="display:none">
@@ -1235,10 +1260,6 @@
       <label for="f-atem-ip">ATEM IP</label>
       <input id="f-atem-ip" type="text" placeholder="192.168.1.200" autocomplete="off" spellcheck="false" />
     </div>
-      <label class="atem-toggle-wrap gsp-mobile-section active" data-mobile-tab="atem">
-        <input id="f-auto-cut-enabled" type="checkbox" />
-        <span>Enable Auto Cut</span>
-      </label>
       <div class="field gsp-mobile-section active" data-mobile-tab="atem">
         <label for="f-auto-cut-delay">Auto Cut Extra Delay (s)</label>
         <input id="f-auto-cut-delay" type="number" min="0" max="30" step="0.5" />
@@ -1676,6 +1697,25 @@
     updateAutoCutButton();
   }
 
+  function applyAtemStateSnapshot(snapshot = {}) {
+    if ('preview' in snapshot && snapshot.preview != null) state.previewSource = snapshot.preview || 0;
+    if ('program' in snapshot && snapshot.program != null) state.programSource = snapshot.program || 0;
+    if ('aux1' in snapshot && snapshot.aux1 != null) state.aux1Source = snapshot.aux1 || 0;
+    if ('aux2' in snapshot && snapshot.aux2 != null) state.aux2Source = snapshot.aux2 || 0;
+    if ('aux3' in snapshot && snapshot.aux3 != null) state.aux3Source = snapshot.aux3 || 0;
+    if ('aux4' in snapshot && snapshot.aux4 != null) state.aux4Source = snapshot.aux4 || 0;
+  }
+
+  function applyConfirmedProgramSource(source) {
+    state.programSource = source || 0;
+    updateAtemPill();
+    updateCameraStatusHints();
+    renderTabs();
+    updateAtemDebug();
+    updateCaptureOutputLabel();
+    renderOutputMapTable();
+  }
+
   // ── ATEM debug overlay ─────────────────────────────────────────────────────
   const elAtemDebug = document.getElementById('atem-debug');
   const elDbgCam    = document.getElementById('dbg-cam');
@@ -2099,14 +2139,8 @@
         const ev = JSON.parse(e.data);
         if (ev.type === 'atem') {
           atemConnected = !!ev.connected;
-          // Apply initial preview/program/aux sources sent with the connection event
-          if (ev.preview != null && ev.preview !== 0) state.previewSource = ev.preview;
-        if (ev.program != null && ev.program !== 0) state.programSource = ev.program;
-        if (ev.aux1 != null && ev.aux1 !== 0) state.aux1Source = ev.aux1;
-        if (ev.aux2 != null && ev.aux2 !== 0) state.aux2Source = ev.aux2;
-        if (ev.aux3 != null && ev.aux3 !== 0) state.aux3Source = ev.aux3;
-        if (ev.aux4 != null && ev.aux4 !== 0) state.aux4Source = ev.aux4;
-        updateAtemPill();
+          applyAtemStateSnapshot(ev);
+          updateAtemPill();
           updateCameraStatusHints();
           renderTabs();
           updateAtemDebug();
@@ -2156,6 +2190,7 @@
   const elCaptureToggle = document.getElementById('capture-source-toggle');
   const elAutoCutBtn = document.getElementById('btn-auto-cut');
   const elCutLiveBtn = document.getElementById('cut-live-btn');
+  const elAutoCutEnabledToggle = document.getElementById('toolbar-auto-cut-toggle');
   let autoCutArmed = false;
   let autoCutTimer = null;
   let autoCutPending = null;
@@ -2232,7 +2267,7 @@
     } else if (!atemConnected) {
       elAutoCutBtn.title = 'Wait for ATEM to connect';
     } else if (!state.autoCutEnabled) {
-      elAutoCutBtn.title = 'Turn on Enable Auto Cut in Settings';
+      elAutoCutBtn.title = 'Turn on Auto Enabled first';
     } else if (!source) {
       elAutoCutBtn.title = 'Set an ATEM source number for this camera first';
     } else if (autoCutArmed) {
@@ -2266,6 +2301,7 @@
         setAutoCutDebug(`ERR ${source}`);
         throw new Error(data.error || data.message || `HTTP ${res.status}`);
       }
+      applyConfirmedProgramSource(source);
       setAutoCutDebug(`OK ${source}`);
       setStatus('success', `Auto Cut: ${camName} preset ${preset} is now live on source ${source}`);
     } catch (err) {
@@ -2295,6 +2331,7 @@
       if (!res.ok || !data.ok) {
         throw new Error(data.error || data.message || `HTTP ${res.status}`);
       }
+      applyConfirmedProgramSource(source);
       setStatus('success', `Cut complete: ${camName} is now live on source ${source}`);
     } catch (err) {
       setStatus('error', `Manual cut failed: ${err.message || err}`);
@@ -2354,6 +2391,13 @@
   function updateToolbarVisibility() {
     const btnScanEl = document.getElementById('btn-scan');
     if (btnScanEl) btnScanEl.style.display = state.liveMode ? 'none' : '';
+    if (elAutoCutEnabledToggle) {
+      elAutoCutEnabledToggle.style.display = state.atem.enabled ? 'inline-flex' : 'none';
+      elAutoCutEnabledToggle.classList.toggle('enabled', !!state.autoCutEnabled);
+      elAutoCutEnabledToggle.title = state.autoCutEnabled
+        ? 'Auto Cut feature enabled'
+        : 'Enable Auto Cut before arming';
+    }
     if (elAutoCutBtn) elAutoCutBtn.style.display = state.atem.enabled ? '' : 'none';
     if (elCaptureToggle) {
       elCaptureToggle.style.display =
@@ -3457,12 +3501,7 @@
       if (r.ok) {
         const s = await r.json();
         atemConnected = !!s.connected;
-        if (s.preview != null && s.preview !== 0) state.previewSource = s.preview;
-        if (s.program != null && s.program !== 0) state.programSource = s.program;
-        if (s.aux1 != null && s.aux1 !== 0) state.aux1Source = s.aux1;
-        if (s.aux2 != null && s.aux2 !== 0) state.aux2Source = s.aux2;
-        if (s.aux3 != null && s.aux3 !== 0) state.aux3Source = s.aux3;
-        if (s.aux4 != null && s.aux4 !== 0) state.aux4Source = s.aux4;
+        applyAtemStateSnapshot(s);
         updateAtemPill();
         renderTabs();
         updateAtemDebug();
