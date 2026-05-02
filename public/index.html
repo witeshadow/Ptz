@@ -2291,17 +2291,18 @@
     if (!autoCutPlan || !autoCutPlan.source) return;
     clearPendingAutoCut();
     const { source, camName, delayMs } = autoCutPlan;
-    autoCutPending = { source, camName, preset };
     if (delayMs > 0) {
+      autoCutPending = { source, camName, preset };
       setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} after confirmed stop + ${(delayMs / 1000).toFixed(1).replace(/\.0$/, '')}s`, false);
-    } else {
-      setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} when camera stop is confirmed`, false);
+      autoCutTimer = setTimeout(() => {
+        const pending = autoCutPending;
+        if (!pending) return;
+        fireAutoCut(pending.source, pending.camName, pending.preset);
+      }, delayMs);
+      return;
     }
-    autoCutTimer = setTimeout(() => {
-      const pending = autoCutPending;
-      if (!pending) return;
-      fireAutoCut(pending.source, pending.camName, pending.preset);
-    }, delayMs);
+    setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} when camera stop is confirmed`, false);
+    void fireAutoCut(source, camName, preset);
   }
 
   if (elAutoCutBtn) {
