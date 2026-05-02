@@ -502,6 +502,70 @@ class TestViscaPosition(unittest.TestCase):
         self.assertFalse(ok)
 
 
+
+# ── _try_record_position unit tests ───────────────────────────────────────────
+
+
+class TestTryRecordPosition(unittest.TestCase):
+    _MOCK_POSITION = {
+        "pan": 0xABCD,
+        "tilt": 0x1234,
+        "zoom": 0x0050,
+        "pan_hex": "ABCD",
+        "tilt_hex": "1234",
+        "zoom_hex": "0050",
+        "pan_signed": -0x5433,
+        "tilt_signed": 0x1234,
+        "transport": "sony-udp",
+    }
+
+    def _settings_with_ip(self, ip="10.0.0.1"):
+        s = dict(server.DEFAULT_SETTINGS)
+        s["cameras"] = [dict(server.DEFAULT_SETTINGS["cameras"][0], ip=ip)]
+        return s
+
+    def test_returns_none_when_no_ip(self):
+        settings = dict(server.DEFAULT_SETTINGS)
+        result = server._try_record_position(settings, 0, 1)
+        self.assertIsNone(result)
+
+    def test_returns_none_when_cam_out_of_range(self):
+        settings = self._settings_with_ip()
+        result = server._try_record_position(settings, 99, 1)
+        self.assertIsNone(result)
+
+    def test_returns_none_when_inquiry_fails(self):
+        settings = self._settings_with_ip()
+        with patch("server.inquire_visca_absolute_position", return_value=(False, "timeout")):
+            result = server._try_record_position(settings, 0, 1)
+        self.assertIsNone(result)
+
+    def test_returns_position_and_updates_settings(self):
+        settings = self._settings_with_ip()
+        with patch(
+            "server.inquire_visca_absolute_position",
+            return_value=(True, self._MOCK_POSITION),
+        ):
+            result = server._try_record_position(settings, 0, 5)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["pan_hex"], "ABCD")
+        self.assertEqual(result["tilt_hex"], "1234")
+        self.assertEqual(result["zoom_hex"], "0050")
+        self.assertEqual(settings["positions"]["0:5"]["pan_hex"], "ABCD")
+
+    def test_overwrites_existing_position(self):
+        settings = self._settings_with_ip()
+        settings["positions"] = {"0:5": {"pan_hex": "0000", "tilt_hex": "0000", "zoom_hex": "0000"}}
+        with patch(
+            "server.inquire_visca_absolute_position",
+            return_value=(True, self._MOCK_POSITION),
+        ):
+            result = server._try_record_position(settings, 0, 5)
+        self.assertEqual(result["pan_hex"], "ABCD")
+        self.assertEqual(settings["positions"]["0:5"]["pan_hex"], "ABCD")
+
+
 # ── HTTP integration ───────────────────────────────────────────────────────────
 
 
@@ -818,6 +882,91 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertEqual(data["tilt_hex"], "5678")
         self.assertEqual(data["zoom_hex"], "00AA")
         mock_inquire.assert_called_once_with("10.0.0.9", 52381, 1)
+
+    # ── position recording on capture ──────────────────────────────────────────
+
+    _MOCK_POSITION = {
+        "pan": 0x1234,
+        "tilt": 0x5678,
+        "zoom": 0x00AA,
+        "pan_hex": "1234",
+        "tilt_hex": "5678",
+        "zoom_hex": "00AA",
+        "pan_signed": 0x1234,
+        "tilt_signed": 0x5678,
+        "transport": "sony-udp",
+    }
+
+    def _settings_with_camera_ip(self, ip="10.0.0.9"):
+        settings = dict(server.DEFAULT_SETTINGS)
+        settings["cameras"] = [dict(server.DEFAULT_SETTINGS["cameras"][0], ip=ip)]
+        return settings
+
+    def test_post_image_records_position_when_camera_configured(self):
+        server.write_settings(self._settings_with_camera_ip())
+        fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+
+        with patch(
+            "server.inquire_visca_absolute_position",
+            return_value=(True, self._MOCK_POSITION),
+        ):
+            status, body = self.srv.post("/api/image/0/3", fake_jpeg, "image/jpeg")
+
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["position"]["pan_hex"], "1234")
+        self.assertEqual(data["position"]["tilt_hex"], "5678")
+        self.assertEqual(data["position"]["zoom_hex"], "00AA")
+
+        # Position is persisted in settings
+        saved = server.load_settings()
+        self.assertEqual(saved["positions"]["0:3"]["pan_hex"], "1234")
+
+    def test_post_image_position_null_when_no_camera_ip(self):
+        # DEFAULT_SETTINGS cameras have ip=""
+        fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+        status, body = self.srv.post("/api/image/0/3", fake_jpeg, "image/jpeg")
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["ok"])
+        self.assertIsNone(data["position"])
+
+    def test_post_image_position_null_when_inquiry_fails(self):
+        server.write_settings(self._settings_with_camera_ip())
+        fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+
+        with patch(
+            "server.inquire_visca_absolute_position",
+            return_value=(False, "No VISCA response"),
+        ):
+            status, body = self.srv.post("/api/image/0/3", fake_jpeg, "image/jpeg")
+
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["ok"])
+        self.assertIsNone(data["position"])
+
+    def test_delete_image_clears_stored_position(self):
+        server.write_settings(self._settings_with_camera_ip())
+        fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+
+        with patch(
+            "server.inquire_visca_absolute_position",
+            return_value=(True, self._MOCK_POSITION),
+        ):
+            self.srv.post("/api/image/0/5", fake_jpeg, "image/jpeg")
+
+        # Confirm position was saved
+        self.assertEqual(server.load_settings()["positions"].get("0:5", {}).get("pan_hex"), "1234")
+
+        # Delete image
+        status, body = self.srv.delete("/api/image/0/5")
+        self.assertEqual(status, 200)
+
+        # Position should be cleared
+        saved = server.load_settings()
+        self.assertNotIn("0:5", saved.get("positions", {}))
 
     # ── 404 paths ──────────────────────────────────────────────────────────────
 

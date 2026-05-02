@@ -100,6 +100,7 @@ DEFAULT_SETTINGS = {
     },
     "atemSourceLabels": {},
     "captureOutput": "webcam",
+    "positions": {},
 }
 
 VISCA_RAW_UDP_PORT = 1259
@@ -1059,6 +1060,39 @@ _MIME = {
 }
 
 
+def _try_record_position(settings: dict, cam: int, preset: int) -> dict | None:
+    """Query the camera's absolute position and persist it in settings['positions'].
+
+    Returns the position dict on success, or None if the camera is unconfigured
+    or the inquiry fails (e.g. camera offline). Caller must write_settings() if
+    a non-None value is returned.
+    """
+    cams = settings.get("cameras", [])
+    if cam < 0 or cam >= len(cams):
+        return None
+    cfg = cams[cam]
+    ip = str(cfg.get("ip", "")).strip()
+    if not ip:
+        return None
+    port = int(cfg.get("port", 52381) or 52381)
+    visca_addr = int(cfg.get("viscaAddr", 1) or 1)
+    ok, result = inquire_visca_absolute_position(ip, port, visca_addr)
+    if not ok or not isinstance(result, dict):
+        return None
+    pos = {
+        "pan": result.get("pan"),
+        "tilt": result.get("tilt"),
+        "zoom": result.get("zoom"),
+        "pan_hex": result.get("pan_hex"),
+        "tilt_hex": result.get("tilt_hex"),
+        "zoom_hex": result.get("zoom_hex"),
+    }
+    if "positions" not in settings:
+        settings["positions"] = {}
+    settings["positions"][f"{cam}:{preset}"] = pos
+    return pos
+
+
 # ── HTTP handler ───────────────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):  # noqa: A002
@@ -1239,7 +1273,11 @@ class Handler(BaseHTTPRequestHandler):
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
         with open(fpath, "wb") as f:
             f.write(data)
-        self._json(200, {"ok": True})
+        settings = load_settings()
+        position = _try_record_position(settings, cam, preset)
+        if position is not None:
+            write_settings(settings)
+        self._json(200, {"ok": True, "position": position})
 
     def _capture_image(self, cam: int, preset: int):
         try:
@@ -1284,7 +1322,11 @@ class Handler(BaseHTTPRequestHandler):
             fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
             with open(fpath, "wb") as f:
                 f.write(jpeg)
-            self._json(200, {"ok": True})
+            settings = load_settings()
+            position = _try_record_position(settings, cam, preset)
+            if position is not None:
+                write_settings(settings)
+            self._json(200, {"ok": True, "position": position})
         except Exception as e:
             self._json(500, {"ok": False, "error": str(e)})
 
@@ -1292,6 +1334,11 @@ class Handler(BaseHTTPRequestHandler):
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
         if os.path.exists(fpath):
             os.remove(fpath)
+        settings = load_settings()
+        key = f"{cam}:{preset}"
+        if key in settings.get("positions", {}):
+            del settings["positions"][key]
+            write_settings(settings)
         self._json(200, {"ok": True})
 
     def _sse(self):

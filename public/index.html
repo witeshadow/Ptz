@@ -1439,6 +1439,7 @@
     },
     atemSourceLabels: {},
     captureOutput: 'webcam',
+    positions: {},
     // Runtime ATEM AUX sources (not persisted, updated via SSE)
     aux1Source: 0,
     aux2Source: 0,
@@ -1534,6 +1535,7 @@
         if (s.atemOutputMap) state.atemOutputMap = normalizeAtemOutputMap(s.atemOutputMap);
         if (s.atemSourceLabels) state.atemSourceLabels = { ...s.atemSourceLabels };
         if (s.captureOutput) state.captureOutput = normalizeCaptureOutput(s.captureOutput);
+        if (s.positions) state.positions = { ...s.positions };
       }
     } catch (_) {}
   }
@@ -2961,6 +2963,7 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setStatus('error', data.error || 'Capture failed'); return false; }
+      if (data.position) state.positions[presetKey(cam, preset)] = data.position;
       return true;
     }
 
@@ -2974,11 +2977,13 @@
     captureCanvas.height = sh;
     captureCtx.drawImage(elVideo, 0, 0, sw, sh);
     const blob = await new Promise(r => captureCanvas.toBlob(r, 'image/jpeg', 0.65));
-    await fetch(`/api/image/${cam}/${preset}`, {
+    const webcamRes = await fetch(`/api/image/${cam}/${preset}`, {
       method:  'POST',
       headers: { 'Content-Type': 'image/jpeg' },
       body:    blob,
     });
+    const webcamData = await webcamRes.json().catch(() => ({}));
+    if (webcamData.position) state.positions[presetKey(cam, preset)] = webcamData.position;
     return true;
   }
 
@@ -3179,6 +3184,10 @@
     if (ovName && !ovName.querySelector('input')) {
       ovName.textContent = state.labels[presetKey(cam, n)] || '';
     }
+    const pos = state.positions[presetKey(cam, n)];
+    btn.title = pos
+      ? `Pan: ${pos.pan_hex}  Tilt: ${pos.tilt_hex}  Zoom: ${pos.zoom_hex}`
+      : '';
     refreshPresetImage(btn, cam, n);
   }
 
@@ -3217,6 +3226,11 @@
     btn.dataset.preset = n;
     btn.dataset.displayCam = cam;
 
+    const pos = state.positions[presetKey(cam, n)];
+    if (pos) {
+      btn.title = `Pan: ${pos.pan_hex}  Tilt: ${pos.tilt_hex}  Zoom: ${pos.zoom_hex}`;
+    }
+
     const numEl = document.createElement('div');
     numEl.className   = 'preset-num';
     numEl.textContent = n;
@@ -3252,6 +3266,7 @@
       const activeCam = state.activeCam;
       const res = await fetch(`/api/image/${activeCam}/${n}`, { method: 'DELETE' });
       if (!res.ok) return;
+      delete state.positions[presetKey(activeCam, n)];
       bumpImageVersion(activeCam, n);
       refreshPresetBtn(n, activeCam);
     });
