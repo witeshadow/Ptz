@@ -2529,7 +2529,7 @@
     }).catch(() => ({}));
   }
 
-  function scheduleAutoCut(preset, autoCutPlan) {
+  function scheduleAutoCut(preset, autoCutPlan, trigger = 'settled', recallElapsedMs = 0) {
     if (!autoCutPlan || !autoCutPlan.source) return;
     clearPendingAutoCut();
     const { source, camName, delayMs } = autoCutPlan;
