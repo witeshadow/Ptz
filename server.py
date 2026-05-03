@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """PTZ Preset Control Server — VISCA over IP for AVIPAS cameras (with ATEM integration)."""
 
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from socketserver import ThreadingMixIn
 import glob
 import json
 import os
@@ -15,11 +13,19 @@ import subprocess
 import tempfile
 import threading
 import time
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
 
 from scripts.av1281_motion_probe import (
     ProbeResult,
+)
+from scripts.av1281_motion_probe import (
     inquire_absolute_position as _probe_inquire_absolute_position,
+)
+from scripts.av1281_motion_probe import (
     motion_sample_to_dict as _probe_motion_sample_to_dict,
+)
+from scripts.av1281_motion_probe import (
     probe_preset as _probe_preset,
 )
 
@@ -52,8 +58,8 @@ DEFAULT_SETTINGS = {
     "cameras": [
         {
             "name": "Camera 1",
-            "ip": "",
-            "port": 52381,
+            "ip": "192.168.5.161",
+            "port": 1259,
             "viscaAddr": 1,
             "atemInput": 1,
             "streamUrl": "",
@@ -62,9 +68,9 @@ DEFAULT_SETTINGS = {
         },
         {
             "name": "Camera 2",
-            "ip": "",
-            "port": 52381,
-            "viscaAddr": 1,
+            "ip": "192.168.5.162",
+            "port": 1259,
+            "viscaAddr": 2,
             "atemInput": 2,
             "streamUrl": "",
             "usbDevice": "",
@@ -72,9 +78,9 @@ DEFAULT_SETTINGS = {
         },
         {
             "name": "Camera 3",
-            "ip": "",
-            "port": 52381,
-            "viscaAddr": 1,
+            "ip": "192.168.5.163",
+            "port": 1259,
+            "viscaAddr": 3,
             "atemInput": 3,
             "streamUrl": "",
             "usbDevice": "",
@@ -84,7 +90,7 @@ DEFAULT_SETTINGS = {
             "name": "Camera 4",
             "ip": "",
             "port": 52381,
-            "viscaAddr": 1,
+            "viscaAddr": 4,
             "atemInput": 4,
             "streamUrl": "",
             "usbDevice": "",
