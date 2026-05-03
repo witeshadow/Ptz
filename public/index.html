@@ -1211,6 +1211,11 @@
     #toolbar > * + *        { margin-left: 0; }
     #toolbar-right > * + *  { margin-left: 0; }
     #toolbar-statuses > * + * { margin-left: 0; }
+    @supports not (gap: 1px) {
+      #toolbar > * + *          { margin-left: 10px; }
+      #toolbar-right > * + *    { margin-left: 10px; }
+      #toolbar-statuses > * + * { margin-left: 8px; }
+    }
     #scan-bar > * + *       { margin-left: 12px; }
     .field > * + *          { margin-top: 4px; }
     #webcam-preview > * + * { margin-top: 4px; }
