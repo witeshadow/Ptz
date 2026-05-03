@@ -460,10 +460,14 @@ def _wait_for_atem_preview_source(source: int, timeout_s: float = 1.0) -> bool:
 def _send_atem_aux_source(aux_idx: int, source_id: int) -> tuple[bool, str]:
     """Route an ATEM AUX output to a given source via CAuS command."""
     # CAuS payload: mask=0x01, aux channel (0-based), source (big-endian uint16)
-    return _send_atem_command("CAuS", bytes([0x01, aux_idx]) + struct.pack(">H", source_id))
+    return _send_atem_command(
+        "CAuS", bytes([0x01, aux_idx]) + struct.pack(">H", source_id)
+    )
 
 
-def _wait_for_atem_aux_source(aux_idx: int, source: int, timeout_s: float = 1.0) -> bool:
+def _wait_for_atem_aux_source(
+    aux_idx: int, source: int, timeout_s: float = 1.0
+) -> bool:
     key = f"aux{aux_idx + 1}"
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
@@ -1344,7 +1348,9 @@ class Handler(BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             atem_input = 0
         if not atem_input:
-            self._json(400, {"ok": False, "error": "Camera has no ATEM input configured"})
+            self._json(
+                400, {"ok": False, "error": "Camera has no ATEM input configured"}
+            )
             return
 
         ok, message = _send_atem_aux_source(aux_idx, atem_input)
@@ -1352,13 +1358,16 @@ class Handler(BaseHTTPRequestHandler):
             self._json(502, {"ok": False, "error": message})
             return
         confirmed = _wait_for_atem_aux_source(aux_idx, atem_input, timeout_s=1.0)
-        self._json(200, {
-            "ok": True,
-            "confirmed": confirmed,
-            "message": message,
-            "aux": aux_key,
-            "source": atem_input,
-        })
+        self._json(
+            200,
+            {
+                "ok": True,
+                "confirmed": confirmed,
+                "message": message,
+                "aux": aux_key,
+                "source": atem_input,
+            },
+        )
 
     def _get_image(self, cam: int, preset: int):
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
