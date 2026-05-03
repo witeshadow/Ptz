@@ -58,7 +58,7 @@ DEFAULT_SETTINGS = {
     "cameras": [
         {
             "name": "Camera 1",
-            "ip": "192.168.5.161",
+            "ip": "",
             "port": 1259,
             "viscaAddr": 1,
             "atemInput": 1,
@@ -68,7 +68,7 @@ DEFAULT_SETTINGS = {
         },
         {
             "name": "Camera 2",
-            "ip": "192.168.5.162",
+            "ip": "",
             "port": 1259,
             "viscaAddr": 2,
             "atemInput": 2,
@@ -78,7 +78,7 @@ DEFAULT_SETTINGS = {
         },
         {
             "name": "Camera 3",
-            "ip": "192.168.5.163",
+            "ip": "",
             "port": 1259,
             "viscaAddr": 3,
             "atemInput": 3,
@@ -115,6 +115,8 @@ DEFAULT_SETTINGS = {
     },
     "atemSourceLabels": {},
     "captureOutput": "webcam",
+    "activeCamAux": "sdi1",
+    "positions": {},
 }
 
 VISCA_RAW_UDP_PORT = 1259
@@ -146,7 +148,9 @@ def _normalize_scan_wait_mode(wait_mode: str | None) -> str:
 
 
 def _probe_recall_command_succeeded(result: ProbeResult) -> bool:
-    return result.error is None
+    if result.error is not None:
+        return False
+    return not any(r.kind == "error" for r in result.replies)
 
 
 def _probe_autocut_ready(result: ProbeResult) -> bool:
@@ -486,8 +490,8 @@ def _send_atem_command(name: str, payload: bytes) -> tuple[bool, str]:
 
 def _send_atem_preview(source_id: int) -> tuple[bool, str]:
     """Set ATEM ME1 preview bus to source_id via CPvI command."""
-    payload = bytes([0, 0]) + struct.pack(">H", source_id)
-    return _send_atem_command("CPvI", payload)
+    # CPvI payload: ME index (1 byte), padding (1 byte), source (2 bytes big-endian)
+    return _send_atem_command("CPvI", b"\x00\x00" + struct.pack(">H", source_id))
 
 
 def _wait_for_atem_program_source(source: int, timeout_s: float = 1.0) -> bool:
@@ -506,6 +510,26 @@ def _wait_for_atem_preview_source(source: int, timeout_s: float = 1.0) -> bool:
             return True
         time.sleep(0.05)
     return _get_atem().get("preview") == source
+
+
+def _send_atem_aux_source(aux_idx: int, source_id: int) -> tuple[bool, str]:
+    """Route an ATEM AUX output to a given source via CAuS command."""
+    # CAuS payload: mask=0x01, aux channel (0-based), source (big-endian uint16)
+    return _send_atem_command(
+        "CAuS", bytes([0x01, aux_idx]) + struct.pack(">H", source_id)
+    )
+
+
+def _wait_for_atem_aux_source(
+    aux_idx: int, source: int, timeout_s: float = 1.0
+) -> bool:
+    key = f"aux{aux_idx + 1}"
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if _get_atem().get(key) == source:
+            return True
+        time.sleep(0.05)
+    return _get_atem().get(key) == source
 
 
 def cut_atem_to_source(source: int, reason: str = "manual") -> tuple[bool, str]:
@@ -1122,6 +1146,39 @@ _MIME = {
 }
 
 
+def _try_record_position(settings: dict, cam: int, preset: int) -> dict | None:
+    """Query the camera's absolute position and persist it in settings['positions'].
+
+    Returns the position dict on success, or None if the camera is unconfigured
+    or the inquiry fails (e.g. camera offline). Caller must write_settings() if
+    a non-None value is returned.
+    """
+    cams = settings.get("cameras", [])
+    if cam < 0 or cam >= len(cams):
+        return None
+    cfg = cams[cam]
+    ip = str(cfg.get("ip", "")).strip()
+    if not ip:
+        return None
+    port = int(cfg.get("port", 52381) or 52381)
+    visca_addr = int(cfg.get("viscaAddr", 1) or 1)
+    ok, result = inquire_visca_absolute_position(ip, port, visca_addr)
+    if not ok or not isinstance(result, dict):
+        return None
+    pos = {
+        "pan": result.get("pan"),
+        "tilt": result.get("tilt"),
+        "zoom": result.get("zoom"),
+        "pan_hex": result.get("pan_hex"),
+        "tilt_hex": result.get("tilt_hex"),
+        "zoom_hex": result.get("zoom_hex"),
+    }
+    if "positions" not in settings:
+        settings["positions"] = {}
+    settings["positions"][f"{cam}:{preset}"] = pos
+    return pos
+
+
 # ── HTTP handler ───────────────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):  # noqa: A002
@@ -1159,6 +1216,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, list_usb_devices())
         elif m := re.match(r"^/api/position/(\d+)$", path):
             self._get_position(int(m.group(1)))
+        elif m := re.match(r"^/api/image/(\d+)/(\d+)/position$", path):
+            self._get_image_position(int(m.group(1)), int(m.group(2)))
         elif m := re.match(r"^/api/image/(\d+)/(\d+)$", path):
             self._get_image(int(m.group(1)), int(m.group(2)))
         else:
@@ -1176,6 +1235,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_atem_cut()
         elif path == "/api/atem/preview":
             self._handle_atem_preview_post()
+        elif path == "/api/atem/aux-route":
+            self._handle_atem_aux_route()
         elif path == "/settings":
             self._handle_settings_post()
         elif m := re.match(r"^/api/image/(\d+)/(\d+)$", path):
@@ -1267,26 +1328,115 @@ class Handler(BaseHTTPRequestHandler):
         body = self._read_body()
         try:
             data = json.loads(body)
-            cam_idx = int(data.get("camIdx", -1))
-        except (json.JSONDecodeError, TypeError, ValueError):
+        except json.JSONDecodeError:
             self._json(400, {"ok": False, "error": "Invalid JSON"})
             return
-        cameras = load_settings().get("cameras", [])
-        if cam_idx < 0 or cam_idx >= len(cameras):
-            self._json(400, {"ok": False, "error": "Invalid camera index"})
+
+        try:
+            cam_idx = int(data.get("camIdx", -1))
+        except (TypeError, ValueError):
+            self._json(400, {"ok": False, "error": "Invalid camIdx"})
             return
-        atem_input = cameras[cam_idx].get("atemInput")
+
+        settings = load_settings()
+        cfg = settings.get("atem", {})
+        if not cfg.get("enabled"):
+            self._json(409, {"ok": False, "error": "ATEM is disabled in settings"})
+            return
+
+        if not _get_atem().get("connected"):
+            self._json(409, {"ok": False, "error": "ATEM is not connected"})
+            return
+
+        cams = settings.get("cameras", [])
+        if cam_idx < 0 or cam_idx >= len(cams):
+            self._json(404, {"ok": False, "error": "Camera not found"})
+            return
+
+        try:
+            atem_input = int(cams[cam_idx].get("atemInput") or 0)
+        except (TypeError, ValueError):
+            atem_input = 0
         if not atem_input:
             self._json(
                 400, {"ok": False, "error": "Camera has no ATEM input configured"}
             )
             return
-        if not _get_atem().get("connected"):
-            self._json(503, {"ok": False, "error": "ATEM not connected"})
+
+        ok, message = _send_atem_preview(atem_input)
+        status = 200 if ok else 502
+        self._json(status, {"ok": ok, "message": message, "source": atem_input})
+        body = self._read_body()
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            self._json(400, {"ok": False, "error": "Invalid JSON"})
             return
-        ok, message = _send_atem_preview(int(atem_input))
-        status = 200 if ok else 503
-        self._json(status, {"ok": ok, "message": message})
+
+        aux_key = str(data.get("aux", "")).strip()
+        aux_map = {"sdi1": 0, "sdi2": 1, "sdi3": 2, "sdi4": 3}
+        if aux_key not in aux_map:
+            self._json(400, {"ok": False, "error": "aux must be sdi1–sdi4"})
+            return
+        aux_idx = aux_map[aux_key]
+
+        try:
+            cam_idx = int(data.get("camIdx", -1))
+        except (TypeError, ValueError):
+            self._json(400, {"ok": False, "error": "Invalid camIdx"})
+            return
+
+        settings = load_settings()
+        cfg = settings.get("atem", {})
+        if not cfg.get("enabled"):
+            self._json(409, {"ok": False, "error": "ATEM is disabled in settings"})
+            return
+        if not _get_atem().get("connected"):
+            self._json(409, {"ok": False, "error": "ATEM is not connected"})
+            return
+
+        cams = settings.get("cameras", [])
+        if cam_idx < 0 or cam_idx >= len(cams):
+            self._json(404, {"ok": False, "error": "Camera not found"})
+            return
+
+        try:
+            atem_input = int(cams[cam_idx].get("atemInput") or 0)
+        except (TypeError, ValueError):
+            atem_input = 0
+        if not atem_input:
+            self._json(
+                400, {"ok": False, "error": "Camera has no ATEM input configured"}
+            )
+            return
+
+        ok, message = _send_atem_aux_source(aux_idx, atem_input)
+        if not ok:
+            self._json(502, {"ok": False, "error": message})
+            return
+        confirmed = _wait_for_atem_aux_source(aux_idx, atem_input, timeout_s=1.0)
+        if not confirmed:
+            self._json(
+                504,
+                {
+                    "ok": False,
+                    "confirmed": False,
+                    "error": f"ATEM did not confirm route on {aux_key}",
+                    "aux": aux_key,
+                    "source": atem_input,
+                },
+            )
+            return
+        self._json(
+            200,
+            {
+                "ok": True,
+                "confirmed": True,
+                "message": message,
+                "aux": aux_key,
+                "source": atem_input,
+            },
+        )
 
     def _get_image(self, cam: int, preset: int):
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
@@ -1323,13 +1473,25 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._json(502, {"ok": False, "error": result})
 
+    def _get_image_position(self, cam: int, preset: int):
+        positions = load_settings().get("positions", {})
+        pos = positions.get(f"{cam}:{preset}")
+        if pos is None:
+            self._json(404, {"ok": False, "error": "No position data for this preset"})
+            return
+        self._json(200, {"ok": True, **pos})
+
     def _post_image(self, cam: int, preset: int):
         _ensure_dirs()
         data = self._read_body()
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
         with open(fpath, "wb") as f:
             f.write(data)
-        self._json(200, {"ok": True})
+        settings = load_settings()
+        position = _try_record_position(settings, cam, preset)
+        if position is not None:
+            write_settings(settings)
+        self._json(200, {"ok": True, "position": position})
 
     def _capture_image(self, cam: int, preset: int):
         try:
@@ -1374,7 +1536,11 @@ class Handler(BaseHTTPRequestHandler):
             fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
             with open(fpath, "wb") as f:
                 f.write(jpeg)
-            self._json(200, {"ok": True})
+            settings = load_settings()
+            position = _try_record_position(settings, cam, preset)
+            if position is not None:
+                write_settings(settings)
+            self._json(200, {"ok": True, "position": position})
         except Exception as e:
             self._json(500, {"ok": False, "error": str(e)})
 
@@ -1382,6 +1548,11 @@ class Handler(BaseHTTPRequestHandler):
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
         if os.path.exists(fpath):
             os.remove(fpath)
+        settings = load_settings()
+        key = f"{cam}:{preset}"
+        if key in settings.get("positions", {}):
+            del settings["positions"][key]
+            write_settings(settings)
         self._json(200, {"ok": True})
 
     def _sse(self):

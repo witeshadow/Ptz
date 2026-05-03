@@ -604,6 +604,71 @@ class TestViscaPosition(unittest.TestCase):
         self.assertFalse(ok)
 
 
+
+# ── _try_record_position unit tests ───────────────────────────────────────────
+
+
+class TestTryRecordPosition(unittest.TestCase):
+    _MOCK_POSITION = {
+        "pan": 0xABCD,
+        "tilt": 0x1234,
+        "zoom": 0x0050,
+        "pan_hex": "ABCD",
+        "tilt_hex": "1234",
+        "zoom_hex": "0050",
+        "pan_signed": -0x5433,
+        "tilt_signed": 0x1234,
+        "transport": "sony-udp",
+    }
+
+    def _settings_with_ip(self, ip="10.0.0.1"):
+        s = dict(server.DEFAULT_SETTINGS)
+        s["cameras"] = [dict(server.DEFAULT_SETTINGS["cameras"][0], ip=ip)]
+        s["positions"] = {}
+        return s
+
+    def test_returns_none_when_no_ip(self):
+        settings = dict(server.DEFAULT_SETTINGS)
+        result = server._try_record_position(settings, 0, 1)
+        self.assertIsNone(result)
+
+    def test_returns_none_when_cam_out_of_range(self):
+        settings = self._settings_with_ip()
+        result = server._try_record_position(settings, 99, 1)
+        self.assertIsNone(result)
+
+    def test_returns_none_when_inquiry_fails(self):
+        settings = self._settings_with_ip()
+        with patch("server.inquire_visca_absolute_position", return_value=(False, "timeout")):
+            result = server._try_record_position(settings, 0, 1)
+        self.assertIsNone(result)
+
+    def test_returns_position_and_updates_settings(self):
+        settings = self._settings_with_ip()
+        with patch(
+            "server.inquire_visca_absolute_position",
+            return_value=(True, self._MOCK_POSITION),
+        ):
+            result = server._try_record_position(settings, 0, 5)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["pan_hex"], "ABCD")
+        self.assertEqual(result["tilt_hex"], "1234")
+        self.assertEqual(result["zoom_hex"], "0050")
+        self.assertEqual(settings["positions"]["0:5"]["pan_hex"], "ABCD")
+
+    def test_overwrites_existing_position(self):
+        settings = self._settings_with_ip()
+        settings["positions"] = {"0:5": {"pan_hex": "0000", "tilt_hex": "0000", "zoom_hex": "0000"}}
+        with patch(
+            "server.inquire_visca_absolute_position",
+            return_value=(True, self._MOCK_POSITION),
+        ):
+            result = server._try_record_position(settings, 0, 5)
+        self.assertEqual(result["pan_hex"], "ABCD")
+        self.assertEqual(settings["positions"]["0:5"]["pan_hex"], "ABCD")
+
+
 # ── HTTP integration ───────────────────────────────────────────────────────────
 
 
@@ -690,8 +755,11 @@ class TestHTTPRoutes(unittest.TestCase):
         cls.srv.__exit__(None, None, None)
 
     def setUp(self):
-        # Reset settings to defaults before each test for isolation
-        server.write_settings(dict(server.DEFAULT_SETTINGS))
+        # Reset settings to defaults before each test for isolation.
+        # Use a fresh positions dict so TestTryRecordPosition mutation doesn't bleed in.
+        settings = dict(server.DEFAULT_SETTINGS)
+        settings["positions"] = {}
+        server.write_settings(settings)
 
     # ── static & settings ──────────────────────────────────────────────────────
 
@@ -992,6 +1060,116 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertEqual(data["zoom_hex"], "00AA")
         mock_inquire.assert_called_once_with("10.0.0.9", 52381, 1)
 
+    # ── position recording on capture ──────────────────────────────────────────
+
+    _MOCK_POSITION = {
+        "pan": 0x1234,
+        "tilt": 0x5678,
+        "zoom": 0x00AA,
+        "pan_hex": "1234",
+        "tilt_hex": "5678",
+        "zoom_hex": "00AA",
+        "pan_signed": 0x1234,
+        "tilt_signed": 0x5678,
+        "transport": "sony-udp",
+    }
+
+    def _settings_with_camera_ip(self, ip="10.0.0.9"):
+        settings = dict(server.DEFAULT_SETTINGS)
+        settings["cameras"] = [dict(server.DEFAULT_SETTINGS["cameras"][0], ip=ip)]
+        return settings
+
+    def test_post_image_records_position_when_camera_configured(self):
+        server.write_settings(self._settings_with_camera_ip())
+        fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+
+        with patch(
+            "server.inquire_visca_absolute_position",
+            return_value=(True, self._MOCK_POSITION),
+        ):
+            status, body = self.srv.post("/api/image/0/3", fake_jpeg, "image/jpeg")
+
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["position"]["pan_hex"], "1234")
+        self.assertEqual(data["position"]["tilt_hex"], "5678")
+        self.assertEqual(data["position"]["zoom_hex"], "00AA")
+
+        # Position is persisted in settings
+        saved = server.load_settings()
+        self.assertEqual(saved["positions"]["0:3"]["pan_hex"], "1234")
+
+    def test_post_image_position_null_when_no_camera_ip(self):
+        # DEFAULT_SETTINGS cameras have ip=""
+        fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+        status, body = self.srv.post("/api/image/0/3", fake_jpeg, "image/jpeg")
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["ok"])
+        self.assertIsNone(data["position"])
+
+    def test_post_image_position_null_when_inquiry_fails(self):
+        server.write_settings(self._settings_with_camera_ip())
+        fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+
+        with patch(
+            "server.inquire_visca_absolute_position",
+            return_value=(False, "No VISCA response"),
+        ):
+            status, body = self.srv.post("/api/image/0/3", fake_jpeg, "image/jpeg")
+
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["ok"])
+        self.assertIsNone(data["position"])
+
+    def test_delete_image_clears_stored_position(self):
+        server.write_settings(self._settings_with_camera_ip())
+        fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+
+        with patch(
+            "server.inquire_visca_absolute_position",
+            return_value=(True, self._MOCK_POSITION),
+        ):
+            self.srv.post("/api/image/0/5", fake_jpeg, "image/jpeg")
+
+        # Confirm position was saved
+        self.assertEqual(server.load_settings()["positions"].get("0:5", {}).get("pan_hex"), "1234")
+
+        # Delete image
+        status, body = self.srv.delete("/api/image/0/5")
+        self.assertEqual(status, 200)
+
+        # Position should be cleared
+        saved = server.load_settings()
+        self.assertNotIn("0:5", saved.get("positions", {}))
+
+    # ── GET /api/image/{cam}/{preset}/position ─────────────────────────────────
+
+    def test_get_image_position_no_data_returns_404(self):
+        status, body = self.srv.get("/api/image/0/5/position")
+        self.assertEqual(status, 404)
+        data = json.loads(body)
+        self.assertFalse(data["ok"])
+
+    def test_get_image_position_returns_stored_data(self):
+        server.write_settings(self._settings_with_camera_ip())
+        fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+        with patch(
+            "server.inquire_visca_absolute_position",
+            return_value=(True, self._MOCK_POSITION),
+        ):
+            self.srv.post("/api/image/0/5", fake_jpeg, "image/jpeg")
+
+        status, body = self.srv.get("/api/image/0/5/position")
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["pan_hex"], "1234")
+        self.assertEqual(data["tilt_hex"], "5678")
+        self.assertEqual(data["zoom_hex"], "00AA")
+
     # ── 404 paths ──────────────────────────────────────────────────────────────
 
     def test_unknown_get_returns_404(self):
@@ -1009,6 +1187,337 @@ class TestHTTPRoutes(unittest.TestCase):
     def test_unknown_post_returns_404(self):
         status, _ = self.srv.post("/api/nonexistent", b"{}")
         self.assertEqual(status, 404)
+
+
+# ── _normalize_recall_wait_mode ───────────────────────────────────────────────
+
+
+class TestNormalizeRecallWaitMode(unittest.TestCase):
+    def test_returns_settle_for_none(self):
+        self.assertEqual(server._normalize_recall_wait_mode(None), "settle")
+
+    def test_returns_settle_for_empty_string(self):
+        self.assertEqual(server._normalize_recall_wait_mode(""), "settle")
+
+    def test_returns_settle_for_unknown_string(self):
+        self.assertEqual(server._normalize_recall_wait_mode("bogus"), "settle")
+
+    def test_returns_settle_for_settle(self):
+        self.assertEqual(server._normalize_recall_wait_mode("settle"), "settle")
+
+    def test_returns_dwell_for_dwell(self):
+        self.assertEqual(server._normalize_recall_wait_mode("dwell"), "dwell")
+
+    def test_returns_confirm_for_confirm(self):
+        self.assertEqual(server._normalize_recall_wait_mode("confirm"), "confirm")
+
+    def test_returns_autocut_for_autocut(self):
+        self.assertEqual(server._normalize_recall_wait_mode("autocut"), "autocut")
+
+    def test_case_sensitive_rejects_uppercase(self):
+        # Mode matching is exact; uppercase should fall through to settle
+        self.assertEqual(server._normalize_recall_wait_mode("Settle"), "settle")
+        self.assertEqual(server._normalize_recall_wait_mode("AUTOCUT"), "settle")
+
+
+# ── _normalize_scan_wait_mode ─────────────────────────────────────────────────
+
+
+class TestNormalizeScanWaitMode(unittest.TestCase):
+    def test_returns_settle_for_none(self):
+        self.assertEqual(server._normalize_scan_wait_mode(None), "settle")
+
+    def test_returns_dwell_for_dwell(self):
+        self.assertEqual(server._normalize_scan_wait_mode("dwell"), "dwell")
+
+    def test_returns_settle_for_settle(self):
+        self.assertEqual(server._normalize_scan_wait_mode("settle"), "settle")
+
+    def test_rejects_confirm_falls_back_to_settle(self):
+        # Scan mode must not accept "confirm" — it would skip motion settling
+        self.assertEqual(server._normalize_scan_wait_mode("confirm"), "settle")
+
+    def test_rejects_autocut_falls_back_to_settle(self):
+        # Scan mode must not accept "autocut" — it would skip motion settling
+        self.assertEqual(server._normalize_scan_wait_mode("autocut"), "settle")
+
+    def test_rejects_unknown_falls_back_to_settle(self):
+        self.assertEqual(server._normalize_scan_wait_mode("unknown"), "settle")
+
+
+# ── _probe_recall_command_succeeded ──────────────────────────────────────────
+
+
+class TestProbeRecallCommandSucceeded(unittest.TestCase):
+    def _reply(self, kind, payload=b""):
+        return SimpleNamespace(kind=kind, payload=payload)
+
+    def test_returns_true_when_no_error_and_no_replies(self):
+        result = SimpleNamespace(error=None, replies=[])
+        self.assertTrue(server._probe_recall_command_succeeded(result))
+
+    def test_returns_true_with_ack_and_completion_replies(self):
+        result = SimpleNamespace(
+            error=None,
+            replies=[self._reply("ack", b"\x90\x41\xff"), self._reply("completion", b"\x90\x51\xff")],
+        )
+        self.assertTrue(server._probe_recall_command_succeeded(result))
+
+    def test_returns_false_when_error_attr_set(self):
+        result = SimpleNamespace(error="socket timeout", replies=[])
+        self.assertFalse(server._probe_recall_command_succeeded(result))
+
+    def test_returns_false_when_reply_has_error_kind(self):
+        result = SimpleNamespace(
+            error=None,
+            replies=[self._reply("error", b"\x90\x60\x02\xff")],
+        )
+        self.assertFalse(server._probe_recall_command_succeeded(result))
+
+    def test_returns_false_when_error_attr_set_even_with_ack(self):
+        result = SimpleNamespace(
+            error="transport error",
+            replies=[self._reply("ack", b"\x90\x41\xff")],
+        )
+        self.assertFalse(server._probe_recall_command_succeeded(result))
+
+    def test_returns_true_with_only_ack_reply(self):
+        result = SimpleNamespace(
+            error=None,
+            replies=[self._reply("ack", b"\x90\x41\xff")],
+        )
+        self.assertTrue(server._probe_recall_command_succeeded(result))
+
+
+# ── _probe_autocut_ready ──────────────────────────────────────────────────────
+
+
+class TestProbeAutocutReady(unittest.TestCase):
+    def test_returns_true_when_settled(self):
+        result = SimpleNamespace(error=None, settled=True, saw_completion=False)
+        self.assertTrue(server._probe_autocut_ready(result))
+
+    def test_returns_true_when_saw_completion(self):
+        result = SimpleNamespace(error=None, settled=False, saw_completion=True)
+        self.assertTrue(server._probe_autocut_ready(result))
+
+    def test_returns_true_when_both_settled_and_saw_completion(self):
+        result = SimpleNamespace(error=None, settled=True, saw_completion=True)
+        self.assertTrue(server._probe_autocut_ready(result))
+
+    def test_returns_false_when_neither_settled_nor_saw_completion(self):
+        result = SimpleNamespace(error=None, settled=False, saw_completion=False)
+        self.assertFalse(server._probe_autocut_ready(result))
+
+    def test_returns_false_when_error_even_if_settled(self):
+        result = SimpleNamespace(error="timeout", settled=True, saw_completion=True)
+        self.assertFalse(server._probe_autocut_ready(result))
+
+    def test_returns_false_when_error_is_empty_string(self):
+        # error=None is the only "no error" signal; empty string should still fail
+        result = SimpleNamespace(error="", settled=True, saw_completion=True)
+        # Per implementation: `result.error is None` — empty string is not None
+        self.assertFalse(server._probe_autocut_ready(result))
+
+
+# ── _format_probe_message ─────────────────────────────────────────────────────
+
+
+class TestFormatProbeMessage(unittest.TestCase):
+    def _reply(self, kind, payload=b""):
+        return SimpleNamespace(kind=kind, payload=payload)
+
+    def _result(self, *, replies=None, settled=False, saw_completion=False,
+                samples=None, error=None):
+        return SimpleNamespace(
+            replies=replies or [],
+            settled=settled,
+            saw_completion=saw_completion,
+            samples=samples or [],
+            error=error,
+        )
+
+    # confirm mode tests
+    def test_confirm_no_replies_appends_command_sent(self):
+        result = self._result()
+        msg = server._format_probe_message(result, "confirm")
+        self.assertIn("Command sent", msg)
+
+    def test_confirm_with_ack_omits_command_sent(self):
+        # When ACK is present, the "Command sent" branch is skipped (ack is not None)
+        result = self._result(replies=[self._reply("ack", b"\x90\x41\xff")])
+        msg = server._format_probe_message(result, "confirm")
+        self.assertIn("ACK", msg)
+        self.assertNotIn("Command sent", msg)
+
+    def test_confirm_with_completion_omits_command_sent(self):
+        result = self._result(replies=[self._reply("completion", b"\x90\x51\xff")])
+        msg = server._format_probe_message(result, "confirm")
+        self.assertIn("Completion", msg)
+        self.assertNotIn("Command sent", msg)
+
+    # autocut mode tests
+    def test_autocut_saw_completion_no_settle_reports_visca_completion(self):
+        result = self._result(saw_completion=True, settled=False)
+        msg = server._format_probe_message(result, "autocut")
+        self.assertIn("VISCA completion confirmed", msg)
+
+    def test_autocut_neither_settled_nor_completion_reports_not_confirmed(self):
+        result = self._result(saw_completion=False, settled=False)
+        msg = server._format_probe_message(result, "autocut")
+        self.assertIn("Motion stop was not confirmed", msg)
+
+    def test_autocut_error_appended_to_message(self):
+        result = self._result(saw_completion=False, settled=False, error="socket error")
+        msg = server._format_probe_message(result, "autocut")
+        self.assertIn("socket error", msg)
+
+    def test_autocut_with_error_still_includes_not_confirmed(self):
+        result = self._result(error="timeout", settled=False, saw_completion=False)
+        msg = server._format_probe_message(result, "autocut")
+        self.assertIn("Motion stop was not confirmed", msg)
+        self.assertIn("timeout", msg)
+
+    # dwell mode tests
+    def test_dwell_appends_manual_dwell_mode(self):
+        result = self._result()
+        msg = server._format_probe_message(result, "dwell")
+        self.assertIn("Manual dwell mode", msg)
+
+    # settle mode tests
+    def test_settle_not_settled_appends_did_not_settle(self):
+        result = self._result(settled=False)
+        msg = server._format_probe_message(result, "settle")
+        self.assertIn("Motion did not settle in time", msg)
+
+    def test_fallback_returns_visca_recall_completed_when_no_parts(self):
+        # Unknown wait_mode with no replies and no error yields fallback message
+        result = self._result()
+        msg = server._format_probe_message(result, "settle")
+        # settle and not settled → "Motion did not settle in time"
+        self.assertIn("Motion did not settle in time", msg)
+
+
+# ── DEFAULT_SETTINGS Camera 4 ─────────────────────────────────────────────────
+
+
+class TestDefaultSettingsCamera4(unittest.TestCase):
+    def _cam4(self):
+        cams = server.DEFAULT_SETTINGS["cameras"]
+        self.assertEqual(len(cams), 4, "Expected 4 cameras in DEFAULT_SETTINGS")
+        return cams[3]
+
+    def test_camera4_name(self):
+        self.assertEqual(self._cam4()["name"], "Camera 4")
+
+    def test_camera4_atem_input(self):
+        self.assertEqual(self._cam4()["atemInput"], 4)
+
+    def test_camera4_disabled_by_default(self):
+        self.assertFalse(self._cam4()["enabled"])
+
+    def test_camera4_has_all_required_keys(self):
+        cam = self._cam4()
+        for key in ("name", "ip", "port", "viscaAddr", "atemInput", "streamUrl", "usbDevice", "enabled"):
+            self.assertIn(key, cam)
+
+    def test_auto_cut_enabled_removed_from_default_settings(self):
+        self.assertNotIn("autoCutEnabled", server.DEFAULT_SETTINGS)
+
+
+# ── ATEM_STATE_CONFIRM_TIMEOUT_S constant ────────────────────────────────────
+
+
+class TestAtemStateConfirmTimeout(unittest.TestCase):
+    def test_constant_is_2_seconds(self):
+        self.assertEqual(server.ATEM_STATE_CONFIRM_TIMEOUT_S, 2.0)
+
+    def test_constant_is_greater_than_old_value(self):
+        # Previously hardcoded as 1.0; the PR increased it to 2.0 to give
+        # the ATEM switcher more time to confirm state changes.
+        self.assertGreater(server.ATEM_STATE_CONFIRM_TIMEOUT_S, 1.0)
+
+
+# ── Additional recall_visca_preset edge cases ─────────────────────────────────
+
+
+class TestRecallViscaPresetEdgeCases(unittest.TestCase):
+    def _make_probe_result(self, *, settled=False, saw_completion=False,
+                           samples=None, error=None, replies=None):
+        return SimpleNamespace(
+            replies=replies or [],
+            saw_completion=saw_completion,
+            settled=settled,
+            samples=samples or [],
+            error=error,
+        )
+
+    def test_autocut_mode_accepts_settled_without_completion(self):
+        probe_result = self._make_probe_result(settled=True, saw_completion=False)
+        with patch("server._probe_preset", return_value=probe_result):
+            payload = server.recall_visca_preset("10.0.0.1", 52381, 3, 1, wait_mode="autocut")
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["waitMode"], "autocut")
+
+    def test_autocut_mode_fails_when_error_even_if_settled(self):
+        probe_result = self._make_probe_result(settled=True, saw_completion=True, error="probe error")
+        with patch("server._probe_preset", return_value=probe_result):
+            payload = server.recall_visca_preset("10.0.0.1", 52381, 3, 1, wait_mode="autocut")
+        self.assertFalse(payload["success"])
+
+    def test_autocut_mode_fails_when_neither_settled_nor_completion(self):
+        probe_result = self._make_probe_result(settled=False, saw_completion=False)
+        with patch("server._probe_preset", return_value=probe_result):
+            payload = server.recall_visca_preset("10.0.0.1", 52381, 3, 1, wait_mode="autocut")
+        self.assertFalse(payload["success"])
+        self.assertIn("not confirmed", payload["message"])
+
+    def test_confirm_mode_fails_when_reply_has_error_kind(self):
+        error_reply = SimpleNamespace(kind="error", payload=b"\x90\x60\x02\xff")
+        probe_result = self._make_probe_result(replies=[error_reply])
+        with patch("server._probe_preset", return_value=probe_result):
+            payload = server.recall_visca_preset("10.0.0.1", 52381, 3, 1, wait_mode="confirm")
+        self.assertFalse(payload["success"])
+
+    def test_unknown_wait_mode_normalizes_to_settle(self):
+        probe_result = self._make_probe_result(settled=True)
+        with patch("server._probe_preset", return_value=probe_result):
+            payload = server.recall_visca_preset("10.0.0.1", 52381, 1, 1, wait_mode="unknown_mode")
+        self.assertEqual(payload["waitMode"], "settle")
+        self.assertTrue(payload["success"])
+
+    def test_none_wait_mode_normalizes_to_settle(self):
+        probe_result = self._make_probe_result(settled=True)
+        with patch("server._probe_preset", return_value=probe_result):
+            payload = server.recall_visca_preset("10.0.0.1", 52381, 1, 1, wait_mode=None)
+        self.assertEqual(payload["waitMode"], "settle")
+        self.assertTrue(payload["success"])
+
+    def test_payload_always_includes_wait_mode_key(self):
+        for mode in ("settle", "confirm", "autocut", "dwell"):
+            probe_result = self._make_probe_result(settled=True, saw_completion=True)
+            with patch("server._probe_preset", return_value=probe_result):
+                payload = server.recall_visca_preset("10.0.0.1", 52381, 1, 1, wait_mode=mode)
+            self.assertIn("waitMode", payload, f"waitMode missing for mode={mode!r}")
+            self.assertEqual(payload["waitMode"], mode)
+
+    def test_dwell_mode_sets_require_settle_false(self):
+        probe_result = self._make_probe_result()
+        with patch("server._probe_preset", return_value=probe_result) as mock_probe:
+            server.recall_visca_preset("10.0.0.1", 52381, 1, 1, wait_mode="dwell")
+        self.assertFalse(mock_probe.call_args.kwargs["require_settle"])
+
+    def test_autocut_mode_sets_require_settle_false(self):
+        probe_result = self._make_probe_result(saw_completion=True)
+        with patch("server._probe_preset", return_value=probe_result) as mock_probe:
+            server.recall_visca_preset("10.0.0.1", 52381, 1, 1, wait_mode="autocut")
+        self.assertFalse(mock_probe.call_args.kwargs["require_settle"])
+
+    def test_settle_mode_sets_require_settle_true(self):
+        probe_result = self._make_probe_result(settled=True)
+        with patch("server._probe_preset", return_value=probe_result) as mock_probe:
+            server.recall_visca_preset("10.0.0.1", 52381, 1, 1, wait_mode="settle")
+        self.assertTrue(mock_probe.call_args.kwargs["require_settle"])
 
 
 if __name__ == "__main__":
