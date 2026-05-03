@@ -222,7 +222,7 @@ def recall_visca_preset(
         verbose=False,
     )
     success = (
-        result.error is None and result.settled
+        _probe_recall_command_succeeded(result) and result.settled
         if wait_mode == "settle"
         else _probe_autocut_ready(result)
         if wait_mode == "autocut"
