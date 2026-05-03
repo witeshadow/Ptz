@@ -1974,15 +1974,16 @@
   }
 
   async function setAtemPreview(idx) {
-    if (!state.atem.enabled || !atemConnected) return;
+    if (!state.atem.enabled || !atemConnected) return false;
     const atemInput = getCameraAtemInput(idx);
-    if (!atemInput) return;
-    if (cameraMatchesAtemSource(idx, state.previewSource)) return;
-    await fetch('/api/atem/preview', {
+    if (!atemInput) return false;
+    if (cameraMatchesAtemSource(idx, state.previewSource)) return false;
+    fetch('/api/atem/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ camIdx: idx }),
     }).catch(() => ({}));
+    return true;
   }
 
   function renderFillCamStrip() {
@@ -2013,12 +2014,13 @@
       let lpTimer = null;
       let lpHandled = false;
       btn.addEventListener('pointerdown', () => {
-        lpTimer = setTimeout(() => {
+        lpTimer = setTimeout(async () => {
           lpTimer = null;
           lpHandled = true;
-          btn.classList.add('setting-preview');
-          setTimeout(() => btn.classList.remove('setting-preview'), 800);
-          setAtemPreview(idx);
+          if (await setAtemPreview(idx)) {
+            btn.classList.add('setting-preview');
+            setTimeout(() => btn.classList.remove('setting-preview'), 800);
+          }
         }, 500);
       });
       const clearFillLongPress = () => { clearTimeout(lpTimer); lpTimer = null; };
@@ -2074,11 +2076,14 @@
       //   700 ms → rename tab (always available; +200 ms after preview)
       let longPressTimer = null;
       let longPressHandled = false;
+      let previewHoldTriggered = false;
       btn.addEventListener('pointerdown', () => {
+        previewHoldTriggered = false;
         longPressTimer = setTimeout(() => {
           longPressHandled = true;
           if (state.atem.enabled && atemConnected) {
-            setAtemPreview(idx);
+            previewHoldTriggered = true;
+            void setAtemPreview(idx);
             // Schedule rename after an additional 200 ms (700 ms total)
             longPressTimer = setTimeout(() => {
               longPressTimer = null;
@@ -2092,11 +2097,11 @@
       });
       btn.addEventListener('pointerup', () => {
         if (longPressTimer !== null) {
-          // In the 500–700 ms window: rename was pending, cancel it and
-          // reset longPressHandled so the click event can still fire normally.
+          // In the 500–700 ms window: rename was pending, cancel it.
+          // Only restore normal click if preview was never triggered.
           clearTimeout(longPressTimer);
           longPressTimer = null;
-          longPressHandled = false;
+          if (!previewHoldTriggered) longPressHandled = false;
         } else {
           clearTimeout(longPressTimer);
           longPressTimer = null;
@@ -3281,11 +3286,12 @@
     const toolbarStyles = getComputedStyle(elToolbar);
     const toolbarMarginTop = parseFloat(toolbarStyles.marginTop || '0') || 0;
     const stagePadX = (parseFloat(stageStyles.paddingLeft || '0') || 0) + (parseFloat(stageStyles.paddingRight || '0') || 0);
+    const stagePadY = (parseFloat(stageStyles.paddingTop || '0') || 0) + (parseFloat(stageStyles.paddingBottom || '0') || 0);
 
     const availableWidth = Math.max(0, elPresetStage.clientWidth - stagePadX);
     const availableHeight = Math.max(
       0,
-      elMain.clientHeight - elToolbar.offsetHeight - toolbarMarginTop
+      elMain.clientHeight - elToolbar.offsetHeight - toolbarMarginTop - stagePadY
     );
 
     function fitLayout(cols, rows) {
