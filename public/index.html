@@ -2047,7 +2047,11 @@
       // Long-press (500 ms) to set ATEM preview bus
       let lpTimer = null;
       let lpHandled = false;
-      btn.addEventListener('pointerdown', () => {
+      let lpStartX = 0;
+      let lpStartY = 0;
+      btn.addEventListener('pointerdown', (e) => {
+        lpStartX = e.clientX;
+        lpStartY = e.clientY;
         lpTimer = setTimeout(async () => {
           lpTimer = null;
           lpHandled = true;
@@ -2061,7 +2065,9 @@
       const clearFillLp = () => { clearTimeout(lpTimer); lpTimer = null; };
       btn.addEventListener('pointerup',     clearFillLp);
       btn.addEventListener('pointerleave',  clearFillLp);
-      btn.addEventListener('pointermove',   clearFillLp);
+      btn.addEventListener('pointermove',   (e) => {
+        if (Math.hypot(e.clientX - lpStartX, e.clientY - lpStartY) > 8) clearFillLp();
+      });
       btn.addEventListener('pointercancel', clearFillLp);
 
       btn.addEventListener('click', () => {
@@ -2114,7 +2120,11 @@
       let longPressTimer = null;
       let longPressHandled = false;
       let previewTriggered = false;
-      btn.addEventListener('pointerdown', () => {
+      let lpTabStartX = 0;
+      let lpTabStartY = 0;
+      btn.addEventListener('pointerdown', (e) => {
+        lpTabStartX = e.clientX;
+        lpTabStartY = e.clientY;
         longPressTimer = setTimeout(async () => {
           longPressHandled = true;
           if (state.atem.enabled && atemConnected) {
@@ -2146,7 +2156,9 @@
       });
       const clearTabLp = () => { clearTimeout(longPressTimer); longPressTimer = null; previewTriggered = false; };
       btn.addEventListener('pointerleave',  clearTabLp);
-      btn.addEventListener('pointermove',   clearTabLp);
+      btn.addEventListener('pointermove',   (e) => {
+        if (Math.hypot(e.clientX - lpTabStartX, e.clientY - lpTabStartY) > 8) clearTabLp();
+      });
       btn.addEventListener('pointercancel', clearTabLp);
 
       btn.addEventListener('click', () => {
@@ -3765,7 +3777,7 @@
       );
       setStatus('success', msg);
       scheduleAutoCut(n, autoCutPlan, autoCutTrigger || 'settled', recallElapsedMs);
-      checkPositionAfterRecall(n, recallCamIdx);
+      if (data.settled) checkPositionAfterRecall(n, recallCamIdx);
     } else {
       const recallElapsedMs = Math.max(
         0,
