@@ -156,6 +156,15 @@
       color: var(--muted);
     }
 
+    @keyframes pvw-set-flash {
+      0%   { box-shadow: 0 0 0 0 rgba(34,197,94,.8); border-color: var(--success); }
+      60%  { box-shadow: 0 0 0 6px rgba(34,197,94,0); border-color: var(--success); }
+      100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+    }
+    .fill-cam-indicator.setting-preview {
+      animation: pvw-set-flash 0.8s ease-out;
+    }
+
     #status {
       display: flex; align-items: center;
       background: var(--surf2);
@@ -718,6 +727,19 @@
     .preset-btn.edit-mode { cursor: default; }
     .preset-btn.edit-mode:hover { border-color: var(--border); }
     .preset-btn.edit-mode:hover .preset-num { color: var(--border); }
+
+    @keyframes snap-pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
+    .preset-btn.needs-snap .preset-capture {
+      display: flex;
+      background: rgba(234,179,8,.85);
+      border-color: rgba(234,179,8,.85);
+      animation: snap-pulse 1.5s ease-in-out infinite;
+    }
+    .preset-btn.needs-snap .preset-capture:hover {
+      background: #eab308;
+      border-color: #eab308;
+      animation: none;
+    }
 
     /* ── Toolbar ─────────────────────────────────────── */
     #toolbar {
@@ -1439,7 +1461,17 @@
         <div class="field" style="flex-shrink:0;">
           <label for="f-capture-output">PTZ scan uses:</label>
           <select id="f-capture-output">
+            <option value="activeCam">Active Cam</option>
             <option value="webcam">USB Webcam</option>
+            <option value="sdi1">SDI Out 1</option>
+            <option value="sdi2">SDI Out 2</option>
+            <option value="sdi3">SDI Out 3</option>
+            <option value="sdi4">SDI Out 4</option>
+          </select>
+        </div>
+        <div id="active-cam-aux-row" class="field" style="display:none; flex-shrink:0;">
+          <label for="f-active-cam-aux">Route to:</label>
+          <select id="f-active-cam-aux">
             <option value="sdi1">SDI Out 1</option>
             <option value="sdi2">SDI Out 2</option>
             <option value="sdi3">SDI Out 3</option>
@@ -1532,6 +1564,8 @@
     },
     atemSourceLabels: {},
     captureOutput: 'webcam',
+    activeCamAux: 'sdi1',
+    positions: {},
     // Runtime ATEM AUX sources (not persisted, updated via SSE)
     aux1Source: 0,
     aux2Source: 0,
@@ -1581,6 +1615,7 @@
 
   function normalizeCaptureOutput(value) {
     const map = {
+      activeCam: 'activeCam',
       webcam: 'webcam',
       sdi1: 'sdi1',
       sdi2: 'sdi2',
@@ -1594,6 +1629,10 @@
       aux4: 'sdi4',
     };
     return map[value] || 'webcam';
+  }
+
+  function normalizeActiveCamAux(value) {
+    return ['sdi1', 'sdi2', 'sdi3', 'sdi4'].includes(value) ? value : 'sdi1';
   }
 
   // ── Server persistence ────────────────────────────────────────────────────
@@ -1629,6 +1668,8 @@
         if (s.atemOutputMap) state.atemOutputMap = normalizeAtemOutputMap(s.atemOutputMap);
         if (s.atemSourceLabels) state.atemSourceLabels = { ...s.atemSourceLabels };
         if (s.captureOutput) state.captureOutput = normalizeCaptureOutput(s.captureOutput);
+        if (s.activeCamAux) state.activeCamAux = normalizeActiveCamAux(s.activeCamAux);
+        if (s.positions) state.positions = { ...s.positions };
       }
     } catch (_) {}
   }
@@ -1956,18 +1997,6 @@
     return { text: 'IDLE', className: 'idle' };
   }
 
-  async function setAtemPreview(idx) {
-    if (!state.atem.enabled || !atemConnected) return;
-    const atemInput = getCameraAtemInput(idx);
-    if (!atemInput) return;
-    if (cameraMatchesAtemSource(idx, state.previewSource)) return;
-    await fetch('/api/atem/preview', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ camIdx: idx }),
-    }).catch(() => ({}));
-  }
-
   function renderFillCamStrip() {
     if (!elFillCamStrip) return;
     elFillCamStrip.innerHTML = '';
@@ -1990,8 +2019,9 @@
 
       btn.appendChild(num);
       btn.appendChild(stateEl);
+      btn.title = state.atem.enabled ? 'Click to switch · Hold to set preview' : 'Click to switch';
 
-      // Long-press (500 ms) to set ATEM preview
+      // Long-press (500 ms) to set ATEM preview bus
       let lpTimer = null;
       let lpHandled = false;
       btn.addEventListener('pointerdown', () => {
@@ -2051,23 +2081,23 @@
       nameWrap.appendChild(nameEl);
       btn.appendChild(nameWrap);
 
-      // Long-press for touch devices:
-      // - 500 ms: set ATEM preview (when ATEM enabled and connected)
-      // - 700 ms: rename tab (always available)
+      // Tiered long-press for touch devices:
+      //   500 ms → set ATEM preview (when ATEM enabled and connected)
+      //   700 ms → rename tab (always available; +200 ms after preview)
       let longPressTimer = null;
       let longPressHandled = false;
       btn.addEventListener('pointerdown', () => {
         longPressTimer = setTimeout(() => {
-          longPressTimer = null;
           longPressHandled = true;
           if (state.atem.enabled && atemConnected) {
             setAtemPreview(idx);
-            // schedule rename after an additional 200 ms (700 ms total)
+            // Schedule rename after an additional 200 ms (700 ms total)
             longPressTimer = setTimeout(() => {
               longPressTimer = null;
               openTabNameEditor(idx, nameEl, nameWrap);
             }, 200);
           } else {
+            longPressTimer = null;
             openTabNameEditor(idx, nameEl, nameWrap);
           }
         }, 500);
@@ -2487,34 +2517,35 @@
     }
   }
 
-  function scheduleAutoCut(preset, autoCutPlan, trigger = 'settled', recallElapsedMs = 0) {
+  async function setAtemPreview(idx) {
+    if (!state.atem.enabled || !atemConnected) return;
+    const atemInput = getCameraAtemInput(idx);
+    if (!atemInput) return;
+    if (cameraMatchesAtemSource(idx, state.previewSource)) return;
+    await fetch('/api/atem/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ camIdx: idx }),
+    }).catch(() => ({}));
+  }
+
+  function scheduleAutoCut(preset, autoCutPlan) {
     if (!autoCutPlan || !autoCutPlan.source) return;
     clearPendingAutoCut();
     const { source, camName, delayMs } = autoCutPlan;
-    const usingCompletionFallback = trigger === 'completion';
-    const usingTimeoutFallback = trigger === 'timeout';
-    const effectiveDelayMs = usingTimeoutFallback
-      ? Math.max(0, delayMs - Math.max(0, recallElapsedMs || 0))
-      : 0;
-    if (effectiveDelayMs > 0) {
+    if (delayMs > 0) {
       autoCutPending = { source, camName, preset };
       setAutoCutDebug(`WAIT ${source}`);
-      const delayLabel = (effectiveDelayMs / 1000).toFixed(2).replace(/\.?0+$/, '');
-      setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} waiting up to ${delayLabel}s more for fallback max`, false);
+      setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} after confirmed stop + ${(delayMs / 1000).toFixed(1).replace(/\.0$/, '')}s`, false);
       autoCutTimer = setTimeout(() => {
         const pending = autoCutPending;
         if (!pending) return;
         fireAutoCut(pending.source, pending.camName, pending.preset);
-      }, effectiveDelayMs);
+      }, delayMs);
       return;
     }
     setAutoCutDebug(`READY ${source}`);
-    const readyReason = usingCompletionFallback
-      ? 'on VISCA completion'
-      : usingTimeoutFallback
-        ? 'on fallback max timeout'
-        : 'when camera stop is confirmed';
-    setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} ${readyReason}`, false);
+    setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} when camera stop is confirmed`, false);
     void fireAutoCut(source, camName, preset);
   }
 
@@ -2788,11 +2819,12 @@
   let usbDevices = [];  // populated in boot; reused by renderOutputMapTable
 
   const ATEM_OUTPUT_KEYS = [
-    { key: 'webcam', label: 'USB Webcam' },
-    { key: 'sdi1',   label: 'SDI Out 1' },
-    { key: 'sdi2',   label: 'SDI Out 2' },
-    { key: 'sdi3',   label: 'SDI Out 3' },
-    { key: 'sdi4',   label: 'SDI Out 4' },
+    { key: 'activeCam', label: 'Active Cam' },
+    { key: 'webcam',    label: 'USB Webcam' },
+    { key: 'sdi1',      label: 'SDI Out 1' },
+    { key: 'sdi2',      label: 'SDI Out 2' },
+    { key: 'sdi3',      label: 'SDI Out 3' },
+    { key: 'sdi4',      label: 'SDI Out 4' },
   ];
 
   function getPhysicalOutputLabel(key) {
@@ -2823,6 +2855,12 @@
   function updateCaptureOutputLabel() {
     const el = document.getElementById('capture-output-label');
     if (!el) return;
+    if (state.captureOutput === 'activeCam') {
+      const auxLabel = getPhysicalOutputLabel(state.activeCamAux);
+      el.textContent = `Scan source: active camera routed to ${auxLabel}`;
+      el.style.color = 'var(--label)';
+      return;
+    }
     const outputLabel = getPhysicalOutputLabel(state.captureOutput);
     const src = getOutputSource(state.captureOutput);
     const map = state.atemOutputMap[state.captureOutput] || {};
@@ -2844,7 +2882,7 @@
     const tbody = document.getElementById('output-map-body');
     if (!tbody) return;
     tbody.innerHTML = '';
-    ATEM_OUTPUT_KEYS.forEach(({ key, label }) => {
+    ATEM_OUTPUT_KEYS.filter(({ key }) => key !== 'activeCam').forEach(({ key, label }) => {
       const src = getOutputSource(key);
       const sCls   = sourceClass(key, src);
       const map    = state.atemOutputMap[key] || { webcam: '', streamUrl: '' };
@@ -2974,10 +3012,18 @@
     });
   }
 
+  function updateActiveCamAuxVisibility() {
+    const row = document.getElementById('active-cam-aux-row');
+    if (row) row.style.display = state.captureOutput === 'activeCam' ? '' : 'none';
+  }
+
   function loadCaptureSection() {
     const sel = document.getElementById('f-capture-output');
     if (sel) sel.value = state.captureOutput || 'webcam';
+    const auxSel = document.getElementById('f-active-cam-aux');
+    if (auxSel) auxSel.value = state.activeCamAux || 'sdi1';
     updateCaptureModeVisibility();
+    updateActiveCamAuxVisibility();
     renderOutputMapTable();
     updateCaptureOutputLabel();
   }
@@ -2987,8 +3033,18 @@
     elCaptureOutput.addEventListener('change', () => {
       state.captureOutput = elCaptureOutput.value;
       schedSave();
+      updateActiveCamAuxVisibility();
       updateCaptureOutputLabel();
       renderOutputMapTable();
+    });
+  }
+
+  const elActiveCamAux = document.getElementById('f-active-cam-aux');
+  if (elActiveCamAux) {
+    elActiveCamAux.addEventListener('change', () => {
+      state.activeCamAux = elActiveCamAux.value;
+      schedSave();
+      updateCaptureOutputLabel();
     });
   }
 
@@ -3085,9 +3141,13 @@
   // captureFrame priority: USB device (ffmpeg) > stream URL (playwright) > browser webcam
   // source = pre-resolved { webcam, streamUrl } object, or null to resolve from state
   async function captureFrame(cam, preset, source = null) {
-    const resolved = source ?? (state.atem.enabled
-      ? (state.atemOutputMap[state.captureOutput] || {})
-      : { webcam: state.cameras[cam]?.usbDevice || '', streamUrl: state.cameras[cam]?.streamUrl || '' });
+    const resolved = source ?? (
+      state.atem.enabled && state.captureOutput !== 'activeCam'
+        ? (state.atemOutputMap[state.captureOutput] || {})
+        : state.atem.enabled
+          ? (state.atemOutputMap[state.activeCamAux] || {})
+          : { webcam: state.cameras[cam]?.usbDevice || '', streamUrl: state.cameras[cam]?.streamUrl || '' }
+    );
 
     const usb = resolved.webcam || '';
     const url = resolved.streamUrl || '';
@@ -3101,6 +3161,7 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setStatus('error', data.error || 'Capture failed'); return false; }
+      if (data.position) state.positions[presetKey(cam, preset)] = data.position;
       return true;
     }
 
@@ -3114,11 +3175,13 @@
     captureCanvas.height = sh;
     captureCtx.drawImage(elVideo, 0, 0, sw, sh);
     const blob = await new Promise(r => captureCanvas.toBlob(r, 'image/jpeg', 0.65));
-    await fetch(`/api/image/${cam}/${preset}`, {
+    const webcamRes = await fetch(`/api/image/${cam}/${preset}`, {
       method:  'POST',
       headers: { 'Content-Type': 'image/jpeg' },
       body:    blob,
     });
+    const webcamData = await webcamRes.json().catch(() => ({}));
+    if (webcamData.position) state.positions[presetKey(cam, preset)] = webcamData.position;
     return true;
   }
 
@@ -3131,9 +3194,22 @@
     }
 
     try {
+      if (state.atem.enabled && state.captureOutput === 'activeCam') {
+        const routeResult = await routeActiveCam(cam);
+        if (!routeResult.ok) {
+          if (preset_btn) {
+            preset_btn.classList.remove('state-busy');
+            preset_btn.classList.add('state-fail');
+            setTimeout(() => preset_btn.classList.remove('state-fail'), 1500);
+          }
+          setStatus('error', `Could not route camera: ${routeResult.error || routeResult.message}`);
+          return;
+        }
+      }
       const ok = await captureFrame(cam, preset);
 
       if (ok) {
+        clearSnapNeeded(cam, preset);
         bumpImageVersion(cam, preset);
         refreshPresetBtn(preset, cam);
         if (preset_btn) {
@@ -3167,6 +3243,51 @@
   function bumpImageVersion(cam, preset) {
     const key = presetKey(cam, preset);
     imageVersions[key] = (imageVersions[key] || 0) + 1;
+  }
+
+  // ── Snap-on-drift helpers ──────────────────────────────────────────────────
+  const snapNeeded = Object.create(null);
+  const SNAP_POSITION_THRESHOLD = 10;
+
+  function posDiff(a, b) {
+    // VISCA pan/tilt are 16-bit unsigned; take the shorter arc around the circle
+    const d = Math.abs(a - b);
+    return Math.min(d, 0x10000 - d);
+  }
+
+  function clearSnapNeeded(cam, preset) {
+    const key = presetKey(cam, preset);
+    delete snapNeeded[key];
+    const btn = elGrid.querySelector(`[data-preset="${preset}"]`);
+    if (btn) btn.classList.remove('needs-snap');
+  }
+
+  async function checkPositionAfterRecall(preset, camIdx) {
+    const cam = state.cameras[camIdx];
+    if (!cam?.ip) return;
+    const key = presetKey(camIdx, preset);
+    try {
+      const [savedRes, curRes] = await Promise.all([
+        fetch(`/api/image/${camIdx}/${preset}/position`).catch(() => null),
+        fetch(`/api/position/${camIdx}`).catch(() => null),
+      ]);
+      if (!savedRes?.ok || !curRes?.ok) return;
+      const savedPos = await savedRes.json().catch(() => null);
+      const curPos   = await curRes.json().catch(() => null);
+      if (!savedPos?.ok || savedPos.pan == null || savedPos.tilt == null) return;
+      if (!curPos?.ok  || curPos.pan  == null || curPos.tilt  == null) return;
+      // Guard against camera switch during the async wait
+      if (state.activeCam !== camIdx) return;
+      const changed = posDiff(savedPos.pan, curPos.pan)   > SNAP_POSITION_THRESHOLD
+                   || posDiff(savedPos.tilt, curPos.tilt) > SNAP_POSITION_THRESHOLD;
+      if (changed) {
+        snapNeeded[key] = true;
+        const btn = elGrid.querySelector(`[data-preset="${preset}"]`);
+        if (btn) btn.classList.add('needs-snap');
+      } else {
+        clearSnapNeeded(camIdx, preset);
+      }
+    } catch (_) {}
   }
 
   function presetNumbers() {
@@ -3350,6 +3471,10 @@
     if (ovName && !ovName.querySelector('input')) {
       ovName.textContent = state.labels[presetKey(cam, n)] || '';
     }
+    const pos = state.positions[presetKey(cam, n)];
+    btn.title = pos
+      ? `Pan: ${pos.pan_hex}  Tilt: ${pos.tilt_hex}  Zoom: ${pos.zoom_hex}`
+      : '';
     refreshPresetImage(btn, cam, n);
   }
 
@@ -3375,6 +3500,7 @@
     const cam = resolveCaptureCamera();
     const ok = await captureFrame(cam, n);
     if (ok) {
+      clearSnapNeeded(cam, n);
       bumpImageVersion(cam, n);
       if (cam === state.activeCam) {
         refreshPresetBtn(n, cam);
@@ -3390,9 +3516,14 @@
 
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className  = 'preset-btn' + (editMode ? ' edit-mode' : '');
+    btn.className  = 'preset-btn' + (editMode ? ' edit-mode' : '') + (snapNeeded[presetKey(cam, n)] ? ' needs-snap' : '');
     btn.dataset.preset = n;
     btn.dataset.displayCam = cam;
+
+    const pos = state.positions[presetKey(cam, n)];
+    if (pos) {
+      btn.title = `Pan: ${pos.pan_hex}  Tilt: ${pos.tilt_hex}  Zoom: ${pos.zoom_hex}`;
+    }
 
     const numEl = document.createElement('div');
     numEl.className   = 'preset-num';
@@ -3429,6 +3560,8 @@
       const activeCam = state.activeCam;
       const res = await fetch(`/api/image/${activeCam}/${n}`, { method: 'DELETE' });
       if (!res.ok) return;
+      delete state.positions[presetKey(activeCam, n)];
+      clearSnapNeeded(activeCam, n);
       bumpImageVersion(activeCam, n);
       refreshPresetBtn(n, activeCam);
     });
@@ -3517,6 +3650,19 @@
     }
   });
 
+  async function routeActiveCam(camIdx) {
+    try {
+      const res = await fetch('/api/atem/aux-route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ camIdx, aux: state.activeCamAux }),
+      });
+      return await res.json();
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  }
+
   // ── Recall ─────────────────────────────────────────────────────────────────
   // camIdx defaults to the current active camera; pass explicitly to lock during scan
   async function doRecall(preset, camIdx = state.activeCam, waitMode = 'settle') {
@@ -3580,20 +3726,8 @@
         msg += ' — Auto Cut using fallback max timer';
       }
       setStatus('success', msg);
-      if (autoCutPlan && autoCutReady) {
-        const recallElapsedMs = Math.max(
-          0,
-          ((typeof performance !== 'undefined' && performance.now)
-            ? performance.now()
-            : Date.now()) - recallStartedAt
-        );
-        scheduleAutoCut(
-          n,
-          autoCutPlan,
-          autoCutTrigger,
-          recallElapsedMs
-        );
-      }
+      scheduleAutoCut(n, autoCutPlan);
+      checkPositionAfterRecall(n, recallCamIdx);
     } else {
       const recallElapsedMs = Math.max(
         0,
@@ -3658,13 +3792,25 @@
       return;
     }
 
+    if (state.atem.enabled && state.captureOutput === 'activeCam') {
+      setStatus('busy', 'Routing camera…', false);
+      const routeResult = await routeActiveCam(scanCamIdx);
+      if (!routeResult.ok) {
+        setStatus('error', `Could not route camera: ${routeResult.error || routeResult.message}`);
+        return;
+      }
+    }
+
+    const captureKey = (state.atem.enabled && state.captureOutput === 'activeCam')
+      ? state.activeCamAux
+      : state.captureOutput;
     const lockedSource = state.atem.enabled
-      ? { ...(state.atemOutputMap[state.captureOutput] || {}) }
+      ? { ...(state.atemOutputMap[captureKey] || {}) }
       : { webcam: cam.usbDevice || '', streamUrl: cam.streamUrl || '' };
     const hasServerSource = lockedSource.webcam || lockedSource.streamUrl;
     if (!hasServerSource && !videoStream) {
       const hint = state.atem.enabled
-        ? `Configure a USB device or stream URL for ${getPhysicalOutputLabel(state.captureOutput)} in Settings`
+        ? `Configure a USB device or stream URL for ${getPhysicalOutputLabel(captureKey)} in Settings`
         : 'Set a USB device, VDO.ninja URL, or browser webcam for this camera';
       setStatus('error', hint); return;
     }
