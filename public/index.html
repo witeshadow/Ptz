@@ -1215,9 +1215,9 @@
     .cam-tab > * + *        { margin-left: 8px; }
     .atem-toggle-wrap > * + * { margin-left: 8px; }
     .preset-overlay > * + * { margin-left: 4px; }
-    #toolbar > * + *        { margin-left: 0; }
-    #toolbar-right > * + *  { margin-left: 0; }
-    #toolbar-statuses > * + * { margin-left: 0; }
+    #toolbar > * + *        { margin-left: 10px; }
+    #toolbar-right > * + *  { margin-left: 10px; }
+    #toolbar-statuses > * + * { margin-left: 8px; }
     #scan-bar > * + *       { margin-left: 12px; }
     .field > * + *          { margin-top: 4px; }
     #webcam-preview > * + * { margin-top: 4px; }
@@ -2120,9 +2120,11 @@
       let longPressTimer = null;
       let longPressHandled = false;
       let previewTriggered = false;
+      let longPressActive = false;
       let lpTabStartX = 0;
       let lpTabStartY = 0;
       btn.addEventListener('pointerdown', (e) => {
+        longPressActive = true;
         lpTabStartX = e.clientX;
         lpTabStartY = e.clientY;
         longPressTimer = setTimeout(async () => {
@@ -2130,8 +2132,10 @@
           if (state.atem.enabled && atemConnected) {
             previewTriggered = true;
             await setAtemPreview(idx);
+            if (!longPressActive) return;
             // Schedule rename after an additional 200 ms (700 ms total)
             longPressTimer = setTimeout(() => {
+              if (!longPressActive) return;
               longPressTimer = null;
               openTabNameEditor(idx, nameEl, nameWrap);
             }, 200);
@@ -2142,6 +2146,7 @@
         }, 500);
       });
       btn.addEventListener('pointerup', () => {
+        longPressActive = false;
         if (longPressTimer !== null) {
           // In the 500–700 ms window: rename was pending, cancel it; only
           // reset longPressHandled if preview wasn't already triggered.
@@ -2154,7 +2159,7 @@
         }
         previewTriggered = false;
       });
-      const clearTabLp = () => { clearTimeout(longPressTimer); longPressTimer = null; previewTriggered = false; };
+      const clearTabLp = () => { longPressActive = false; clearTimeout(longPressTimer); longPressTimer = null; previewTriggered = false; };
       btn.addEventListener('pointerleave',  clearTabLp);
       btn.addEventListener('pointermove',   (e) => {
         if (Math.hypot(e.clientX - lpTabStartX, e.clientY - lpTabStartY) > 8) clearTabLp();
