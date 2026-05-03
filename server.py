@@ -1358,11 +1358,23 @@ class Handler(BaseHTTPRequestHandler):
             self._json(502, {"ok": False, "error": message})
             return
         confirmed = _wait_for_atem_aux_source(aux_idx, atem_input, timeout_s=1.0)
+        if not confirmed:
+            self._json(
+                504,
+                {
+                    "ok": False,
+                    "confirmed": False,
+                    "error": f"ATEM did not confirm route on {aux_key}",
+                    "aux": aux_key,
+                    "source": atem_input,
+                },
+            )
+            return
         self._json(
             200,
             {
                 "ok": True,
-                "confirmed": confirmed,
+                "confirmed": True,
                 "message": message,
                 "aux": aux_key,
                 "source": atem_input,

@@ -3120,6 +3120,11 @@
       if (state.atem.enabled && state.captureOutput === 'activeCam') {
         const routeResult = await routeActiveCam(cam);
         if (!routeResult.ok) {
+          if (preset_btn) {
+            preset_btn.classList.remove('state-busy');
+            preset_btn.classList.add('state-fail');
+            setTimeout(() => preset_btn.classList.remove('state-fail'), 1500);
+          }
           setStatus('error', `Could not route camera: ${routeResult.error || routeResult.message}`);
           return;
         }
