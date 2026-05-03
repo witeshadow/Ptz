@@ -100,6 +100,7 @@ DEFAULT_SETTINGS = {
     },
     "atemSourceLabels": {},
     "captureOutput": "webcam",
+    "activeCamAux": "sdi1",
     "positions": {},
 }
 
@@ -454,6 +455,22 @@ def _wait_for_atem_preview_source(source: int, timeout_s: float = 1.0) -> bool:
             return True
         time.sleep(0.05)
     return _get_atem().get("preview") == source
+
+
+def _send_atem_aux_source(aux_idx: int, source_id: int) -> tuple[bool, str]:
+    """Route an ATEM AUX output to a given source via CAuS command."""
+    # CAuS payload: mask=0x01, aux channel (0-based), source (big-endian uint16)
+    return _send_atem_command("CAuS", bytes([0x01, aux_idx]) + struct.pack(">H", source_id))
+
+
+def _wait_for_atem_aux_source(aux_idx: int, source: int, timeout_s: float = 1.0) -> bool:
+    key = f"aux{aux_idx + 1}"
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if _get_atem().get(key) == source:
+            return True
+        time.sleep(0.05)
+    return _get_atem().get(key) == source
 
 
 def cut_atem_to_source(source: int, reason: str = "manual") -> tuple[bool, str]:
@@ -1155,6 +1172,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_atem_cut()
         elif path == "/api/atem/preview":
             self._handle_atem_preview_post()
+        elif path == "/api/atem/aux-route":
+            self._handle_atem_aux_route()
         elif path == "/settings":
             self._handle_settings_post()
         elif m := re.match(r"^/api/image/(\d+)/(\d+)$", path):
@@ -1284,6 +1303,62 @@ class Handler(BaseHTTPRequestHandler):
         ok, message = _send_atem_preview(atem_input)
         status = 200 if ok else 502
         self._json(status, {"ok": ok, "message": message, "source": atem_input})
+
+    def _handle_atem_aux_route(self):
+        body = self._read_body()
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            self._json(400, {"ok": False, "error": "Invalid JSON"})
+            return
+
+        aux_key = str(data.get("aux", "")).strip()
+        aux_map = {"sdi1": 0, "sdi2": 1, "sdi3": 2, "sdi4": 3}
+        if aux_key not in aux_map:
+            self._json(400, {"ok": False, "error": "aux must be sdi1–sdi4"})
+            return
+        aux_idx = aux_map[aux_key]
+
+        try:
+            cam_idx = int(data.get("camIdx", -1))
+        except (TypeError, ValueError):
+            self._json(400, {"ok": False, "error": "Invalid camIdx"})
+            return
+
+        settings = load_settings()
+        cfg = settings.get("atem", {})
+        if not cfg.get("enabled"):
+            self._json(409, {"ok": False, "error": "ATEM is disabled in settings"})
+            return
+        if not _get_atem().get("connected"):
+            self._json(409, {"ok": False, "error": "ATEM is not connected"})
+            return
+
+        cams = settings.get("cameras", [])
+        if cam_idx < 0 or cam_idx >= len(cams):
+            self._json(404, {"ok": False, "error": "Camera not found"})
+            return
+
+        try:
+            atem_input = int(cams[cam_idx].get("atemInput") or 0)
+        except (TypeError, ValueError):
+            atem_input = 0
+        if not atem_input:
+            self._json(400, {"ok": False, "error": "Camera has no ATEM input configured"})
+            return
+
+        ok, message = _send_atem_aux_source(aux_idx, atem_input)
+        if not ok:
+            self._json(502, {"ok": False, "error": message})
+            return
+        confirmed = _wait_for_atem_aux_source(aux_idx, atem_input, timeout_s=1.0)
+        self._json(200, {
+            "ok": True,
+            "confirmed": confirmed,
+            "message": message,
+            "aux": aux_key,
+            "source": atem_input,
+        })
 
     def _get_image(self, cam: int, preset: int):
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")

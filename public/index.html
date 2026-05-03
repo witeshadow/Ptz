@@ -1368,7 +1368,17 @@
         <div class="field" style="flex-shrink:0;">
           <label for="f-capture-output">PTZ scan uses:</label>
           <select id="f-capture-output">
+            <option value="activeCam">Active Cam</option>
             <option value="webcam">USB Webcam</option>
+            <option value="sdi1">SDI Out 1</option>
+            <option value="sdi2">SDI Out 2</option>
+            <option value="sdi3">SDI Out 3</option>
+            <option value="sdi4">SDI Out 4</option>
+          </select>
+        </div>
+        <div id="active-cam-aux-row" class="field" style="display:none; flex-shrink:0;">
+          <label for="f-active-cam-aux">Route to:</label>
+          <select id="f-active-cam-aux">
             <option value="sdi1">SDI Out 1</option>
             <option value="sdi2">SDI Out 2</option>
             <option value="sdi3">SDI Out 3</option>
@@ -1461,6 +1471,7 @@
     },
     atemSourceLabels: {},
     captureOutput: 'webcam',
+    activeCamAux: 'sdi1',
     positions: {},
     // Runtime ATEM AUX sources (not persisted, updated via SSE)
     aux1Source: 0,
@@ -1511,6 +1522,7 @@
 
   function normalizeCaptureOutput(value) {
     const map = {
+      activeCam: 'activeCam',
       webcam: 'webcam',
       sdi1: 'sdi1',
       sdi2: 'sdi2',
@@ -1524,6 +1536,10 @@
       aux4: 'sdi4',
     };
     return map[value] || 'webcam';
+  }
+
+  function normalizeActiveCamAux(value) {
+    return ['sdi1', 'sdi2', 'sdi3', 'sdi4'].includes(value) ? value : 'sdi1';
   }
 
   // ── Server persistence ────────────────────────────────────────────────────
@@ -1557,6 +1573,7 @@
         if (s.atemOutputMap) state.atemOutputMap = normalizeAtemOutputMap(s.atemOutputMap);
         if (s.atemSourceLabels) state.atemSourceLabels = { ...s.atemSourceLabels };
         if (s.captureOutput) state.captureOutput = normalizeCaptureOutput(s.captureOutput);
+        if (s.activeCamAux) state.activeCamAux = normalizeActiveCamAux(s.activeCamAux);
         if (s.positions) state.positions = { ...s.positions };
       }
     } catch (_) {}
@@ -2725,11 +2742,12 @@
   let usbDevices = [];  // populated in boot; reused by renderOutputMapTable
 
   const ATEM_OUTPUT_KEYS = [
-    { key: 'webcam', label: 'USB Webcam' },
-    { key: 'sdi1',   label: 'SDI Out 1' },
-    { key: 'sdi2',   label: 'SDI Out 2' },
-    { key: 'sdi3',   label: 'SDI Out 3' },
-    { key: 'sdi4',   label: 'SDI Out 4' },
+    { key: 'activeCam', label: 'Active Cam' },
+    { key: 'webcam',    label: 'USB Webcam' },
+    { key: 'sdi1',      label: 'SDI Out 1' },
+    { key: 'sdi2',      label: 'SDI Out 2' },
+    { key: 'sdi3',      label: 'SDI Out 3' },
+    { key: 'sdi4',      label: 'SDI Out 4' },
   ];
 
   function getPhysicalOutputLabel(key) {
@@ -2760,6 +2778,12 @@
   function updateCaptureOutputLabel() {
     const el = document.getElementById('capture-output-label');
     if (!el) return;
+    if (state.captureOutput === 'activeCam') {
+      const auxLabel = getPhysicalOutputLabel(state.activeCamAux);
+      el.textContent = `Scan source: active camera routed to ${auxLabel}`;
+      el.style.color = 'var(--label)';
+      return;
+    }
     const outputLabel = getPhysicalOutputLabel(state.captureOutput);
     const src = getOutputSource(state.captureOutput);
     const map = state.atemOutputMap[state.captureOutput] || {};
@@ -2781,7 +2805,7 @@
     const tbody = document.getElementById('output-map-body');
     if (!tbody) return;
     tbody.innerHTML = '';
-    ATEM_OUTPUT_KEYS.forEach(({ key, label }) => {
+    ATEM_OUTPUT_KEYS.filter(({ key }) => key !== 'activeCam').forEach(({ key, label }) => {
       const src = getOutputSource(key);
       const sCls   = sourceClass(key, src);
       const map    = state.atemOutputMap[key] || { webcam: '', streamUrl: '' };
@@ -2911,10 +2935,18 @@
     });
   }
 
+  function updateActiveCamAuxVisibility() {
+    const row = document.getElementById('active-cam-aux-row');
+    if (row) row.style.display = state.captureOutput === 'activeCam' ? '' : 'none';
+  }
+
   function loadCaptureSection() {
     const sel = document.getElementById('f-capture-output');
     if (sel) sel.value = state.captureOutput || 'webcam';
+    const auxSel = document.getElementById('f-active-cam-aux');
+    if (auxSel) auxSel.value = state.activeCamAux || 'sdi1';
     updateCaptureModeVisibility();
+    updateActiveCamAuxVisibility();
     renderOutputMapTable();
     updateCaptureOutputLabel();
   }
@@ -2924,8 +2956,18 @@
     elCaptureOutput.addEventListener('change', () => {
       state.captureOutput = elCaptureOutput.value;
       schedSave();
+      updateActiveCamAuxVisibility();
       updateCaptureOutputLabel();
       renderOutputMapTable();
+    });
+  }
+
+  const elActiveCamAux = document.getElementById('f-active-cam-aux');
+  if (elActiveCamAux) {
+    elActiveCamAux.addEventListener('change', () => {
+      state.activeCamAux = elActiveCamAux.value;
+      schedSave();
+      updateCaptureOutputLabel();
     });
   }
 
@@ -3022,9 +3064,13 @@
   // captureFrame priority: USB device (ffmpeg) > stream URL (playwright) > browser webcam
   // source = pre-resolved { webcam, streamUrl } object, or null to resolve from state
   async function captureFrame(cam, preset, source = null) {
-    const resolved = source ?? (state.atem.enabled
-      ? (state.atemOutputMap[state.captureOutput] || {})
-      : { webcam: state.cameras[cam]?.usbDevice || '', streamUrl: state.cameras[cam]?.streamUrl || '' });
+    const resolved = source ?? (
+      state.atem.enabled && state.captureOutput !== 'activeCam'
+        ? (state.atemOutputMap[state.captureOutput] || {})
+        : state.atem.enabled
+          ? (state.atemOutputMap[state.activeCamAux] || {})
+          : { webcam: state.cameras[cam]?.usbDevice || '', streamUrl: state.cameras[cam]?.streamUrl || '' }
+    );
 
     const usb = resolved.webcam || '';
     const url = resolved.streamUrl || '';
@@ -3071,6 +3117,13 @@
     }
 
     try {
+      if (state.atem.enabled && state.captureOutput === 'activeCam') {
+        const routeResult = await routeActiveCam(cam);
+        if (!routeResult.ok) {
+          setStatus('error', `Could not route camera: ${routeResult.error || routeResult.message}`);
+          return;
+        }
+      }
       const ok = await captureFrame(cam, preset);
 
       if (ok) {
@@ -3478,6 +3531,19 @@
     }
   });
 
+  async function routeActiveCam(camIdx) {
+    try {
+      const res = await fetch('/api/atem/aux-route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ camIdx, aux: state.activeCamAux }),
+      });
+      return await res.json();
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  }
+
   // ── Recall ─────────────────────────────────────────────────────────────────
   // camIdx defaults to the current active camera; pass explicitly to lock during scan
   async function doRecall(preset, camIdx = state.activeCam, waitMode = 'settle') {
@@ -3572,13 +3638,25 @@
       return;
     }
 
+    if (state.atem.enabled && state.captureOutput === 'activeCam') {
+      setStatus('busy', 'Routing camera…', false);
+      const routeResult = await routeActiveCam(scanCamIdx);
+      if (!routeResult.ok) {
+        setStatus('error', `Could not route camera: ${routeResult.error || routeResult.message}`);
+        return;
+      }
+    }
+
+    const captureKey = (state.atem.enabled && state.captureOutput === 'activeCam')
+      ? state.activeCamAux
+      : state.captureOutput;
     const lockedSource = state.atem.enabled
-      ? { ...(state.atemOutputMap[state.captureOutput] || {}) }
+      ? { ...(state.atemOutputMap[captureKey] || {}) }
       : { webcam: cam.usbDevice || '', streamUrl: cam.streamUrl || '' };
     const hasServerSource = lockedSource.webcam || lockedSource.streamUrl;
     if (!hasServerSource && !videoStream) {
       const hint = state.atem.enabled
-        ? `Configure a USB device or stream URL for ${getPhysicalOutputLabel(state.captureOutput)} in Settings`
+        ? `Configure a USB device or stream URL for ${getPhysicalOutputLabel(captureKey)} in Settings`
         : 'Set a USB device, VDO.ninja URL, or browser webcam for this camera';
       setStatus('error', hint); return;
     }
