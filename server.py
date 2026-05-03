@@ -53,7 +53,7 @@ DEFAULT_SETTINGS = {
         {
             "name": "Camera 1",
             "ip": "",
-            "port": 52381,
+            "port": 1259,
             "viscaAddr": 1,
             "atemInput": 1,
             "streamUrl": "",
@@ -63,8 +63,8 @@ DEFAULT_SETTINGS = {
         {
             "name": "Camera 2",
             "ip": "",
-            "port": 52381,
-            "viscaAddr": 1,
+            "port": 1259,
+            "viscaAddr": 2,
             "atemInput": 2,
             "streamUrl": "",
             "usbDevice": "",
@@ -73,8 +73,8 @@ DEFAULT_SETTINGS = {
         {
             "name": "Camera 3",
             "ip": "",
-            "port": 52381,
-            "viscaAddr": 1,
+            "port": 1259,
+            "viscaAddr": 3,
             "atemInput": 3,
             "streamUrl": "",
             "usbDevice": "",
