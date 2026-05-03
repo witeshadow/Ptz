@@ -1327,7 +1327,7 @@
     <div class="gsp-column">
       <div id="direct-capture-settings" class="gsp-mobile-section active" data-mobile-tab="capture">
         <div class="gsp-section-title">Direct Camera Capture</div>
-        <p class="capture-mode-note">Used only when ATEM routing is off.</p>
+        <p class="capture-mode-note">Used when ATEM routing is off, or when <strong>ACT</strong> capture mode is selected.</p>
         <div class="field">
           <label for="f-usb-device">USB Device</label>
           <select id="f-usb-device"><option value="">— none —</option></select>
@@ -2300,7 +2300,8 @@
   function updateCaptureModeVisibility() {
     const directCapture = document.getElementById('direct-capture-settings');
     const atemCaptureSection = document.getElementById('atem-capture-section');
-    if (directCapture) directCapture.style.display = state.atem.enabled ? 'none' : 'flex';
+    const showDirect = !state.atem.enabled || state.captureSource === 'active';
+    if (directCapture) directCapture.style.display = showDirect ? 'flex' : 'none';
     if (atemCaptureSection) atemCaptureSection.style.display = state.atem.enabled ? 'block' : 'none';
   }
 
@@ -2663,6 +2664,8 @@
         elCaptureToggle.querySelectorAll('.csrc-btn').forEach(b =>
           b.classList.toggle('active', b === btn)
         );
+        updateCaptureModeVisibility();
+        updateCameraStatusHints();
       });
     });
   })();
@@ -3191,9 +3194,9 @@
   // source = pre-resolved { webcam, streamUrl } object, or null to resolve from state
   async function captureFrame(cam, preset, source = null) {
     const resolved = source ?? (
-      state.atem.enabled && state.captureOutput !== 'activeCam'
+      state.atem.enabled && state.captureSource !== 'active' && state.captureOutput !== 'activeCam'
         ? (state.atemOutputMap[state.captureOutput] || {})
-        : state.atem.enabled
+        : state.atem.enabled && state.captureSource !== 'active'
           ? (state.atemOutputMap[state.activeCamAux] || {})
           : { webcam: state.cameras[cam]?.usbDevice || '', streamUrl: state.cameras[cam]?.streamUrl || '' }
     );

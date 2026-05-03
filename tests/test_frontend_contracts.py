@@ -40,7 +40,7 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("PTZ scan uses:", self.html)
         self.assertIn("Current routed source:", self.html)
         self.assertIn("Direct Camera Capture", self.html)
-        self.assertIn("Used only when ATEM routing is off.", self.html)
+        self.assertIn("Used when ATEM routing is off, or when", self.html)
         self.assertIn("Local Preview PIP", self.html)
         self.assertIn("Preview Device", self.html)
         self.assertIn("Confirmed Camera Stop", self.html)
@@ -82,6 +82,18 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("btn.classList.add('needs-snap');", self.html)
         # needs-snap cleared after a new capture
         self.assertIn("clearSnapNeeded(cam, preset);", self.html)
+
+
+    def test_active_cam_capture_mode(self):
+        # ACT button exists in toolbar with correct data-src
+        self.assertIn('data-src="active"', self.html)
+        # captureFrame bypasses ATEM output map when captureSource is 'active'
+        self.assertIn("state.captureSource !== 'active'", self.html)
+        # updateCaptureModeVisibility shows direct capture settings for active mode
+        self.assertIn("state.captureSource === 'active'", self.html)
+        # changing capture source refreshes settings panel and status hints
+        self.assertIn("updateCaptureModeVisibility();", self.html)
+        self.assertIn("updateCameraStatusHints();", self.html)
 
 
 if __name__ == "__main__":
