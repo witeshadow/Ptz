@@ -2033,9 +2033,11 @@
           setAtemPreview(idx);
         }, 500);
       });
-      btn.addEventListener('pointerup',    () => { clearTimeout(lpTimer); lpTimer = null; });
-      btn.addEventListener('pointerleave', () => { clearTimeout(lpTimer); lpTimer = null; });
-      btn.addEventListener('pointermove',  () => { clearTimeout(lpTimer); lpTimer = null; });
+      const clearFillLp = () => { clearTimeout(lpTimer); lpTimer = null; };
+      btn.addEventListener('pointerup',     clearFillLp);
+      btn.addEventListener('pointerleave',  clearFillLp);
+      btn.addEventListener('pointermove',   clearFillLp);
+      btn.addEventListener('pointercancel', clearFillLp);
 
       btn.addEventListener('click', () => {
         if (lpHandled) { lpHandled = false; return; }
@@ -2086,10 +2088,12 @@
       //   700 ms → rename tab (always available; +200 ms after preview)
       let longPressTimer = null;
       let longPressHandled = false;
+      let previewTriggered = false;
       btn.addEventListener('pointerdown', () => {
         longPressTimer = setTimeout(() => {
           longPressHandled = true;
           if (state.atem.enabled && atemConnected) {
+            previewTriggered = true;
             setAtemPreview(idx);
             // Schedule rename after an additional 200 ms (700 ms total)
             longPressTimer = setTimeout(() => {
@@ -2104,18 +2108,21 @@
       });
       btn.addEventListener('pointerup', () => {
         if (longPressTimer !== null) {
-          // In the 500–700 ms window: rename was pending, cancel it and
-          // reset longPressHandled so the click event can still fire normally.
+          // In the 500–700 ms window: rename was pending, cancel it; only
+          // reset longPressHandled if preview wasn't already triggered.
           clearTimeout(longPressTimer);
           longPressTimer = null;
-          longPressHandled = false;
+          if (!previewTriggered) longPressHandled = false;
         } else {
           clearTimeout(longPressTimer);
           longPressTimer = null;
         }
+        previewTriggered = false;
       });
-      btn.addEventListener('pointerleave', () => { clearTimeout(longPressTimer); longPressTimer = null; });
-      btn.addEventListener('pointermove',  () => { clearTimeout(longPressTimer); longPressTimer = null; });
+      const clearTabLp = () => { clearTimeout(longPressTimer); longPressTimer = null; previewTriggered = false; };
+      btn.addEventListener('pointerleave',  clearTabLp);
+      btn.addEventListener('pointermove',   clearTabLp);
+      btn.addEventListener('pointercancel', clearTabLp);
 
       btn.addEventListener('click', () => {
         if (longPressHandled) { longPressHandled = false; return; }
