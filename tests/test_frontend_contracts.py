@@ -52,6 +52,8 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("e.g. Multiview", self.html)
         self.assertIn("Scan source:", self.html)
         self.assertIn("Scan Output", self.html)
+        self.assertIn("Active Cam", self.html)
+        self.assertIn("Route to:", self.html)
 
     def test_positions_state_and_capture_integration(self):
         # positions initialized in state
