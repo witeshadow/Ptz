@@ -77,22 +77,27 @@ class TestAtemPackets(unittest.TestCase):
         self.assertEqual(list(server._parse_commands(b"")), [])
 
     def test_cut_atem_to_source_sets_preview_then_cuts(self):
-        with patch(
-            "server._get_atem",
-            return_value={"preview": 3, "program": 2},
-        ), patch(
-            "server._send_atem_command",
-            side_effect=[
-                (True, "preview ok"),
-                (True, "cut ok"),
-            ],
-        ) as mock_send, patch(
-            "server._wait_for_atem_preview_source",
-            return_value=True,
-        ) as mock_wait_preview, patch(
-            "server._wait_for_atem_program_source",
-            return_value=True,
-        ) as mock_wait:
+        with (
+            patch(
+                "server._get_atem",
+                return_value={"preview": 3, "program": 2},
+            ),
+            patch(
+                "server._send_atem_command",
+                side_effect=[
+                    (True, "preview ok"),
+                    (True, "cut ok"),
+                ],
+            ) as mock_send,
+            patch(
+                "server._wait_for_atem_preview_source",
+                return_value=True,
+            ) as mock_wait_preview,
+            patch(
+                "server._wait_for_atem_program_source",
+                return_value=True,
+            ) as mock_wait,
+        ):
             ok, message = server.cut_atem_to_source(7)
 
         self.assertTrue(ok)
@@ -108,27 +113,34 @@ class TestAtemPackets(unittest.TestCase):
         )
 
     def test_cut_atem_to_source_falls_back_to_direct_program_switch(self):
-        with patch(
-            "server._get_atem",
-            return_value={"preview": 3, "program": 2},
-        ), patch(
-            "server._send_atem_command",
-            side_effect=[
-                (True, "preview ok"),
-                (True, "program ok"),
-            ],
-        ) as mock_send, patch(
-            "server._wait_for_atem_preview_source",
-            return_value=False,
-        ) as mock_wait_preview, patch(
-            "server._wait_for_atem_program_source",
-            return_value=True,
-        ) as mock_wait:
+        with (
+            patch(
+                "server._get_atem",
+                return_value={"preview": 3, "program": 2},
+            ),
+            patch(
+                "server._send_atem_command",
+                side_effect=[
+                    (True, "preview ok"),
+                    (True, "program ok"),
+                ],
+            ) as mock_send,
+            patch(
+                "server._wait_for_atem_preview_source",
+                return_value=False,
+            ) as mock_wait_preview,
+            patch(
+                "server._wait_for_atem_program_source",
+                return_value=True,
+            ) as mock_wait,
+        ):
             ok, message = server.cut_atem_to_source(9)
 
         self.assertTrue(ok)
         self.assertIn("direct program switch", message)
-        self.assertEqual([call.args[0] for call in mock_send.call_args_list], ["CPvI", "CPgI"])
+        self.assertEqual(
+            [call.args[0] for call in mock_send.call_args_list], ["CPvI", "CPgI"]
+        )
         mock_wait_preview.assert_called_once_with(
             9, timeout_s=server.ATEM_STATE_CONFIRM_TIMEOUT_S
         )
@@ -137,21 +149,26 @@ class TestAtemPackets(unittest.TestCase):
         )
 
     def test_cut_atem_to_source_returns_false_when_program_never_confirms(self):
-        with patch(
-            "server._get_atem",
-            return_value={"preview": 3, "program": 2},
-        ), patch(
-            "server._send_atem_command",
-            side_effect=[
-                (True, "preview ok"),
-                (True, "program ok"),
-            ],
-        ), patch(
-            "server._wait_for_atem_preview_source",
-            return_value=False,
-        ), patch(
-            "server._wait_for_atem_program_source",
-            return_value=False,
+        with (
+            patch(
+                "server._get_atem",
+                return_value={"preview": 3, "program": 2},
+            ),
+            patch(
+                "server._send_atem_command",
+                side_effect=[
+                    (True, "preview ok"),
+                    (True, "program ok"),
+                ],
+            ),
+            patch(
+                "server._wait_for_atem_preview_source",
+                return_value=False,
+            ),
+            patch(
+                "server._wait_for_atem_program_source",
+                return_value=False,
+            ),
         ):
             ok, message = server.cut_atem_to_source(11)
 
@@ -159,15 +176,19 @@ class TestAtemPackets(unittest.TestCase):
         self.assertIn("preview or program switched", message)
 
     def test_cut_atem_to_source_cuts_immediately_when_preview_already_matches(self):
-        with patch(
-            "server._get_atem",
-            return_value={"preview": 12, "program": 2},
-        ), patch(
-            "server._send_atem_command",
-            return_value=(True, "cut ok"),
-        ) as mock_send, patch(
-            "server._wait_for_atem_program_source",
-            return_value=True,
+        with (
+            patch(
+                "server._get_atem",
+                return_value={"preview": 12, "program": 2},
+            ),
+            patch(
+                "server._send_atem_command",
+                return_value=(True, "cut ok"),
+            ) as mock_send,
+            patch(
+                "server._wait_for_atem_program_source",
+                return_value=True,
+            ),
         ):
             ok, message = server.cut_atem_to_source(12)
 
@@ -326,11 +347,22 @@ class TestDefaultSettings(unittest.TestCase):
 
     def test_required_keys_present(self):
         for key in self.REQUIRED:
-            self.assertIn(key, server.DEFAULT_SETTINGS, f"DEFAULT_SETTINGS missing {key!r}")
+            self.assertIn(
+                key, server.DEFAULT_SETTINGS, f"DEFAULT_SETTINGS missing {key!r}"
+            )
 
     def test_camera_shape(self):
         cam = server.DEFAULT_SETTINGS["cameras"][0]
-        for key in ("name", "ip", "port", "viscaAddr", "atemInput", "streamUrl", "usbDevice", "enabled"):
+        for key in (
+            "name",
+            "ip",
+            "port",
+            "viscaAddr",
+            "atemInput",
+            "streamUrl",
+            "usbDevice",
+            "enabled",
+        ):
             self.assertIn(key, cam)
 
     def test_default_has_four_cameras(self):
@@ -347,7 +379,9 @@ class TestDefaultSettings(unittest.TestCase):
     def test_labels_key_format(self):
         labels = server.DEFAULT_SETTINGS["labels"]
         for key in labels:
-            self.assertRegex(key, r"^\d+:\d+$", f"label key {key!r} does not match 'cam:preset'")
+            self.assertRegex(
+                key, r"^\d+:\d+$", f"label key {key!r} does not match 'cam:preset'"
+            )
 
 
 # ── VISCA packet construction ──────────────────────────────────────────────────
@@ -625,7 +659,12 @@ class _LiveServer:
 
     def post(self, path, body=b"", content_type="application/json"):
         c = self._conn()
-        c.request("POST", path, body, {"Content-Type": content_type, "Content-Length": str(len(body))})
+        c.request(
+            "POST",
+            path,
+            body,
+            {"Content-Type": content_type, "Content-Length": str(len(body))},
+        )
         r = c.getresponse()
         body = r.read()
         c.close()
@@ -777,7 +816,13 @@ class TestHTTPRoutes(unittest.TestCase):
 
     def test_recall_dwell_mode_passed_through(self):
         payload = json.dumps(
-            {"ip": "10.0.0.1", "port": 1259, "camera": 1, "preset": 5, "waitMode": "dwell"}
+            {
+                "ip": "10.0.0.1",
+                "port": 1259,
+                "camera": 1,
+                "preset": 5,
+                "waitMode": "dwell",
+            }
         ).encode()
         with patch(
             "server.recall_visca_preset",
@@ -915,7 +960,9 @@ class TestHTTPRoutes(unittest.TestCase):
 
     def test_position_success_returns_inquiry_payload(self):
         settings = dict(server.DEFAULT_SETTINGS)
-        settings["cameras"] = [dict(server.DEFAULT_SETTINGS["cameras"][0], ip="10.0.0.9")]
+        settings["cameras"] = [
+            dict(server.DEFAULT_SETTINGS["cameras"][0], ip="10.0.0.9")
+        ]
         server.write_settings(settings)
 
         with patch(

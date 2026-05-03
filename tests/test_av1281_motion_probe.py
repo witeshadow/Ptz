@@ -19,7 +19,9 @@ class TestViscaParsing(unittest.TestCase):
         self.assertEqual(completion.socket_number, 3)
 
     def test_parse_pan_tilt_payload(self):
-        payload = bytes([0x90, 0x50, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0xFF])
+        payload = bytes(
+            [0x90, 0x50, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0xFF]
+        )
         self.assertEqual(probe.parse_pan_tilt_payload(payload), (0x1234, 0x5678))
 
     def test_parse_zoom_or_focus_payload(self):
@@ -27,7 +29,9 @@ class TestViscaParsing(unittest.TestCase):
         self.assertEqual(probe.parse_zoom_or_focus_payload(payload), 0x0ABC)
 
     def test_parse_pan_tilt_rejects_non_nibble_bytes(self):
-        payload = bytes([0x90, 0x50, 0x10, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0xFF])
+        payload = bytes(
+            [0x90, 0x50, 0x10, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0xFF]
+        )
         self.assertIsNone(probe.parse_pan_tilt_payload(payload))
 
 
