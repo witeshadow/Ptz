@@ -148,7 +148,11 @@ def _probe_recall_command_succeeded(result: ProbeResult) -> bool:
 
 
 def _probe_autocut_ready(result: ProbeResult) -> bool:
-    return result.error is None and (result.settled or result.saw_completion)
+    return (
+        result.error is None
+        and not any(r.kind == "error" for r in result.replies)
+        and (result.settled or result.saw_completion)
+    )
 
 
 def _format_probe_message(result: ProbeResult, wait_mode: str) -> str:
@@ -218,7 +222,7 @@ def recall_visca_preset(
         verbose=False,
     )
     success = (
-        result.error is None and result.settled
+        _probe_recall_command_succeeded(result) and result.settled
         if wait_mode == "settle"
         else _probe_autocut_ready(result)
         if wait_mode == "autocut"

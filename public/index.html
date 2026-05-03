@@ -1215,9 +1215,9 @@
     .cam-tab > * + *        { margin-left: 8px; }
     .atem-toggle-wrap > * + * { margin-left: 8px; }
     .preset-overlay > * + * { margin-left: 4px; }
-    #toolbar > * + *        { margin-left: 0; }
-    #toolbar-right > * + *  { margin-left: 0; }
-    #toolbar-statuses > * + * { margin-left: 0; }
+    #toolbar > * + *        { margin-left: 10px; }
+    #toolbar-right > * + *  { margin-left: 10px; }
+    #toolbar-statuses > * + * { margin-left: 8px; }
     #scan-bar > * + *       { margin-left: 12px; }
     .field > * + *          { margin-top: 4px; }
     #webcam-preview > * + * { margin-top: 4px; }
@@ -1236,10 +1236,10 @@
     <div id="cam-tabs"><!-- rendered by JS --></div>
     <div class="header-actions">
       <button id="cut-live-btn" style="display:none" title="Cut active camera to ATEM program">Cut</button>
-      <button id="live-mode-btn" class="live" title="Toggle Live/Edit mode">Live</button>
-      <button id="lock-live-btn" title="Lock camera to prevent preset movement"></button>
-      <button class="btn-ghost" id="btn-auto-cut" style="display:none">Auto Cut</button>
-      <button id="fullscreen-btn" title="Toggle fullscreen">&#x26F6;</button>
+      <button type="button" id="live-mode-btn" class="live" title="Toggle Live/Edit mode">Live</button>
+      <button type="button" id="lock-live-btn" title="Lock camera to prevent preset movement"></button>
+      <button type="button" class="btn-ghost" id="btn-auto-cut" style="display:none">Auto Cut</button>
+      <button type="button" id="fullscreen-btn" title="Toggle fullscreen">&#x26F6;</button>
     </div>
   </div>
 </header>
@@ -1997,6 +1997,29 @@
     return { text: 'IDLE', className: 'idle' };
   }
 
+  async function setAtemPreview(idx) {
+    if (!state.atem.enabled || !atemConnected) return false;
+    const atemInput = getCameraAtemInput(idx);
+    if (!atemInput) return false;
+    if (cameraMatchesAtemSource(idx, state.previewSource)) return false;
+    try {
+      const res = await fetch('/api/atem/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ camIdx: idx }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        setStatus('error', data.error || data.message || 'ATEM preview update failed');
+        return false;
+      }
+      return true;
+    } catch (err) {
+      setStatus('error', `ATEM preview update failed: ${err.message || err}`);
+      return false;
+    }
+  }
+
   function renderFillCamStrip() {
     if (!elFillCamStrip) return;
     elFillCamStrip.innerHTML = '';
@@ -2024,18 +2047,28 @@
       // Long-press (500 ms) to set ATEM preview bus
       let lpTimer = null;
       let lpHandled = false;
-      btn.addEventListener('pointerdown', () => {
-        lpTimer = setTimeout(() => {
+      let lpStartX = 0;
+      let lpStartY = 0;
+      btn.addEventListener('pointerdown', (e) => {
+        lpStartX = e.clientX;
+        lpStartY = e.clientY;
+        lpTimer = setTimeout(async () => {
           lpTimer = null;
           lpHandled = true;
-          btn.classList.add('setting-preview');
-          setTimeout(() => btn.classList.remove('setting-preview'), 800);
-          setAtemPreview(idx);
+          const ok = await setAtemPreview(idx);
+          if (ok) {
+            btn.classList.add('setting-preview');
+            setTimeout(() => btn.classList.remove('setting-preview'), 800);
+          }
         }, 500);
       });
-      btn.addEventListener('pointerup',    () => { clearTimeout(lpTimer); lpTimer = null; });
-      btn.addEventListener('pointerleave', () => { clearTimeout(lpTimer); lpTimer = null; });
-      btn.addEventListener('pointermove',  () => { clearTimeout(lpTimer); lpTimer = null; });
+      const clearFillLp = () => { clearTimeout(lpTimer); lpTimer = null; };
+      btn.addEventListener('pointerup',     clearFillLp);
+      btn.addEventListener('pointerleave',  clearFillLp);
+      btn.addEventListener('pointermove',   (e) => {
+        if (Math.hypot(e.clientX - lpStartX, e.clientY - lpStartY) > 8) clearFillLp();
+      });
+      btn.addEventListener('pointercancel', clearFillLp);
 
       btn.addEventListener('click', () => {
         if (lpHandled) { lpHandled = false; return; }
@@ -2086,13 +2119,23 @@
       //   700 ms → rename tab (always available; +200 ms after preview)
       let longPressTimer = null;
       let longPressHandled = false;
-      btn.addEventListener('pointerdown', () => {
-        longPressTimer = setTimeout(() => {
+      let previewTriggered = false;
+      let longPressActive = false;
+      let lpTabStartX = 0;
+      let lpTabStartY = 0;
+      btn.addEventListener('pointerdown', (e) => {
+        longPressActive = true;
+        lpTabStartX = e.clientX;
+        lpTabStartY = e.clientY;
+        longPressTimer = setTimeout(async () => {
           longPressHandled = true;
           if (state.atem.enabled && atemConnected) {
-            setAtemPreview(idx);
+            previewTriggered = true;
+            await setAtemPreview(idx);
+            if (!longPressActive) return;
             // Schedule rename after an additional 200 ms (700 ms total)
             longPressTimer = setTimeout(() => {
+              if (!longPressActive) return;
               longPressTimer = null;
               openTabNameEditor(idx, nameEl, nameWrap);
             }, 200);
@@ -2103,19 +2146,25 @@
         }, 500);
       });
       btn.addEventListener('pointerup', () => {
+        longPressActive = false;
         if (longPressTimer !== null) {
-          // In the 500–700 ms window: rename was pending, cancel it and
-          // reset longPressHandled so the click event can still fire normally.
+          // In the 500–700 ms window: rename was pending, cancel it; only
+          // reset longPressHandled if preview wasn't already triggered.
           clearTimeout(longPressTimer);
           longPressTimer = null;
-          longPressHandled = false;
+          if (!previewTriggered) longPressHandled = false;
         } else {
           clearTimeout(longPressTimer);
           longPressTimer = null;
         }
+        previewTriggered = false;
       });
-      btn.addEventListener('pointerleave', () => { clearTimeout(longPressTimer); longPressTimer = null; });
-      btn.addEventListener('pointermove',  () => { clearTimeout(longPressTimer); longPressTimer = null; });
+      const clearTabLp = () => { longPressActive = false; clearTimeout(longPressTimer); longPressTimer = null; previewTriggered = false; };
+      btn.addEventListener('pointerleave',  clearTabLp);
+      btn.addEventListener('pointermove',   (e) => {
+        if (Math.hypot(e.clientX - lpTabStartX, e.clientY - lpTabStartY) > 8) clearTabLp();
+      });
+      btn.addEventListener('pointercancel', clearTabLp);
 
       btn.addEventListener('click', () => {
         if (longPressHandled) { longPressHandled = false; return; }
@@ -2529,7 +2578,7 @@
     }).catch(() => ({}));
   }
 
-  function scheduleAutoCut(preset, autoCutPlan) {
+  function scheduleAutoCut(preset, autoCutPlan, trigger = 'settled', recallElapsedMs = 0) {
     if (!autoCutPlan || !autoCutPlan.source) return;
     clearPendingAutoCut();
     const { source, camName, delayMs } = autoCutPlan;
@@ -3725,9 +3774,15 @@
       if (autoCutPlan && autoCutTrigger === 'timeout') {
         msg += ' — Auto Cut using fallback max timer';
       }
+      const recallElapsedMs = Math.max(
+        0,
+        ((typeof performance !== 'undefined' && performance.now)
+          ? performance.now()
+          : Date.now()) - recallStartedAt
+      );
       setStatus('success', msg);
-      scheduleAutoCut(n, autoCutPlan);
-      checkPositionAfterRecall(n, recallCamIdx);
+      scheduleAutoCut(n, autoCutPlan, autoCutTrigger || 'settled', recallElapsedMs);
+      if (data.settled) checkPositionAfterRecall(n, recallCamIdx);
     } else {
       const recallElapsedMs = Math.max(
         0,
