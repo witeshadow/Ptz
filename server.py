@@ -123,10 +123,28 @@ ATEM_STATE_CONFIRM_TIMEOUT_S = 2.0
 
 
 def _visca_transport_for_port(port: int) -> str:
+    """
+    Selects the VISCA UDP transport mode based on the destination port.
+    
+    Parameters:
+        port (int): Destination UDP port to check.
+    
+    Returns:
+        str: `'raw-udp'` when `port` equals `VISCA_RAW_UDP_PORT`, `'sony-udp'` otherwise.
+    """
     return "raw-udp" if port == VISCA_RAW_UDP_PORT else "sony-udp"
 
 
 def _normalize_recall_wait_mode(wait_mode: str | None) -> str:
+    """
+    Normalize a recall wait-mode value into one of the supported modes.
+    
+    Parameters:
+        wait_mode (str | None): Input wait-mode string (may be None or any value).
+    
+    Returns:
+        str: One of "dwell", "confirm", "autocut", or "settle". Unrecognized or missing values map to "settle".
+    """
     if wait_mode == "dwell":
         return "dwell"
     if wait_mode == "confirm":
@@ -137,21 +155,55 @@ def _normalize_recall_wait_mode(wait_mode: str | None) -> str:
 
 
 def _normalize_scan_wait_mode(wait_mode: str | None) -> str:
+    """
+    Normalize a scan wait mode into either 'dwell' or 'settle'.
+    
+    Parameters:
+    	wait_mode (str | None): Desired wait mode (e.g., "dwell", "settle", "confirm", "autocut"); None is allowed.
+    
+    Returns:
+    	normalized (str): `'dwell'` if the input resolves to dwell, `'settle'` otherwise.
+    """
     normalized = _normalize_recall_wait_mode(wait_mode)
     return normalized if normalized in {"dwell", "settle"} else "settle"
 
 
 def _probe_recall_command_succeeded(result: ProbeResult) -> bool:
+    """
+    Check whether a recalled preset probe completed without transport or reply errors.
+    
+    Parameters:
+        result (ProbeResult): Probe result returned by the motion probe.
+    
+    Returns:
+        True if the probe has no transport-level error and no replies of kind "error", False otherwise.
+    """
     if result.error is not None:
         return False
     return not any(r.kind == "error" for r in result.replies)
 
 
 def _probe_autocut_ready(result: ProbeResult) -> bool:
+    """
+    Determine whether a probe result indicates readiness for an autocut.
+    
+    Returns:
+        true if there is no error and either the result is settled or a completion was observed, false otherwise.
+    """
     return result.error is None and (result.settled or result.saw_completion)
 
 
 def _format_probe_message(result: ProbeResult, wait_mode: str) -> str:
+    """
+    Builds a concise, human-readable status message for a VISCA probe result based on the specified wait mode.
+    
+    Parameters:
+        result (ProbeResult): Probe outcome containing replies, settlement flag, motion samples, completion observation, and optional error text.
+        wait_mode (str): Normalized recall wait mode ("settle", "confirm", "autocut", or "dwell") that determines which status fragments are included.
+    
+    Returns:
+        str: A composed status message summarizing ACKs, completion codes, settlement and last sampled position when available, mode-specific readiness indicators, and any error text; returns "VISCA preset recall completed" if no other information is present.
+    """
     parts = []
     ack = next((reply for reply in result.replies if reply.kind == "ack"), None)
     completion = next(
@@ -200,6 +252,25 @@ def recall_visca_preset(
     camera_address: int = 1,
     wait_mode: str = "settle",
 ):
+    """
+    Recall a VISCA preset on a camera and report the recall outcome and motion state.
+    
+    Parameters:
+        ip (str): Camera IP address.
+        port (int): Camera UDP port.
+        preset_number (int): Preset index to recall.
+        camera_address (int): VISCA camera address (1–7).
+        wait_mode (str): Recall wait mode; one of "settle", "confirm", or "autocut". Other values are normalized to "settle".
+    
+    Returns:
+        dict: A status payload with keys:
+            - `success` (bool): `true` when the recall meets the chosen wait mode's readiness criteria, `false` otherwise.
+            - `message` (str): Human-readable status summary of the probe.
+            - `settled` (bool): `true` if the camera motion has settled.
+            - `sawCompletion` (bool): `true` if a VISCA completion reply was observed.
+            - `waitMode` (str): The normalized wait mode used.
+            - `position` (dict or None): Latest sampled absolute motion position (contains pan/tilt/zoom and hex values) when available, otherwise `None`.
+    """
     wait_mode = _normalize_recall_wait_mode(wait_mode)
     result = _probe_preset(
         ip=ip,
@@ -527,6 +598,16 @@ def _wait_for_atem_aux_source(
 
 
 def cut_atem_to_source(source: int, reason: str = "manual") -> tuple[bool, str]:
+    """
+    Attempt to cut the ATEM program output to the specified source, using preview routing and fallback direct-program routing when necessary.
+    
+    Parameters:
+        source (int): ATEM source ID to switch to (must be > 0).
+        reason (str): Short label describing why the cut is requested (used for action logging).
+    
+    Returns:
+        tuple: (`True` and a success message) if the ATEM program is confirmed to be the requested `source`, (`False` and an error message) otherwise.
+    """
     if source <= 0:
         _set_atem_last_action(
             "cut", "invalid", source, reason, False, "Invalid ATEM source"
@@ -1249,6 +1330,20 @@ class Handler(BaseHTTPRequestHandler):
 
     # ── handlers ───────────────────────────────────────────────────────────────
     def _handle_recall(self):
+        """
+        Handle POST /recall: parse JSON body to recall a VISCA preset on a camera and return the recall result.
+        
+        Expects a JSON body with fields:
+        - ip (str): required camera IP address.
+        - port (int): UDP port for VISCA (default 52381).
+        - preset (int): preset number (clamped to >= 0, default 0).
+        - camera (int): camera VISCA address (clamped to 1..7, default 1).
+        - waitMode (str): one of recall wait modes (defaults to "settle"); normalized via _normalize_recall_wait_mode.
+        
+        Behavior:
+        - Returns 400 if the body is not valid JSON, if required `ip` is missing/empty, or if numeric parameters are invalid.
+        - Calls recall_visca_preset(...) with the parsed parameters and responds 200 with that function's JSON-serializable result.
+        """
         body = self._read_body()
         try:
             data = json.loads(body)
@@ -1319,6 +1414,26 @@ class Handler(BaseHTTPRequestHandler):
         )
 
     def _handle_atem_preview_post(self):
+        """
+        Handle POST requests that set the ATEM preview to a camera and optionally route an AUX output to that camera's ATEM input.
+        
+        Expects a JSON body with:
+        - "camIdx" (int): index of the camera in settings to route to preview.
+        - Optionally, a second JSON body (sent after preview step) containing:
+          - "camIdx" (int): repeated camera index for the AUX routing step.
+          - "aux" (string): one of "sdi1", "sdi2", "sdi3", "sdi4" to select which AUX output to route.
+        
+        Behavior and responses:
+        - Sets the ATEM preview to the camera's configured ATEM input and returns 200 on success with {"ok": True, "message": <text>, "source": <atem_input>} or 502 with {"ok": False, "message": <error>} on command failure.
+        - If an AUX routing request is provided, attempts to route the chosen AUX to the same camera input and waits for confirmation; returns 200 with {"ok": True, "confirmed": True, "message": <text>, "aux": <aux>, "source": <atem_input>} on success.
+        - Returns 400 for invalid JSON, missing/invalid camIdx, missing/invalid aux value, or when the camera has no configured ATEM input.
+        - Returns 404 if the camIdx is outside the configured cameras list.
+        - Returns 409 if ATEM is disabled in settings or not currently connected.
+        - Returns 502 if sending an ATEM command (preview or AUX) fails.
+        - Returns 504 if AUX routing could not be confirmed by the ATEM within the timeout.
+        
+        Response bodies include an "ok" boolean and, where applicable, "message", "error", "source", "aux", and "confirmed" fields to describe the result.
+        """
         body = self._read_body()
         try:
             data = json.loads(body)
