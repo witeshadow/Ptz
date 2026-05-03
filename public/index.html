@@ -1236,10 +1236,10 @@
     <div id="cam-tabs"><!-- rendered by JS --></div>
     <div class="header-actions">
       <button id="cut-live-btn" style="display:none" title="Cut active camera to ATEM program">Cut</button>
-      <button id="live-mode-btn" class="live" title="Toggle Live/Edit mode">Live</button>
-      <button id="lock-live-btn" title="Lock camera to prevent preset movement"></button>
-      <button class="btn-ghost" id="btn-auto-cut" style="display:none">Auto Cut</button>
-      <button id="fullscreen-btn" title="Toggle fullscreen">&#x26F6;</button>
+      <button type="button" id="live-mode-btn" class="live" title="Toggle Live/Edit mode">Live</button>
+      <button type="button" id="lock-live-btn" title="Lock camera to prevent preset movement"></button>
+      <button type="button" class="btn-ghost" id="btn-auto-cut" style="display:none">Auto Cut</button>
+      <button type="button" id="fullscreen-btn" title="Toggle fullscreen">&#x26F6;</button>
     </div>
   </div>
 </header>
@@ -1997,6 +1997,29 @@
     return { text: 'IDLE', className: 'idle' };
   }
 
+  async function setAtemPreview(idx) {
+    if (!state.atem.enabled || !atemConnected) return false;
+    const atemInput = getCameraAtemInput(idx);
+    if (!atemInput) return false;
+    if (cameraMatchesAtemSource(idx, state.previewSource)) return false;
+    try {
+      const res = await fetch('/api/atem/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ camIdx: idx }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        setStatus('error', data.error || data.message || 'ATEM preview update failed');
+        return false;
+      }
+      return true;
+    } catch (err) {
+      setStatus('error', `ATEM preview update failed: ${err.message || err}`);
+      return false;
+    }
+  }
+
   function renderFillCamStrip() {
     if (!elFillCamStrip) return;
     elFillCamStrip.innerHTML = '';
@@ -2025,12 +2048,14 @@
       let lpTimer = null;
       let lpHandled = false;
       btn.addEventListener('pointerdown', () => {
-        lpTimer = setTimeout(() => {
+        lpTimer = setTimeout(async () => {
           lpTimer = null;
           lpHandled = true;
-          btn.classList.add('setting-preview');
-          setTimeout(() => btn.classList.remove('setting-preview'), 800);
-          setAtemPreview(idx);
+          const ok = await setAtemPreview(idx);
+          if (ok) {
+            btn.classList.add('setting-preview');
+            setTimeout(() => btn.classList.remove('setting-preview'), 800);
+          }
         }, 500);
       });
       const clearFillLp = () => { clearTimeout(lpTimer); lpTimer = null; };
@@ -2090,11 +2115,11 @@
       let longPressHandled = false;
       let previewTriggered = false;
       btn.addEventListener('pointerdown', () => {
-        longPressTimer = setTimeout(() => {
+        longPressTimer = setTimeout(async () => {
           longPressHandled = true;
           if (state.atem.enabled && atemConnected) {
             previewTriggered = true;
-            setAtemPreview(idx);
+            await setAtemPreview(idx);
             // Schedule rename after an additional 200 ms (700 ms total)
             longPressTimer = setTimeout(() => {
               longPressTimer = null;
@@ -3732,8 +3757,14 @@
       if (autoCutPlan && autoCutTrigger === 'timeout') {
         msg += ' — Auto Cut using fallback max timer';
       }
+      const recallElapsedMs = Math.max(
+        0,
+        ((typeof performance !== 'undefined' && performance.now)
+          ? performance.now()
+          : Date.now()) - recallStartedAt
+      );
       setStatus('success', msg);
-      scheduleAutoCut(n, autoCutPlan);
+      scheduleAutoCut(n, autoCutPlan, autoCutTrigger || 'settled', recallElapsedMs);
       checkPositionAfterRecall(n, recallCamIdx);
     } else {
       const recallElapsedMs = Math.max(
