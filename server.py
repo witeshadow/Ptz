@@ -482,8 +482,8 @@ def _send_atem_command(name: str, payload: bytes) -> tuple[bool, str]:
 
 def _send_atem_preview(source_id: int) -> tuple[bool, str]:
     """Set ATEM ME1 preview bus to source_id via CPvI command."""
-    payload = bytes([0, 0]) + struct.pack(">H", source_id)
-    return _send_atem_command("CPvI", payload)
+    # CPvI payload: ME index (1 byte), padding (1 byte), source (2 bytes big-endian)
+    return _send_atem_command("CPvI", b"\x00\x00" + struct.pack(">H", source_id))
 
 
 def _wait_for_atem_program_source(source: int, timeout_s: float = 1.0) -> bool:
@@ -1188,6 +1188,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, list_usb_devices())
         elif m := re.match(r"^/api/position/(\d+)$", path):
             self._get_position(int(m.group(1)))
+        elif m := re.match(r"^/api/image/(\d+)/(\d+)/position$", path):
+            self._get_image_position(int(m.group(1)), int(m.group(2)))
         elif m := re.match(r"^/api/image/(\d+)/(\d+)$", path):
             self._get_image(int(m.group(1)), int(m.group(2)))
         else:
@@ -1296,26 +1298,44 @@ class Handler(BaseHTTPRequestHandler):
         body = self._read_body()
         try:
             data = json.loads(body)
-            cam_idx = int(data.get("camIdx", -1))
-        except (json.JSONDecodeError, TypeError, ValueError):
+        except json.JSONDecodeError:
             self._json(400, {"ok": False, "error": "Invalid JSON"})
             return
-        cameras = load_settings().get("cameras", [])
-        if cam_idx < 0 or cam_idx >= len(cameras):
-            self._json(400, {"ok": False, "error": "Invalid camera index"})
+
+        try:
+            cam_idx = int(data.get("camIdx", -1))
+        except (TypeError, ValueError):
+            self._json(400, {"ok": False, "error": "Invalid camIdx"})
             return
-        atem_input = cameras[cam_idx].get("atemInput")
+
+        settings = load_settings()
+        cfg = settings.get("atem", {})
+        if not cfg.get("enabled"):
+            self._json(409, {"ok": False, "error": "ATEM is disabled in settings"})
+            return
+
+        if not _get_atem().get("connected"):
+            self._json(409, {"ok": False, "error": "ATEM is not connected"})
+            return
+
+        cams = settings.get("cameras", [])
+        if cam_idx < 0 or cam_idx >= len(cams):
+            self._json(404, {"ok": False, "error": "Camera not found"})
+            return
+
+        try:
+            atem_input = int(cams[cam_idx].get("atemInput") or 0)
+        except (TypeError, ValueError):
+            atem_input = 0
         if not atem_input:
             self._json(
                 400, {"ok": False, "error": "Camera has no ATEM input configured"}
             )
             return
-        if not _get_atem().get("connected"):
-            self._json(503, {"ok": False, "error": "ATEM not connected"})
-            return
-        ok, message = _send_atem_preview(int(atem_input))
-        status = 200 if ok else 503
-        self._json(status, {"ok": ok, "message": message})
+
+        ok, message = _send_atem_preview(atem_input)
+        status = 200 if ok else 502
+        self._json(status, {"ok": ok, "message": message, "source": atem_input})
 
     def _get_image(self, cam: int, preset: int):
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
@@ -1351,6 +1371,14 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True, **result})
         else:
             self._json(502, {"ok": False, "error": result})
+
+    def _get_image_position(self, cam: int, preset: int):
+        positions = load_settings().get("positions", {})
+        pos = positions.get(f"{cam}:{preset}")
+        if pos is None:
+            self._json(404, {"ok": False, "error": "No position data for this preset"})
+            return
+        self._json(200, {"ok": True, **pos})
 
     def _post_image(self, cam: int, preset: int):
         _ensure_dirs()

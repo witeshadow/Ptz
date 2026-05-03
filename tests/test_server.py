@@ -590,6 +590,7 @@ class TestTryRecordPosition(unittest.TestCase):
     def _settings_with_ip(self, ip="10.0.0.1"):
         s = dict(server.DEFAULT_SETTINGS)
         s["cameras"] = [dict(server.DEFAULT_SETTINGS["cameras"][0], ip=ip)]
+        s["positions"] = {}
         return s
 
     def test_returns_none_when_no_ip(self):
@@ -715,8 +716,11 @@ class TestHTTPRoutes(unittest.TestCase):
         cls.srv.__exit__(None, None, None)
 
     def setUp(self):
-        # Reset settings to defaults before each test for isolation
-        server.write_settings(dict(server.DEFAULT_SETTINGS))
+        # Reset settings to defaults before each test for isolation.
+        # Use a fresh positions dict so TestTryRecordPosition mutation doesn't bleed in.
+        settings = dict(server.DEFAULT_SETTINGS)
+        settings["positions"] = {}
+        server.write_settings(settings)
 
     # ── static & settings ──────────────────────────────────────────────────────
 
@@ -1093,6 +1097,31 @@ class TestHTTPRoutes(unittest.TestCase):
         # Position should be cleared
         saved = server.load_settings()
         self.assertNotIn("0:5", saved.get("positions", {}))
+
+    # ── GET /api/image/{cam}/{preset}/position ─────────────────────────────────
+
+    def test_get_image_position_no_data_returns_404(self):
+        status, body = self.srv.get("/api/image/0/5/position")
+        self.assertEqual(status, 404)
+        data = json.loads(body)
+        self.assertFalse(data["ok"])
+
+    def test_get_image_position_returns_stored_data(self):
+        server.write_settings(self._settings_with_camera_ip())
+        fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+        with patch(
+            "server.inquire_visca_absolute_position",
+            return_value=(True, self._MOCK_POSITION),
+        ):
+            self.srv.post("/api/image/0/5", fake_jpeg, "image/jpeg")
+
+        status, body = self.srv.get("/api/image/0/5/position")
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["pan_hex"], "1234")
+        self.assertEqual(data["tilt_hex"], "5678")
+        self.assertEqual(data["zoom_hex"], "00AA")
 
     # ── 404 paths ──────────────────────────────────────────────────────────────
 

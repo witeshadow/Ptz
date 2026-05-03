@@ -156,6 +156,15 @@
       color: var(--muted);
     }
 
+    @keyframes pvw-set-flash {
+      0%   { box-shadow: 0 0 0 0 rgba(34,197,94,.8); border-color: var(--success); }
+      60%  { box-shadow: 0 0 0 6px rgba(34,197,94,0); border-color: var(--success); }
+      100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+    }
+    .fill-cam-indicator.setting-preview {
+      animation: pvw-set-flash 0.8s ease-out;
+    }
+
     #status {
       display: flex; align-items: center;
       background: var(--surf2);
@@ -718,6 +727,19 @@
     .preset-btn.edit-mode { cursor: default; }
     .preset-btn.edit-mode:hover { border-color: var(--border); }
     .preset-btn.edit-mode:hover .preset-num { color: var(--border); }
+
+    @keyframes snap-pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
+    .preset-btn.needs-snap .preset-capture {
+      display: flex;
+      background: rgba(234,179,8,.85);
+      border-color: rgba(234,179,8,.85);
+      animation: snap-pulse 1.5s ease-in-out infinite;
+    }
+    .preset-btn.needs-snap .preset-capture:hover {
+      background: #eab308;
+      border-color: #eab308;
+      animation: none;
+    }
 
     /* ── Toolbar ─────────────────────────────────────── */
     #toolbar {
@@ -1992,8 +2014,9 @@
 
       btn.appendChild(num);
       btn.appendChild(stateEl);
+      btn.title = state.atem.enabled ? 'Click to switch · Hold to set preview' : 'Click to switch';
 
-      // Long-press (500 ms) to set ATEM preview
+      // Long-press (500 ms) to set ATEM preview bus
       let lpTimer = null;
       let lpHandled = false;
       btn.addEventListener('pointerdown', () => {
@@ -2015,8 +2038,6 @@
         if (lpHandled) { lpHandled = false; return; }
         if (idx !== state.activeCam) switchCamera(idx);
       });
-
-      btn.title = state.atem.enabled ? 'Click to switch · Hold to set preview' : 'Click to switch';
 
       elFillCamStrip.appendChild(btn);
     });
@@ -2055,23 +2076,23 @@
       nameWrap.appendChild(nameEl);
       btn.appendChild(nameWrap);
 
-      // Long-press for touch devices:
-      // - 500 ms: set ATEM preview (when ATEM enabled and connected)
-      // - 700 ms: rename tab (always available)
+      // Tiered long-press for touch devices:
+      //   500 ms → set ATEM preview (when ATEM enabled and connected)
+      //   700 ms → rename tab (always available; +200 ms after preview)
       let longPressTimer = null;
       let longPressHandled = false;
       btn.addEventListener('pointerdown', () => {
         longPressTimer = setTimeout(() => {
-          longPressTimer = null;
           longPressHandled = true;
           if (state.atem.enabled && atemConnected) {
             setAtemPreview(idx);
-            // schedule rename after an additional 200 ms (700 ms total)
+            // Schedule rename after an additional 200 ms (700 ms total)
             longPressTimer = setTimeout(() => {
               longPressTimer = null;
               openTabNameEditor(idx, nameEl, nameWrap);
             }, 200);
           } else {
+            longPressTimer = null;
             openTabNameEditor(idx, nameEl, nameWrap);
           }
         }, 500);
@@ -3143,6 +3164,7 @@
       const ok = await captureFrame(cam, preset);
 
       if (ok) {
+        clearSnapNeeded(cam, preset);
         bumpImageVersion(cam, preset);
         refreshPresetBtn(preset, cam);
         if (preset_btn) {
@@ -3176,6 +3198,51 @@
   function bumpImageVersion(cam, preset) {
     const key = presetKey(cam, preset);
     imageVersions[key] = (imageVersions[key] || 0) + 1;
+  }
+
+  // ── Snap-on-drift helpers ──────────────────────────────────────────────────
+  const snapNeeded = Object.create(null);
+  const SNAP_POSITION_THRESHOLD = 10;
+
+  function posDiff(a, b) {
+    // VISCA pan/tilt are 16-bit unsigned; take the shorter arc around the circle
+    const d = Math.abs(a - b);
+    return Math.min(d, 0x10000 - d);
+  }
+
+  function clearSnapNeeded(cam, preset) {
+    const key = presetKey(cam, preset);
+    delete snapNeeded[key];
+    const btn = elGrid.querySelector(`[data-preset="${preset}"]`);
+    if (btn) btn.classList.remove('needs-snap');
+  }
+
+  async function checkPositionAfterRecall(preset, camIdx) {
+    const cam = state.cameras[camIdx];
+    if (!cam?.ip) return;
+    const key = presetKey(camIdx, preset);
+    try {
+      const [savedRes, curRes] = await Promise.all([
+        fetch(`/api/image/${camIdx}/${preset}/position`).catch(() => null),
+        fetch(`/api/position/${camIdx}`).catch(() => null),
+      ]);
+      if (!savedRes?.ok || !curRes?.ok) return;
+      const savedPos = await savedRes.json().catch(() => null);
+      const curPos   = await curRes.json().catch(() => null);
+      if (!savedPos?.ok || savedPos.pan == null || savedPos.tilt == null) return;
+      if (!curPos?.ok  || curPos.pan  == null || curPos.tilt  == null) return;
+      // Guard against camera switch during the async wait
+      if (state.activeCam !== camIdx) return;
+      const changed = posDiff(savedPos.pan, curPos.pan)   > SNAP_POSITION_THRESHOLD
+                   || posDiff(savedPos.tilt, curPos.tilt) > SNAP_POSITION_THRESHOLD;
+      if (changed) {
+        snapNeeded[key] = true;
+        const btn = elGrid.querySelector(`[data-preset="${preset}"]`);
+        if (btn) btn.classList.add('needs-snap');
+      } else {
+        clearSnapNeeded(camIdx, preset);
+      }
+    } catch (_) {}
   }
 
   function presetNumbers() {
@@ -3388,6 +3455,7 @@
     const cam = resolveCaptureCamera();
     const ok = await captureFrame(cam, n);
     if (ok) {
+      clearSnapNeeded(cam, n);
       bumpImageVersion(cam, n);
       if (cam === state.activeCam) {
         refreshPresetBtn(n, cam);
@@ -3403,7 +3471,7 @@
 
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className  = 'preset-btn' + (editMode ? ' edit-mode' : '');
+    btn.className  = 'preset-btn' + (editMode ? ' edit-mode' : '') + (snapNeeded[presetKey(cam, n)] ? ' needs-snap' : '');
     btn.dataset.preset = n;
     btn.dataset.displayCam = cam;
 
@@ -3448,6 +3516,7 @@
       const res = await fetch(`/api/image/${activeCam}/${n}`, { method: 'DELETE' });
       if (!res.ok) return;
       delete state.positions[presetKey(activeCam, n)];
+      clearSnapNeeded(activeCam, n);
       bumpImageVersion(activeCam, n);
       refreshPresetBtn(n, activeCam);
     });
@@ -3613,6 +3682,7 @@
           recallElapsedMs
         );
       }
+      checkPositionAfterRecall(n, recallCamIdx);
     } else {
       const recallElapsedMs = Math.max(
         0,
