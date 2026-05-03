@@ -140,7 +140,9 @@ def _normalize_scan_wait_mode(wait_mode: str | None) -> str:
 
 
 def _probe_recall_command_succeeded(result: ProbeResult) -> bool:
-    return result.error is None
+    if result.error is not None:
+        return False
+    return not any(r.kind == "error" for r in result.replies)
 
 
 def _probe_autocut_ready(result: ProbeResult) -> bool:

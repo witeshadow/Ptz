@@ -2206,7 +2206,7 @@
     const atemInput = getCameraAtemInput(cam);
     elAtemInput.value = atemInput != null ? String(atemInput) : '';
     elDwell.value     = state.dwellMs / 1000;
-    if (elScanWaitMode) elScanWaitMode.value = state.scanWaitMode;
+    updateScanWaitModeUi();
     elAtemEnabled.checked = !!state.atem.enabled;
     elAtemIp.value        = state.atem.ip || '';
     if (elAutoCutDelay) elAutoCutDelay.value = String((state.autoCutDelayMs || 0) / 1000);
