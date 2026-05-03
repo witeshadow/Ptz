@@ -1011,7 +1011,7 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertEqual(data["pan_hex"], "1234")
         self.assertEqual(data["tilt_hex"], "5678")
         self.assertEqual(data["zoom_hex"], "00AA")
-        mock_inquire.assert_called_once_with("10.0.0.9", 52381, 1)
+        mock_inquire.assert_called_once_with("10.0.0.9", 1259, 1)
 
     # ── position recording on capture ──────────────────────────────────────────
 
