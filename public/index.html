@@ -2005,9 +2005,11 @@
           setAtemPreview(idx);
         }, 500);
       });
-      btn.addEventListener('pointerup',    () => { clearTimeout(lpTimer); lpTimer = null; });
-      btn.addEventListener('pointerleave', () => { clearTimeout(lpTimer); lpTimer = null; });
-      btn.addEventListener('pointermove',  () => { clearTimeout(lpTimer); lpTimer = null; });
+      const clearFillLongPress = () => { clearTimeout(lpTimer); lpTimer = null; };
+      btn.addEventListener('pointerup',     clearFillLongPress);
+      btn.addEventListener('pointerleave',  clearFillLongPress);
+      btn.addEventListener('pointermove',   clearFillLongPress);
+      btn.addEventListener('pointercancel', clearFillLongPress);
 
       btn.addEventListener('click', () => {
         if (lpHandled) { lpHandled = false; return; }
@@ -2086,8 +2088,10 @@
           longPressTimer = null;
         }
       });
-      btn.addEventListener('pointerleave', () => { clearTimeout(longPressTimer); longPressTimer = null; });
-      btn.addEventListener('pointermove',  () => { clearTimeout(longPressTimer); longPressTimer = null; });
+      const clearTabLongPress = () => { clearTimeout(longPressTimer); longPressTimer = null; };
+      btn.addEventListener('pointerleave',  clearTabLongPress);
+      btn.addEventListener('pointermove',   clearTabLongPress);
+      btn.addEventListener('pointercancel', clearTabLongPress);
 
       btn.addEventListener('click', () => {
         if (longPressHandled) { longPressHandled = false; return; }
@@ -3619,7 +3623,7 @@
       const canUseFallbackMax = !!autoCutPlan
         && (state.autoCutDelayMs || 0) > 0
         && data.waitMode === 'autocut'
-        && /not confirmed/i.test(String(data.message || ''));
+        && data.commandAccepted === true;
       if (canUseFallbackMax) {
         flash(btn, 'ok', 900);
         setStatus('success', `Preset ${n} recalled — Auto Cut using fallback max timer`);

@@ -227,6 +227,7 @@ def recall_visca_preset(
         "settled": result.settled,
         "sawCompletion": result.saw_completion,
         "waitMode": wait_mode,
+        "commandAccepted": result.error is None,
         "position": (
             _probe_motion_sample_to_dict(result.samples[-1]) if result.samples else None
         ),
