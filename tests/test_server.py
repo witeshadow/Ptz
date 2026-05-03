@@ -1249,28 +1249,28 @@ class TestProbeRecallCommandSucceeded(unittest.TestCase):
 
 class TestProbeAutocutReady(unittest.TestCase):
     def test_returns_true_when_settled(self):
-        result = SimpleNamespace(error=None, settled=True, saw_completion=False)
+        result = SimpleNamespace(error=None, replies=[], settled=True, saw_completion=False)
         self.assertTrue(server._probe_autocut_ready(result))
 
     def test_returns_true_when_saw_completion(self):
-        result = SimpleNamespace(error=None, settled=False, saw_completion=True)
+        result = SimpleNamespace(error=None, replies=[], settled=False, saw_completion=True)
         self.assertTrue(server._probe_autocut_ready(result))
 
     def test_returns_true_when_both_settled_and_saw_completion(self):
-        result = SimpleNamespace(error=None, settled=True, saw_completion=True)
+        result = SimpleNamespace(error=None, replies=[], settled=True, saw_completion=True)
         self.assertTrue(server._probe_autocut_ready(result))
 
     def test_returns_false_when_neither_settled_nor_saw_completion(self):
-        result = SimpleNamespace(error=None, settled=False, saw_completion=False)
+        result = SimpleNamespace(error=None, replies=[], settled=False, saw_completion=False)
         self.assertFalse(server._probe_autocut_ready(result))
 
     def test_returns_false_when_error_even_if_settled(self):
-        result = SimpleNamespace(error="timeout", settled=True, saw_completion=True)
+        result = SimpleNamespace(error="timeout", replies=[], settled=True, saw_completion=True)
         self.assertFalse(server._probe_autocut_ready(result))
 
     def test_returns_false_when_error_is_empty_string(self):
         # error=None is the only "no error" signal; empty string should still fail
-        result = SimpleNamespace(error="", settled=True, saw_completion=True)
+        result = SimpleNamespace(error="", replies=[], settled=True, saw_completion=True)
         # Per implementation: `result.error is None` — empty string is not None
         self.assertFalse(server._probe_autocut_ready(result))
 
