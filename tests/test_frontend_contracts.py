@@ -67,6 +67,20 @@ class TestFrontendContracts(unittest.TestCase):
         # position shown as tooltip on preset button
         self.assertIn("Pan: ${pos.pan_hex}  Tilt: ${pos.tilt_hex}  Zoom: ${pos.zoom_hex}", self.html)
 
+    def test_snap_on_drift(self):
+        # state and threshold
+        self.assertIn("const snapNeeded = Object.create(null);", self.html)
+        self.assertIn("const SNAP_POSITION_THRESHOLD = 10;", self.html)
+        # helper functions exist
+        self.assertIn("function posDiff(a, b)", self.html)
+        self.assertIn("function clearSnapNeeded(cam, preset)", self.html)
+        # drift check triggered after successful recall
+        self.assertIn("checkPositionAfterRecall(n, recallCamIdx);", self.html)
+        # needs-snap class applied when drift detected
+        self.assertIn("btn.classList.add('needs-snap');", self.html)
+        # needs-snap cleared after a new capture
+        self.assertIn("clearSnapNeeded(cam, preset);", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()
