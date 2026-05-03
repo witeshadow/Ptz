@@ -1011,7 +1011,9 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertEqual(data["pan_hex"], "1234")
         self.assertEqual(data["tilt_hex"], "5678")
         self.assertEqual(data["zoom_hex"], "00AA")
-        mock_inquire.assert_called_once_with("10.0.0.9", 52381, 1)
+        expected_port = server.DEFAULT_SETTINGS["cameras"][0]["port"]
+        expected_visca_addr = server.DEFAULT_SETTINGS["cameras"][0]["viscaAddr"]
+        mock_inquire.assert_called_once_with("10.0.0.9", expected_port, expected_visca_addr)
 
     # ── position recording on capture ──────────────────────────────────────────
 
