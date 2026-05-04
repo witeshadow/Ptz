@@ -1546,7 +1546,7 @@
     </div>
 
     <!-- Joystick/Gamepad Settings -->
-    <div id="joystick-settings-section" class="gsp-extra-card gsp-mobile-section active" data-mobile-tab="atem" style="display:none;">
+    <div id="joystick-settings-section" class="gsp-extra-card gsp-mobile-section active" data-mobile-tab="atem">
       <div class="gsp-section-title" style="margin-bottom:10px;">Joystick Control</div>
       <label class="atem-toggle-wrap">
         <input id="f-joystick-enabled" type="checkbox" />
@@ -1664,6 +1664,7 @@
     captureOutput: 'webcam',
     activeCamAux: 'sdi1',
     positions: {},
+    joystick: normalizeJoystickSettings(),
     // Runtime ATEM AUX sources (not persisted, updated via SSE)
     aux1Source: 0,
     aux2Source: 0,
@@ -1735,6 +1736,25 @@
     return ['sdi1', 'sdi2', 'sdi3', 'sdi4'].includes(value) ? value : 'sdi1';
   }
 
+  function normalizeJoystickSettings(value) {
+    const defaults = {
+      enabled: false,
+      model: 'logitech-extreme-3d',
+      deadzone: 0.2,
+      sensitivity: { pan: 1.0, tilt: 1.0, zoom: 0.5 },
+      axisMap: { pan: 0, tilt: 1, zoom: 2 },
+      buttonMap: { preset1: 0, preset2: 1, preset3: 2, preset4: 3 },
+    };
+    const joystick = value && typeof value === 'object' ? value : {};
+    return {
+      ...defaults,
+      ...joystick,
+      sensitivity: { ...defaults.sensitivity, ...(joystick.sensitivity || {}) },
+      axisMap: { ...defaults.axisMap, ...(joystick.axisMap || {}) },
+      buttonMap: { ...defaults.buttonMap, ...(joystick.buttonMap || {}) },
+    };
+  }
+
   // ── Server persistence ────────────────────────────────────────────────────
   let saveTimer = null;
 
@@ -1770,6 +1790,7 @@
         if (s.captureOutput) state.captureOutput = normalizeCaptureOutput(s.captureOutput);
         if (s.activeCamAux) state.activeCamAux = normalizeActiveCamAux(s.activeCamAux);
         if (s.positions) state.positions = { ...s.positions };
+        if (s.joystick) state.joystick = normalizeJoystickSettings(s.joystick);
       }
     } catch (_) {}
   }
@@ -3243,8 +3264,7 @@
   elGspFill.addEventListener('change', saveGridSettings);
 
   function loadJoystickSettings() {
-    if (!state.joystick) return;
-    const js = state.joystick;
+    const js = state.joystick = normalizeJoystickSettings(state.joystick);
     if (elJoystickEnabled) elJoystickEnabled.checked = !!js.enabled;
     if (elJoystickDeadzone) {
       elJoystickDeadzone.value = (js.deadzone || 0.2).toFixed(2);
@@ -3266,18 +3286,27 @@
   }
 
   function saveJoystickSettings() {
-    if (!state.joystick) state.joystick = {};
-    const wasEnabled = !!state.joystick.enabled;
-    state.joystick.enabled = elJoystickEnabled?.checked || false;
-    state.joystick.deadzone = parseFloat(elJoystickDeadzone?.value || 0.2);
-    if (!state.joystick.sensitivity) state.joystick.sensitivity = {};
-    state.joystick.sensitivity.pan = parseFloat(elJoystickPanSens?.value || 1.0);
-    state.joystick.sensitivity.tilt = parseFloat(elJoystickTiltSens?.value || 1.0);
-    state.joystick.sensitivity.zoom = parseFloat(elJoystickZoomSens?.value || 0.5);
+    const prev = normalizeJoystickSettings(state.joystick);
+    const wasEnabled = !!prev.enabled;
+    state.joystick = normalizeJoystickSettings({
+      ...prev,
+      enabled: elJoystickEnabled?.checked || false,
+      deadzone: parseFloat(elJoystickDeadzone?.value || 0.2),
+      sensitivity: {
+        ...prev.sensitivity,
+        pan: parseFloat(elJoystickPanSens?.value || 1.0),
+        tilt: parseFloat(elJoystickTiltSens?.value || 1.0),
+        zoom: parseFloat(elJoystickZoomSens?.value || 0.5),
+      },
+    });
 
-    if (wasEnabled && !state.joystick.enabled && gamepadAnimationFrame) {
-      cancelAnimationFrame(gamepadAnimationFrame);
-      gamepadAnimationFrame = null;
+    if (wasEnabled && !state.joystick.enabled) {
+      if (gamepadAnimationFrame) {
+        cancelAnimationFrame(gamepadAnimationFrame);
+        gamepadAnimationFrame = null;
+      }
+      gamepadState = { pan: 0, tilt: 0, zoom: 0 };
+      sendPtzDriveCommand(0, 0, 0);
     } else if (!wasEnabled && state.joystick.enabled) {
       const connectedGamepads = typeof navigator !== 'undefined' && navigator.getGamepads
         ? Array.from(navigator.getGamepads()).filter(Boolean)

@@ -95,6 +95,27 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("updateCaptureModeVisibility();", self.html)
         self.assertIn("updateCameraStatusHints();", self.html)
 
+    def test_joystick_state_is_normalized_and_visible(self):
+        self.assertIn(
+            'id="joystick-settings-section" class="gsp-extra-card gsp-mobile-section active" data-mobile-tab="atem"',
+            self.html,
+        )
+        self.assertNotIn(
+            'id="joystick-settings-section" class="gsp-extra-card gsp-mobile-section active" data-mobile-tab="atem" style="display:none;"',
+            self.html,
+        )
+        self.assertIn("function normalizeJoystickSettings(value)", self.html)
+        self.assertIn("joystick: normalizeJoystickSettings(),", self.html)
+        self.assertIn(
+            "if (s.joystick) state.joystick = normalizeJoystickSettings(s.joystick);",
+            self.html,
+        )
+        self.assertIn(
+            "const js = state.joystick = normalizeJoystickSettings(state.joystick);",
+            self.html,
+        )
+        self.assertIn("state.joystick = normalizeJoystickSettings({", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()
