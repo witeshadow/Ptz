@@ -611,9 +611,11 @@
       background: rgba(15, 23, 42, 0.22);
     }
     #preset-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+      align-content: flex-start;
+      margin: -5px;
     }
 
     .preset-btn {
@@ -626,6 +628,8 @@
       transition: border-color .15s, transform .1s;
       user-select: none;
       touch-action: manipulation;
+      flex: 0 0 calc(25% - 10px);
+      margin: 5px;
     }
     /* 16:9 fallback for Safari < 15 (no aspect-ratio support) */
     .preset-btn::before {
@@ -633,9 +637,11 @@
       display: block;
       padding-top: 56.25%;
     }
-    @supports (aspect-ratio: 1) {
-      .preset-btn { aspect-ratio: 16/9; }
-      .preset-btn::before { display: none; }
+    .preset-btn {
+      aspect-ratio: 16 / 9;
+    }
+    .preset-btn[data-aspect-supported="true"]::before {
+      display: none;
     }
     .preset-btn:not(.edit-mode):not(.state-busy):hover { border-color: var(--accent); }
     .preset-btn:not(.edit-mode):not(.state-busy):active { transform: scale(.97); }
@@ -831,15 +837,24 @@
     /* ── Footer ──────────────────────────────────────── */
     footer {
       border-top: 1px solid var(--surf);
-      padding: 10px 20px;
+      padding: 12px 16px;
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
       font-size: .68rem; color: var(--muted);
       text-align: center; flex-shrink: 0;
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
       align-items: center;
       justify-content: center;
       gap: 6px;
       flex-wrap: wrap;
+      margin: -3px;
+      min-height: auto;
+      overflow-y: auto;
+      max-height: 200px;
+    }
+
+    footer > * {
+      margin: 3px;
     }
 
     #build-indicator {
@@ -886,7 +901,8 @@
     body.fill-mode #cam-tabs { display: flex; }
     body.fill-mode .cam-tab { padding: 11px 13px 9px; font-size: 0.88rem; }
     body.fill-mode main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-    body.fill-mode #preset-grid { flex: 1; align-content: start; justify-content: center; gap: 6px; }
+    body.fill-mode #preset-grid { flex: 1; align-content: start; justify-content: center; margin: -3px; }
+    body.fill-mode #preset-grid .preset-btn { flex: 0 0 calc(25% - 6px); margin: 3px; }
     body.fill-mode #toolbar { margin-top: 8px; }
     body.fill-mode #toolbar { flex-shrink: 0; }
     body.fill-mode #toolbar-statuses { display: flex; }
@@ -973,14 +989,15 @@
       background: rgba(59,130,246,.12);
     }
     .gsp-body {
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+      display: flex; flex-wrap: wrap; margin: -10px;
       padding: 16px; overflow-y: auto; flex: 1;
     }
-    .gsp-column { display: flex; flex-direction: column; }
+    .gsp-column { display: flex; flex-direction: column; flex: 0 0 calc(33.333% - 20px); margin: 10px; }
     .gsp-extra-card {
-      grid-column: 1 / -1;
+      flex: 0 0 100%;
       border-top: 1px solid var(--border);
       padding: 12px 0 0;
+      margin: 0;
     }
     .gsp-section-title { font-size: .75rem; font-weight: 600; color: var(--label); text-transform: uppercase; letter-spacing: 0.5px; }
     .gsp-body .field { display: flex; flex-direction: column; }
@@ -990,15 +1007,21 @@
     .gsp-body .atem-toggle-wrap input { width: 16px; height: 16px; }
     .gsp-body .atem-toggle-wrap span { font-size: .8rem; color: var(--text); }
     .camera-management-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      margin: -4px;
     }
     .camera-management-item {
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin: 4px 0;
+      margin: 4px;
+      flex: 0 0 calc(33.333% - 8px);
+    }
+    .camera-management-item > * {
+      margin-right: 8px;
+    }
+    .camera-management-item > *:last-child {
+      margin-right: 0;
     }
 
     /* ── ATEM debug panel display ───────────────────────── */
@@ -1043,22 +1066,28 @@
       }
       .gsp-mobile-tabs { display: flex; }
       .gsp-body {
-        grid-template-columns: 1fr;
-        gap: 12px;
+        flex-direction: column;
+        margin: 0;
         padding: 12px;
       }
       .gsp-mobile-section { display: none !important; }
       .gsp-mobile-section.active { display: block !important; }
       .gsp-column.gsp-mobile-section.active { display: flex !important; }
+      .gsp-column {
+        flex: 0 0 100%;
+        margin: 0 0 12px 0;
+      }
       .gsp-extra-card {
-        grid-column: auto;
+        flex: 0 0 100%;
         border-top: none;
         padding: 12px;
         background: var(--surf2);
         border-radius: 8px;
+        margin: 0;
       }
-      .camera-management-grid { grid-template-columns: 1fr; gap: 10px; }
+      .camera-management-grid { flex-direction: column; margin: 0; }
       .camera-management-item {
+        flex: 0 0 100%;
         margin: 0;
         padding: 10px 12px;
         border: 1px solid var(--border);
@@ -1136,7 +1165,8 @@
 
     @media (max-width: 480px) {
       /* Preset grid: 2 columns on very small phones */
-      #preset-grid { grid-template-columns: repeat(2, 1fr) !important; }
+      #preset-grid { margin: -5px; }
+      #preset-grid .preset-btn { flex: 0 0 calc(50% - 10px); }
     }
 
     /* ── ATEM output-map table ──────────────────────────────── */
@@ -1718,6 +1748,26 @@
     } catch (_) {}
   }
 
+  // Converts pointer events to synthetic events with same structure for iOS 12 touch fallback
+  function convertTouchToPointer(touch) {
+    return {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      type: touch.type,
+    };
+  }
+
+  // Adds both pointer and touch event listeners for cross-browser compatibility
+  function addPointerOrTouchListener(element, eventType, handler) {
+    const pointerType = 'pointer' + eventType.replace(/^touch/, '');
+    element.addEventListener(pointerType, handler);
+    element.addEventListener(eventType, (e) => {
+      if (e.touches && e.touches.length > 0) {
+        handler(convertTouchToPointer(e.touches[0]));
+      }
+    });
+  }
+
   // ── Status pill ────────────────────────────────────────────────────────────
   const elStatus     = document.getElementById('status');
   const elStatusText = document.getElementById('status-text');
@@ -1732,10 +1782,22 @@
     elBuildMode.textContent = state.fillWindow ? 'fill' : 'normal';
   }
 
+  let lastError = null;
+  let lastErrorTime = 0;
+
   function setStatus(type, msg, autoClear = true) {
     clearTimeout(statusTimer);
     elStatus.className = type;
     elStatusText.textContent = msg;
+    if (type === 'error') {
+      lastError = msg;
+      lastErrorTime = Date.now();
+      console.error(`[PTZ] Error: ${msg}`);
+    } else if (type === 'success') {
+      console.log(`[PTZ] Success: ${msg}`);
+    } else if (type === 'busy') {
+      console.log(`[PTZ] Busy: ${msg}`);
+    }
     if (autoClear && (type === 'success' || type === 'error')) {
       statusTimer = setTimeout(() => {
         elStatus.className = '';
@@ -1751,7 +1813,7 @@
 
   function getCameraAtemInput(camOrIdx) {
     const cam = typeof camOrIdx === 'number' ? state.cameras[camOrIdx] : camOrIdx;
-    const raw = cam?.atemInput;
+    const raw = cam && cam.atemInput;
     const parsed = Number.parseInt(raw, 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }
@@ -1764,7 +1826,7 @@
   function getUsbDeviceName(deviceIndex) {
     if (deviceIndex == null || deviceIndex === '') return '';
     const match = usbDevices.find(d => String(d.index) === String(deviceIndex));
-    return match?.name || `USB device ${deviceIndex}`;
+    return (match && match.name) || `USB device ${deviceIndex}`;
   }
 
   function findCameraByAtemSource(sourceVal) {
@@ -1936,7 +1998,7 @@
     if (!state.showAtemDebug) return;
     const camIdx = state.activeCam;
     const cam = state.cameras[camIdx];
-    if (!cam?.ip) {
+    if (!(cam && cam.ip)) {
       setDebugPosition('—', '—', '—', 'NO IP');
       return;
     }
@@ -1984,7 +2046,10 @@
     if (elDbgAutoCut) elDbgAutoCut.textContent = autoCutDebugText;
     elDbgInputs.textContent = state.cameras
       .filter(c => c.enabled !== false)
-      .map((c, i) => `CAM${i + 1}=${getCameraAtemInput(c) ?? '—'}`)
+      .map((c, i) => {
+        const input = getCameraAtemInput(c);
+        return `CAM${i + 1}=${input !== undefined && input !== null ? input : '—'}`;
+      })
       .join(' ');
     scheduleDebugPositionPolling();
   }
@@ -2078,7 +2143,7 @@
       let lpHandled = false;
       let lpStartX = 0;
       let lpStartY = 0;
-      btn.addEventListener('pointerdown', (e) => {
+      const handleDown = (e) => {
         lpStartX = e.clientX;
         lpStartY = e.clientY;
         lpTimer = setTimeout(async () => {
@@ -2090,6 +2155,10 @@
             setTimeout(() => btn.classList.remove('setting-preview'), 800);
           }
         }, 500);
+      };
+      btn.addEventListener('pointerdown', handleDown);
+      btn.addEventListener('touchstart', (e) => {
+        if (e.touches && e.touches.length > 0) handleDown(convertTouchToPointer(e.touches[0]));
       });
       const clearFillLp = () => { clearTimeout(lpTimer); lpTimer = null; };
       btn.addEventListener('pointerup',     clearFillLp);
@@ -2098,6 +2167,14 @@
         if (Math.hypot(e.clientX - lpStartX, e.clientY - lpStartY) > 8) clearFillLp();
       });
       btn.addEventListener('pointercancel', clearFillLp);
+      btn.addEventListener('touchend',      clearFillLp);
+      btn.addEventListener('touchmove',     (e) => {
+        if (e.touches && e.touches.length > 0) {
+          const t = convertTouchToPointer(e.touches[0]);
+          if (Math.hypot(t.clientX - lpStartX, t.clientY - lpStartY) > 8) clearFillLp();
+        }
+      });
+      btn.addEventListener('touchcancel',   clearFillLp);
 
       btn.addEventListener('click', () => {
         if (lpHandled) { lpHandled = false; return; }
@@ -2152,7 +2229,7 @@
       let longPressActive = false;
       let lpTabStartX = 0;
       let lpTabStartY = 0;
-      btn.addEventListener('pointerdown', (e) => {
+      const handleTabDown = (e) => {
         longPressActive = true;
         lpTabStartX = e.clientX;
         lpTabStartY = e.clientY;
@@ -2173,8 +2250,12 @@
             openTabNameEditor(idx, nameEl, nameWrap);
           }
         }, 500);
+      };
+      btn.addEventListener('pointerdown', handleTabDown);
+      btn.addEventListener('touchstart', (e) => {
+        if (e.touches && e.touches.length > 0) handleTabDown(convertTouchToPointer(e.touches[0]));
       });
-      btn.addEventListener('pointerup', () => {
+      const handleTabUp = () => {
         longPressActive = false;
         if (longPressTimer !== null) {
           // In the 500–700 ms window: rename was pending, cancel it; only
@@ -2187,13 +2268,22 @@
           longPressTimer = null;
         }
         previewTriggered = false;
-      });
+      };
+      btn.addEventListener('pointerup', handleTabUp);
+      btn.addEventListener('touchend', handleTabUp);
       const clearTabLp = () => { longPressActive = false; clearTimeout(longPressTimer); longPressTimer = null; previewTriggered = false; };
       btn.addEventListener('pointerleave',  clearTabLp);
       btn.addEventListener('pointermove',   (e) => {
         if (Math.hypot(e.clientX - lpTabStartX, e.clientY - lpTabStartY) > 8) clearTabLp();
       });
       btn.addEventListener('pointercancel', clearTabLp);
+      btn.addEventListener('touchmove',     (e) => {
+        if (e.touches && e.touches.length > 0) {
+          const t = convertTouchToPointer(e.touches[0]);
+          if (Math.hypot(t.clientX - lpTabStartX, t.clientY - lpTabStartY) > 8) clearTabLp();
+        }
+      });
+      btn.addEventListener('touchcancel',   clearTabLp);
 
       btn.addEventListener('click', () => {
         if (longPressHandled) { longPressHandled = false; return; }
@@ -2343,10 +2433,10 @@
     cam.usbDevice  = elUsbDevice.value;
     cam.streamUrl  = elStreamUrl.value.trim();
     state.dwellMs  = Math.max(0, Math.round((parseFloat(elDwell.value) || 0) * 1000));
-    state.scanWaitMode = elScanWaitMode?.value === 'dwell' ? 'dwell' : 'settle';
+    state.scanWaitMode = (elScanWaitMode && elScanWaitMode.value) === 'dwell' ? 'dwell' : 'settle';
     state.atem.enabled = elAtemEnabled.checked;
     state.atem.ip      = elAtemIp.value.trim();
-    state.autoCutDelayMs = Math.max(0, Math.round(((parseFloat(elAutoCutDelay?.value || '0') || 0) * 1000)));
+    state.autoCutDelayMs = Math.max(0, Math.round(((parseFloat((elAutoCutDelay && elAutoCutDelay.value) || '0') || 0) * 1000)));
     updateCameraStatusHints();
     updateScanWaitModeUi();
   }
@@ -2473,7 +2563,7 @@
     return {
       source,
       camIdx,
-      camName: state.cameras[camIdx]?.name || `Camera ${camIdx + 1}`,
+      camName: (state.cameras[camIdx] && state.cameras[camIdx].name) || `Camera ${camIdx + 1}`,
       delayMs: Math.max(0, state.autoCutDelayMs || 0),
     };
   }
@@ -2494,7 +2584,7 @@
   function updateManualCutButton() {
     if (!elCutLiveBtn) return;
     const source = getActiveCameraCutSource();
-    const camName = state.cameras[state.activeCam]?.name || `Camera ${state.activeCam + 1}`;
+    const camName = (state.cameras[state.activeCam] && state.cameras[state.activeCam].name) || `Camera ${state.activeCam + 1}`;
     const alreadyLive = !!source && cameraMatchesAtemSource(state.activeCam, state.programSource);
     elCutLiveBtn.style.display = state.atem.enabled ? '' : 'none';
     elCutLiveBtn.disabled = !canManualCut() || alreadyLive;
@@ -2530,8 +2620,8 @@
       elAutoCutBtn.title = 'Set an ATEM source number for this camera first';
     } else if (autoCutArmed) {
       elAutoCutBtn.title = delayText === '0s'
-        ? `Armed: cut ${state.cameras[state.activeCam]?.name || 'camera'} to air when camera stop or VISCA completion is confirmed`
-        : `Armed: cut ${state.cameras[state.activeCam]?.name || 'camera'} to air when camera stop or VISCA completion is confirmed, or by ${delayText} max if neither arrives`;
+        ? `Armed: cut ${(state.cameras[state.activeCam] && state.cameras[state.activeCam].name) || 'camera'} to air when camera stop or VISCA completion is confirmed`
+        : `Armed: cut ${(state.cameras[state.activeCam] && state.cameras[state.activeCam].name) || 'camera'} to air when camera stop or VISCA completion is confirmed, or by ${delayText} max if neither arrives`;
     } else {
       elAutoCutBtn.title = delayText === '0s'
         ? 'Arm the next automatic cut (confirmed stop or VISCA completion)'
@@ -2573,7 +2663,7 @@
 
   async function cutActiveCameraLive() {
     const source = getActiveCameraCutSource();
-    const camName = state.cameras[state.activeCam]?.name || `Camera ${state.activeCam + 1}`;
+    const camName = (state.cameras[state.activeCam] && state.cameras[state.activeCam].name) || `Camera ${state.activeCam + 1}`;
     if (!source) {
       setStatus('error', 'Set an ATEM source number for this camera first');
       return;
@@ -2648,7 +2738,7 @@
       }
       setAutoCutArmed(!autoCutArmed);
       if (autoCutArmed) {
-        const camName = state.cameras[state.activeCam]?.name || 'camera';
+        const camName = (state.cameras[state.activeCam] && state.cameras[state.activeCam].name) || 'camera';
         setAutoCutDebug(`ARM ${source}`);
         const fallbackDelay = Math.max(0, state.autoCutDelayMs || 0);
         const fallbackText = fallbackDelay > 0
@@ -2826,10 +2916,10 @@
   }
 
   function loadGridSettings() {
-    elGspStart.value  = state.presetStart ?? 0;
-    elGspEnd.value    = state.presetEnd   ?? 11;
-    elGspCols.value   = state.gridCols    ?? 4;
-    elGspRows.value   = state.gridRows    ?? 3;
+    elGspStart.value  = state.presetStart !== undefined && state.presetStart !== null ? state.presetStart : 0;
+    elGspEnd.value    = state.presetEnd !== undefined && state.presetEnd !== null ? state.presetEnd : 11;
+    elGspCols.value   = state.gridCols !== undefined && state.gridCols !== null ? state.gridCols : 4;
+    elGspRows.value   = state.gridRows !== undefined && state.gridRows !== null ? state.gridRows : 3;
     elGspFill.checked = !!state.fillWindow;
     if (elGspAtemDebug) elGspAtemDebug.checked = !!state.showAtemDebug;
     applyGridLayout();
@@ -2860,7 +2950,7 @@
     // Load camera enabled states
     camEnableCbs.forEach(cb => {
       const idx = parseInt(cb.dataset.idx, 10);
-      cb.checked = !!state.cameras[idx]?.enabled;
+      cb.checked = !!(state.cameras[idx] && state.cameras[idx].enabled);
     });
     // Load Live preference
     if (elAtemFollows) {
@@ -3242,12 +3332,12 @@
   // captureFrame priority: USB device (ffmpeg) > stream URL (playwright) > browser webcam
   // source = pre-resolved { webcam, streamUrl } object, or null to resolve from state
   async function captureFrame(cam, preset, source = null) {
-    const resolved = source ?? (
+    const resolved = source !== undefined && source !== null ? source : (
       state.atem.enabled && state.captureSource !== 'active' && state.captureOutput !== 'activeCam'
         ? (state.atemOutputMap[state.captureOutput] || {})
         : state.atem.enabled && state.captureSource !== 'active'
           ? (state.atemOutputMap[state.activeCamAux] || {})
-          : { webcam: state.cameras[cam]?.usbDevice || '', streamUrl: state.cameras[cam]?.streamUrl || '' }
+          : { webcam: (state.cameras[cam] && state.cameras[cam].usbDevice) || '', streamUrl: (state.cameras[cam] && state.cameras[cam].streamUrl) || '' }
     );
 
     const usb = resolved.webcam || '';
@@ -3365,18 +3455,18 @@
 
   async function checkPositionAfterRecall(preset, camIdx) {
     const cam = state.cameras[camIdx];
-    if (!cam?.ip) return;
+    if (!(cam && cam.ip)) return;
     const key = presetKey(camIdx, preset);
     try {
       const [savedRes, curRes] = await Promise.all([
         fetch(`/api/image/${camIdx}/${preset}/position`).catch(() => null),
         fetch(`/api/position/${camIdx}`).catch(() => null),
       ]);
-      if (!savedRes?.ok || !curRes?.ok) return;
+      if (!(savedRes && savedRes.ok) || !(curRes && curRes.ok)) return;
       const savedPos = await savedRes.json().catch(() => null);
       const curPos   = await curRes.json().catch(() => null);
-      if (!savedPos?.ok || savedPos.pan == null || savedPos.tilt == null) return;
-      if (!curPos?.ok  || curPos.pan  == null || curPos.tilt  == null) return;
+      if (!(savedPos && savedPos.ok) || savedPos.pan == null || savedPos.tilt == null) return;
+      if (!(curPos && curPos.ok)  || curPos.pan  == null || curPos.tilt  == null) return;
       // Guard against camera switch during the async wait
       if (state.activeCam !== camIdx) return;
       const changed = posDiff(savedPos.pan, curPos.pan)   > SNAP_POSITION_THRESHOLD

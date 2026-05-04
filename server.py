@@ -5,6 +5,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 import glob
 import json
+import logging
 import os
 import platform
 import queue
@@ -39,6 +40,8 @@ except ImportError:
     _HAS_CV2 = False
 
 _IS_MACOS = platform.system() == "Darwin"
+
+_logger = logging.getLogger(__name__)
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -671,7 +674,7 @@ def _atem_loop():
             continue
 
         ip = cfg["ip"].strip()
-        print(f"[ATEM] Connecting to {ip}:{ATEM_PORT} …")
+        _logger.info(f"ATEM: Connecting to {ip}:{ATEM_PORT}")
         sock = None
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -679,7 +682,7 @@ def _atem_loop():
             atem_addr = (ip, ATEM_PORT)
             sock.sendto(ATEM_HELLO, atem_addr)
             data, _ = sock.recvfrom(2048)
-            print(f"[ATEM] HELLO response raw={data[:12].hex()}")
+            _logger.debug(f"ATEM: HELLO response raw={data[:12].hex()}")
             # ACK the HELLO response with session_id=0 (not yet assigned)
             _, hello_seq = _parse_header(data)
             sock.sendto(_make_ack(0, hello_seq), atem_addr)
@@ -711,8 +714,8 @@ def _atem_loop():
                         elif cmd in ("PrvI", "PrgI") and len(cmd_data) >= 4:
                             me = cmd_data[0]
                             source = struct.unpack(">H", cmd_data[2:4])[0]
-                            print(
-                                f"[ATEM] init {cmd} me={me} source={source} raw={cmd_data.hex()}"
+                            _logger.debug(
+                                f"ATEM: init {cmd} me={me} source={source}"
                             )
                             if me == 0:
                                 if cmd == "PrvI":
@@ -724,14 +727,14 @@ def _atem_loop():
                             aux_src = struct.unpack(">H", cmd_data[2:4])[0]
                             _set_atem(False, aux=(aux_idx, aux_src))
                 except socket.timeout:
-                    print(f"[ATEM] init drain timeout after {pkt_count} pkts")
+                    _logger.debug(f"ATEM: init drain timeout after {pkt_count} packets")
                     break  # proceed even if InCm wasn't seen
 
             _set_atem(True, preview=init_preview, program=init_program)
             _update_atem_conn(sock, atem_addr, session_id)
             _broadcast({"type": "atem", **_get_atem()})
-            print(
-                f"[ATEM] Connected — init preview={init_preview} program={init_program}"
+            _logger.info(
+                f"ATEM: Connected with preview={init_preview} program={init_program}"
             )
 
             sock.settimeout(1.0)
@@ -750,7 +753,7 @@ def _atem_loop():
                         not cur_cfg.get("enabled")
                         or cur_cfg.get("ip", "").strip() != ip
                     ):
-                        print("[ATEM] Config changed — reconnecting")
+                        _logger.info("ATEM: Config changed — reconnecting")
                         break
 
                 try:
@@ -773,11 +776,11 @@ def _atem_loop():
                         ):
                             source = struct.unpack(">H", cmd_data[2:4])[0]
                             if cmd == "PrvI" and source != cur["preview"]:
-                                print(f"[ATEM] PrvI source={source}")
+                                _logger.debug(f"ATEM: PrvI source={source}")
                                 _set_atem(True, preview=source)
                                 _broadcast({"type": "preview", "source": source})
                             elif cmd == "PrgI" and source != cur["program"]:
-                                print(f"[ATEM] PrgI source={source}")
+                                _logger.debug(f"ATEM: PrgI source={source}")
                                 _set_atem(True, program=source)
                                 _broadcast({"type": "program", "source": source})
                         elif cmd == "AuxS" and len(cmd_data) >= 4:
@@ -785,7 +788,7 @@ def _atem_loop():
                             aux_src = struct.unpack(">H", cmd_data[2:4])[0]
                             akey = f"aux{aux_idx + 1}"
                             if akey in cur and aux_src != cur[akey]:
-                                print(f"[ATEM] AuxS idx={aux_idx} source={aux_src}")
+                                _logger.debug(f"ATEM: AuxS idx={aux_idx} source={aux_src}")
                                 _set_atem(True, aux=(aux_idx, aux_src))
                                 _broadcast(
                                     {"type": "aux", "index": aux_idx, "source": aux_src}
@@ -795,18 +798,18 @@ def _atem_loop():
 
                 now = time.monotonic()
                 if now - last_recv > 5.0:
-                    print("[ATEM] No data for 5 s — reconnecting")
+                    _logger.info("ATEM: No data for 5 seconds — reconnecting")
                     break
                 if now - last_keepalive >= 0.5:
                     sock.sendto(_make_ack(session_id, last_seq), atem_addr)
                     last_keepalive = time.monotonic()
 
         except Exception as exc:
-            print(f"[ATEM] Error: {exc!r}")
+            _logger.error(f"ATEM: Error: {exc!r}")
         finally:
             _clear_atem_conn()
             _set_atem(False)
-            print("[ATEM] Disconnected — will retry in 3 s")
+            _logger.info("ATEM: Disconnected — will retry in 3 seconds")
             try:
                 _broadcast({"type": "atem", "connected": False})
             except Exception:
@@ -983,14 +986,24 @@ def _capture_url(url: str) -> bytes:
                     _pw_page.close()
                 except Exception:
                     pass
-            _pw_page = _pw_browser.new_page()
-            _pw_page.goto(url, wait_until="domcontentloaded")
-            # wait up to 15 s for a video element with decoded data
-            _pw_page.wait_for_function(
-                "() => { const v = document.querySelector('video'); "
-                "return v && v.readyState >= 2 && v.videoWidth > 0; }",
-                timeout=15_000,
-            )
+            try:
+                _pw_page = _pw_browser.new_page()
+                _pw_page.goto(url, wait_until="domcontentloaded")
+                _logger.debug(f"Capture: Loaded URL {url}")
+                # wait up to 30s for a video element with decoded data (longer for vdo.ninja)
+                _pw_page.wait_for_function(
+                    "() => { const v = document.querySelector('video'); "
+                    "return v && v.readyState >= 2 && v.videoWidth > 0; }",
+                    timeout=30_000,
+                )
+                _logger.debug(f"Capture: Video element ready for {url}")
+            except Exception as e:
+                _logger.error(f"Capture: Failed to load video from {url}: {e!r}")
+                # Try fullpage screenshot as fallback
+                if _pw_page:
+                    _logger.debug("Capture: Falling back to page screenshot")
+                _pw_page_url = None  # force reload next time
+                raise
             _pw_page_url = url
         video = _pw_page.query_selector("video")
         if video:
@@ -1677,14 +1690,18 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger(__name__)
     load_settings()  # ensure data/ and default settings.json exist
     atem_thread = threading.Thread(target=_atem_loop, daemon=True, name="atem")
     atem_thread.start()
     host, port = "0.0.0.0", 5001
     httpd = ThreadedHTTPServer((host, port), Handler)
-    print(f"PTZ Preset Control listening on  http://localhost:{port}")
-    print("Press Ctrl-C to stop.\n")
+    logger.info(f"PTZ Preset Control listening on http://localhost:{port}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\nShutting down.")
+        logger.info("Shutting down.")
