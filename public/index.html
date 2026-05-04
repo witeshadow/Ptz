@@ -2957,6 +2957,10 @@
 
   function applyGamepadInput() {
     if (!gamepadConnected) return;
+    // Debug: Log when commands are sent
+    if (gamepadState.pan === 0 && gamepadState.tilt === 0 && gamepadState.zoom === 0) {
+      console.debug('[GAMEPAD] Sending STOP command: pan=0, tilt=0, zoom=0');
+    }
     sendPtzDriveCommand(gamepadState.pan, -gamepadState.tilt, gamepadState.zoom);
   }
 
@@ -3061,6 +3065,12 @@
       right: gamepad.buttons[dpadMap.right]?.pressed || false,
     };
     dpadState = newState;
+
+    // Debug: Log d-pad button states
+    if (newState.up || newState.down || newState.left || newState.right) {
+      console.debug('[D-PAD]', { up: newState.up, down: newState.down, left: newState.left, right: newState.right, dpadMap });
+    }
+
     const deadzone = cfg.deadzone || 0.15;
     const sensitivity = cfg.sensitivity || { pan: 1.0, tilt: 1.0, zoom: 0.5 };
     gamepadState.pan = ((newState.right ? 1 : 0) - (newState.left ? 1 : 0)) * (sensitivity.pan || 1.0);
