@@ -1016,6 +1016,13 @@ def _capture_url(url: str) -> bytes:
         except Exception:
             redacted_url = "<redacted>"
 
+        # Detect vdo.ninja URLs early and provide helpful error
+        if "vdo.ninja" in url.lower():
+            raise ValueError(
+                "vdo.ninja uses WebRTC streaming which cannot be captured by headless browser. "
+                "Use a standard RTMP/HLS stream instead, or convert vdo.ninja to a standard format with ffmpeg."
+            )
+
         if _pw_ctx is None:
             _pw_ctx = _sync_playwright().start()
             _pw_browser = _pw_ctx.chromium.launch(
@@ -1035,7 +1042,7 @@ def _capture_url(url: str) -> bytes:
                 _pw_page = _pw_browser.new_page()
                 _pw_page.goto(url, wait_until="domcontentloaded")
                 _logger.debug(f"Capture: Loaded URL {redacted_url}")
-                # wait up to 30s for a video element with decoded data (longer for vdo.ninja)
+                # wait up to 30s for a video element with decoded data
                 _pw_page.wait_for_function(
                     "() => { const v = document.querySelector('video'); "
                     "return v && v.readyState >= 2 && v.videoWidth > 0; }",
