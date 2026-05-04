@@ -1122,7 +1122,12 @@ def _capture_url(url: str) -> bytes:
     """
     result_queue = queue.Queue()
     _pw_queue.put((url, result_queue))
-    status, result = result_queue.get(timeout=_PW_CAPTURE_TIMEOUT_S)
+    try:
+        status, result = result_queue.get(timeout=_PW_CAPTURE_TIMEOUT_S)
+    except queue.Empty:
+        raise TimeoutError(
+            f"Playwright worker did not respond within {_PW_CAPTURE_TIMEOUT_S}s"
+        )
     if status == "error":
         raise result
     return result
