@@ -1155,7 +1155,7 @@ def capture_usb_device(index: str) -> bytes:
                         "-frames:v",
                         "1",
                         "-q:v",
-                        "3",
+                        "7",
                         tmp,
                     ]
                     if _ffmpeg_grab(args, tmp):
@@ -1183,14 +1183,14 @@ def capture_usb_device(index: str) -> bytes:
                 "-y",
                 "-f",
                 "v4l2",
+                "-thread_queue_size",
+                "1",
                 "-i",
                 f"/dev/video{index}",
-                "-ss",
-                "0.1",
                 "-frames:v",
                 "1",
                 "-q:v",
-                "3",
+                "7",
                 tmp,
             ]
             if not _ffmpeg_grab(args, tmp):
@@ -1216,7 +1216,7 @@ def _capture_cv2(index: int) -> bytes:
     cap.release()
     if not ret:
         raise RuntimeError(f"cv2: no frame from device {index}")
-    _, buf = _cv2.imencode(".jpg", frame, [_cv2.IMWRITE_JPEG_QUALITY, 70])
+    _, buf = _cv2.imencode(".jpg", frame, [_cv2.IMWRITE_JPEG_QUALITY, 80])
     return bytes(buf)
 
 
