@@ -1232,6 +1232,11 @@ class Handler(BaseHTTPRequestHandler):
             self._sse()
         elif path == "/api/devices":
             self._json(200, list_usb_devices())
+        elif path == "/api/system":
+            self._json(200, {
+                "playwrightAvailable": _HAS_PLAYWRIGHT,
+                "playwrightError": None if _HAS_PLAYWRIGHT else "Playwright not installed. Run: pip install playwright && playwright install chromium"
+            })
         elif m := re.match(r"^/api/position/(\d+)$", path):
             self._get_position(int(m.group(1)))
         elif m := re.match(r"^/api/image/(\d+)/(\d+)/position$", path):

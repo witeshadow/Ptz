@@ -1325,6 +1325,18 @@
 
     <!-- Capture & Live (Col 2) -->
     <div class="gsp-column">
+      <div id="system-warnings" class="gsp-mobile-section active" data-mobile-tab="capture" style="display: none;">
+        <div class="gsp-section-title" style="color: var(--error);">⚠ System Warnings</div>
+        <div id="playwright-warning" style="display: none; color: var(--error); font-size: 0.85rem; line-height: 1.5; margin-bottom: 12px;">
+          <strong>Playwright not installed:</strong> URL-based stream capture is unavailable. Install with:
+          <code style="display: block; background: var(--surf1); padding: 6px; border-radius: 4px; margin-top: 4px; font-size: 0.8rem;">
+            pip install playwright && playwright install chromium
+          </code>
+        </div>
+        <div id="vdo-warning" style="color: var(--error); font-size: 0.85rem; line-height: 1.5;">
+          <strong>vdo.ninja not supported:</strong> Uses WebRTC which can't be captured by headless browser. Use standard RTMP/HLS streams instead.
+        </div>
+      </div>
       <div id="direct-capture-settings" class="gsp-mobile-section active" data-mobile-tab="capture">
         <div class="gsp-section-title">Direct Camera Capture</div>
         <p class="capture-mode-note">Used when ATEM routing is off, or when <strong>ACT</strong> capture mode is selected.</p>
@@ -1333,8 +1345,9 @@
           <select id="f-usb-device"><option value="">— none —</option></select>
         </div>
         <div class="field">
-          <label for="f-stream-url">VDO.ninja / URL</label>
-          <input id="f-stream-url" type="text" placeholder="https://vdo.ninja/?view=…" autocomplete="off" spellcheck="false" />
+          <label for="f-stream-url">Stream URL (RTMP, HLS, etc.)</label>
+          <input id="f-stream-url" type="text" placeholder="https://example.com/stream.m3u8" autocomplete="off" spellcheck="false" />
+          <div class="field-note" style="color: var(--muted);">Supported: standard HTTP streams, RTMP, HLS. Not supported: vdo.ninja, WebRTC.</div>
         </div>
         <div id="f-capture-source-status" class="field-note">Scan capture source: Not configured</div>
       </div>
@@ -3988,6 +4001,16 @@
         updateAtemPill();
         renderTabs();
         updateAtemDebug();
+      }
+    } catch (_) {}
+    // Check system capabilities and show warnings
+    try {
+      const sys = await fetch('/api/system').then(r => r.json());
+      const elWarnings = document.getElementById('system-warnings');
+      const elPlaywright = document.getElementById('playwright-warning');
+      if (!sys.playwrightAvailable) {
+        if (elPlaywright) elPlaywright.style.display = 'block';
+        if (elWarnings) elWarnings.style.display = 'block';
       }
     } catch (_) {}
     // USB devices from server — store for use in output-map table
