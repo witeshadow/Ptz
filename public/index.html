@@ -1544,6 +1544,38 @@
         <tbody id="output-map-body"><!-- rendered by JS --></tbody>
       </table>
     </div>
+
+    <!-- Joystick/Gamepad Settings -->
+    <div id="joystick-settings-section" class="gsp-extra-card gsp-mobile-section active" data-mobile-tab="atem" style="display:none;">
+      <div class="gsp-section-title" style="margin-bottom:10px;">Joystick Control</div>
+      <label class="atem-toggle-wrap">
+        <input id="f-joystick-enabled" type="checkbox" />
+        <span>Enable Joystick</span>
+      </label>
+      <div class="field">
+        <label for="f-joystick-deadzone">Deadzone</label>
+        <input id="f-joystick-deadzone" type="range" min="0" max="1" step="0.05" />
+        <span id="f-joystick-deadzone-value">0.20</span>
+      </div>
+      <div class="field">
+        <label for="f-joystick-pan-sens">Pan Sensitivity</label>
+        <input id="f-joystick-pan-sens" type="range" min="0.1" max="2" step="0.1" value="1" />
+        <span id="f-joystick-pan-value">1.0x</span>
+      </div>
+      <div class="field">
+        <label for="f-joystick-tilt-sens">Tilt Sensitivity</label>
+        <input id="f-joystick-tilt-sens" type="range" min="0.1" max="2" step="0.1" value="1" />
+        <span id="f-joystick-tilt-value">1.0x</span>
+      </div>
+      <div class="field">
+        <label for="f-joystick-zoom-sens">Zoom Sensitivity</label>
+        <input id="f-joystick-zoom-sens" type="range" min="0.1" max="2" step="0.1" value="0.5" />
+        <span id="f-joystick-zoom-value">0.5x</span>
+      </div>
+      <div id="joystick-status" style="color:var(--muted); font-size:0.85rem; margin-top:12px;">
+        Status: <span id="joystick-status-text">Not connected</span>
+      </div>
+    </div>
   </div>
 
   <!-- Webcam preview at bottom -->
@@ -2470,6 +2502,114 @@
     });
   }
 
+  // ── Gamepad/Joystick API ───────────────────────────────────────────────────
+  function updateGamepadState() {
+    if (!state.joystick || !state.joystick.enabled) return;
+
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    if (!gamepads.length) {
+      if (gamepadConnected) {
+        gamepadConnected = false;
+        _logger.debug('Gamepad disconnected');
+      }
+      return;
+    }
+
+    const gamepad = gamepads[0];
+    if (!gamepad) {
+      gamepadConnected = false;
+      return;
+    }
+
+    if (!gamepadConnected) {
+      gamepadConnected = true;
+      _logger.debug(`Gamepad connected: ${gamepad.id}`);
+    }
+
+    const cfg = state.joystick;
+    const deadzone = cfg.deadzone || 0.2;
+    const sensitivity = cfg.sensitivity || { pan: 1.0, tilt: 1.0, zoom: 0.5 };
+    const axisMap = cfg.axisMap || { pan: 0, tilt: 1, zoom: 2 };
+
+    // Read axes with deadzone
+    const applyDeadzone = (v) => Math.abs(v) < deadzone ? 0 : v;
+    gamepadState.pan = applyDeadzone(gamepad.axes[axisMap.pan] || 0) * (sensitivity.pan || 1.0);
+    gamepadState.tilt = applyDeadzone(gamepad.axes[axisMap.tilt] || 0) * (sensitivity.tilt || 1.0);
+    gamepadState.zoom = applyDeadzone(gamepad.axes[axisMap.zoom] || 0) * (sensitivity.zoom || 0.5);
+
+    // Handle button presses for preset recall
+    if (gamepad.buttons) {
+      gamepad.buttons.forEach((btn, idx) => {
+        const wasPressed = gamepadButtonStates[idx];
+        const isPressed = btn.pressed;
+        if (isPressed && !wasPressed) {
+          handleGamepadButton(idx);
+        }
+        gamepadButtonStates[idx] = isPressed;
+      });
+    }
+
+    if (gamepadAnimationFrame) {
+      cancelAnimationFrame(gamepadAnimationFrame);
+    }
+    gamepadAnimationFrame = requestAnimationFrame(updateGamepadState);
+  }
+
+  function handleGamepadButton(buttonIndex) {
+    const cfg = state.joystick || {};
+    const buttonMap = cfg.buttonMap || {};
+
+    // Map button index to preset number
+    const presetButton = Object.entries(buttonMap).find(([k, v]) => v === buttonIndex);
+    if (!presetButton) return;
+
+    // Extract preset number (e.g., "preset1" → 0)
+    const presetNum = parseInt(presetButton[0].replace('preset', '')) - 1;
+    if (presetNum >= 0) {
+      const range = getDevicePresetRange();
+      const actualPreset = range.start + presetNum;
+      if (actualPreset <= range.end) {
+        const btn = document.querySelector(`[data-preset="${actualPreset}"]`);
+        if (btn) recallPreset(actualPreset, btn);
+      }
+    }
+  }
+
+  function applyGamepadInput() {
+    if (!gamepadConnected || !gamepadState.pan && !gamepadState.tilt && !gamepadState.zoom) return;
+
+    const cam = state.cameras[state.activeCam];
+    if (!cam || !cam.ip) return;
+
+    // Send continuous pan/tilt/zoom commands based on gamepad state
+    // This is simplified - in production would queue commands to avoid flooding
+    if (Math.abs(gamepadState.pan) > 0 || Math.abs(gamepadState.tilt) > 0) {
+      // Pan/tilt control - normalize to pan tilt speed values
+      // This would send VISCA pan/tilt relative commands
+      _logger.debug(`Gamepad pan/tilt: ${gamepadState.pan.toFixed(2)}, ${gamepadState.tilt.toFixed(2)}`);
+    }
+    if (Math.abs(gamepadState.zoom) > 0) {
+      // Zoom control
+      _logger.debug(`Gamepad zoom: ${gamepadState.zoom.toFixed(2)}`);
+    }
+  }
+
+  // Initialize gamepad support
+  window.addEventListener('gamepadconnected', (e) => {
+    gamepadConnected = true;
+    _logger.debug(`Gamepad connected: ${e.gamepad.id}`);
+    if (state.joystick && state.joystick.enabled) {
+      updateGamepadState();
+    }
+  });
+
+  window.addEventListener('gamepaddisconnected', (e) => {
+    gamepadConnected = false;
+    gamepadState = { pan: 0, tilt: 0, zoom: 0 };
+    gamepadButtonStates = {};
+    _logger.debug('Gamepad disconnected');
+  });
+
   // ── SSE ────────────────────────────────────────────────────────────────────
   (function initSSE() {
     const es = new EventSource('/events');
@@ -2532,6 +2672,12 @@
   let autoCutArmed = false;
   let autoCutTimer = null;
   let autoCutPending = null;
+
+  // Joystick/Gamepad API state
+  let gamepadConnected = false;
+  let gamepadState = { pan: 0, tilt: 0, zoom: 0 };
+  let gamepadButtonStates = {};
+  let gamepadAnimationFrame = null;
 
   function getAutoCutDelaySeconds() {
     return ((state.autoCutDelayMs || 0) / 1000).toFixed(1).replace(/\.0$/, '');
@@ -2851,6 +2997,15 @@
   const elGspCols  = document.getElementById('gsp-cols');
   const elGspRows  = document.getElementById('gsp-rows');
   const elGspFill  = document.getElementById('gsp-fill');
+
+  // Joystick settings elements
+  const elJoystickEnabled = document.getElementById('f-joystick-enabled');
+  const elJoystickDeadzone = document.getElementById('f-joystick-deadzone');
+  const elJoystickPanSens = document.getElementById('f-joystick-pan-sens');
+  const elJoystickTiltSens = document.getElementById('f-joystick-tilt-sens');
+  const elJoystickZoomSens = document.getElementById('f-joystick-zoom-sens');
+  const elJoystickStatus = document.getElementById('joystick-status-text');
+
   let activeSettingsTab = 'cameras';
 
   function applySettingsTabVisibility() {
@@ -2926,6 +3081,74 @@
     el.addEventListener('change', saveGridSettings)
   );
   elGspFill.addEventListener('change', saveGridSettings);
+
+  function loadJoystickSettings() {
+    if (!state.joystick) return;
+    const js = state.joystick;
+    if (elJoystickEnabled) elJoystickEnabled.checked = !!js.enabled;
+    if (elJoystickDeadzone) {
+      elJoystickDeadzone.value = (js.deadzone || 0.2).toFixed(2);
+      document.getElementById('f-joystick-deadzone-value').textContent = (js.deadzone || 0.2).toFixed(2);
+    }
+    if (elJoystickPanSens) {
+      elJoystickPanSens.value = (js.sensitivity?.pan || 1.0).toFixed(1);
+      document.getElementById('f-joystick-pan-value').textContent = (js.sensitivity?.pan || 1.0).toFixed(1) + 'x';
+    }
+    if (elJoystickTiltSens) {
+      elJoystickTiltSens.value = (js.sensitivity?.tilt || 1.0).toFixed(1);
+      document.getElementById('f-joystick-tilt-value').textContent = (js.sensitivity?.tilt || 1.0).toFixed(1) + 'x';
+    }
+    if (elJoystickZoomSens) {
+      elJoystickZoomSens.value = (js.sensitivity?.zoom || 0.5).toFixed(1);
+      document.getElementById('f-joystick-zoom-value').textContent = (js.sensitivity?.zoom || 0.5).toFixed(1) + 'x';
+    }
+    updateJoystickStatus();
+  }
+
+  function saveJoystickSettings() {
+    if (!state.joystick) state.joystick = {};
+    state.joystick.enabled = elJoystickEnabled?.checked || false;
+    state.joystick.deadzone = parseFloat(elJoystickDeadzone?.value || 0.2);
+    if (!state.joystick.sensitivity) state.joystick.sensitivity = {};
+    state.joystick.sensitivity.pan = parseFloat(elJoystickPanSens?.value || 1.0);
+    state.joystick.sensitivity.tilt = parseFloat(elJoystickTiltSens?.value || 1.0);
+    state.joystick.sensitivity.zoom = parseFloat(elJoystickZoomSens?.value || 0.5);
+    schedSave();
+    updateJoystickStatus();
+  }
+
+  function updateJoystickStatus() {
+    if (!elJoystickStatus) return;
+    if (!state.joystick || !state.joystick.enabled) {
+      elJoystickStatus.textContent = 'Disabled';
+      return;
+    }
+    if (gamepadConnected) {
+      elJoystickStatus.textContent = 'Connected ✓';
+    } else {
+      elJoystickStatus.textContent = 'Enabled, waiting for gamepad…';
+    }
+  }
+
+  if (elJoystickEnabled) {
+    [elJoystickEnabled, elJoystickDeadzone, elJoystickPanSens, elJoystickTiltSens, elJoystickZoomSens].forEach(el => {
+      if (el) {
+        el.addEventListener('change', saveJoystickSettings);
+        el.addEventListener('input', () => {
+          // Update display values in real-time
+          if (el === elJoystickDeadzone) {
+            document.getElementById('f-joystick-deadzone-value').textContent = el.value;
+          } else if (el === elJoystickPanSens) {
+            document.getElementById('f-joystick-pan-value').textContent = el.value + 'x';
+          } else if (el === elJoystickTiltSens) {
+            document.getElementById('f-joystick-tilt-value').textContent = el.value + 'x';
+          } else if (el === elJoystickZoomSens) {
+            document.getElementById('f-joystick-zoom-value').textContent = el.value + 'x';
+          }
+        });
+      }
+    });
+  }
 
   // ── Camera Management & Live Mode Preferences ──────────────────────────────
   const elAtemFollows = document.getElementById('f-atem-follows');
@@ -4075,6 +4298,7 @@
     if (updateLockIcon) updateLockIcon();
     loadCameraSettings();
     loadGridSettings();
+    loadJoystickSettings();
     loadCameraManagement();
     updateToolbarVisibility();
     renderTabs();
