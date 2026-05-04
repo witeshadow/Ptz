@@ -1718,6 +1718,7 @@ class Handler(BaseHTTPRequestHandler):
                 # Check for unsupported vdo.ninja URLs early (WebRTC streaming)
                 try:
                     from urllib.parse import urlparse
+
                     parsed = urlparse(url)
                     hostname = parsed.hostname or ""
                     if hostname == "vdo.ninja" or hostname.endswith(".vdo.ninja"):
