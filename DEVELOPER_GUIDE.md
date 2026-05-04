@@ -67,7 +67,7 @@ Key insight: This is **not Flask**. Routes are hand-written in `do_GET`, `do_POS
 
 ## Development Workflow
 
-> **Note:** This guide uses `default` as the repository's default branch name. Substitute `main` or `master` if your repository uses a different branch name.
+> **Note:** This repository uses `default` as its default branch name. Commands in this guide reference `default`; if you work on other repositories that use `main` or `master`, substitute accordingly.
 
 ### Step 1: Create a branch
 
@@ -208,7 +208,7 @@ git fetch origin
 git switch default
 git pull origin default
 git switch -
-git rebase origin/default  # or: git merge origin/default
+git merge origin/default  # Integrate latest changes into your branch
 
 # Push your work
 git push origin your-branch
