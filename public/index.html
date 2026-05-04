@@ -1734,12 +1734,13 @@
     };
 
     if (id.includes('8bitdo') || id.includes('8bit do')) {
-      if (btnCount >= 16 && axCount >= 2) {
+      if (btnCount === 16 && axCount >= 2) {
         detected.suggestion = '8bitdo-zero2';
         detected.reason = 'DirectInput mode (D-Pad recommended)';
       } else if (btnCount === 10) {
-        detected.suggestion = 'logitech-extreme-3d';
-        detected.reason = 'XInput mode (needs reconfiguration)';
+        detected.reason = 'XInput mode detected — switch the controller to D-Input';
+      } else if (btnCount === 17) {
+        detected.reason = 'Switch mode detected — switch the controller to D-Input';
       } else {
         detected.reason = `Unknown mode: ${btnCount} buttons, ${axCount} axes`;
       }
@@ -2337,6 +2338,11 @@
       const elDbgButtons = document.getElementById('dbg-joystick-buttons');
       if (elDbgButtons) {
         elDbgButtons.textContent = '—';
+      }
+      const elIndicator = document.getElementById('gamepad-input-indicator');
+      if (elIndicator) {
+        elIndicator.style.background = 'var(--muted)';
+        elIndicator.style.boxShadow = 'none';
       }
     }
   }
@@ -3161,9 +3167,10 @@
       .every(idx => idx !== undefined && idx < gamepad.buttons.length);
     if (!validIndices) {
       console.warn('[D-PAD] Invalid button indices for profile:', cfg.model, dpadMap, `gamepad has ${gamepad.buttons.length} buttons`);
+      dpadState = { up: false, down: false, left: false, right: false };
+      lastDpadState = { ...dpadState };
       gamepadState.pan = 0;
       gamepadState.tilt = 0;
-      dpadState = { up: false, down: false, left: false, right: false };
       return;
     }
 
@@ -3173,16 +3180,11 @@
       left: gamepad.buttons[dpadMap.left]?.pressed || false,
       right: gamepad.buttons[dpadMap.right]?.pressed || false,
     };
-    dpadState = newState;
-
-    // Debug: Log state changes
-    if (newState.up || newState.down || newState.left || newState.right) {
-      console.debug('[D-PAD] Buttons pressed:', { up: newState.up, down: newState.down, left: newState.left, right: newState.right });
-    }
-    if ((newState.up || newState.down || newState.left || newState.right) !==
-        (lastDpadState.up || lastDpadState.down || lastDpadState.left || lastDpadState.right)) {
+    const changed = ['up', 'down', 'left', 'right'].some(key => newState[key] !== lastDpadState[key]);
+    if (state.showJoystickDebug && changed) {
       console.debug('[D-PAD] State changed:', newState);
     }
+    dpadState = newState;
     lastDpadState = newState;
 
     const deadzone = cfg.deadzone || 0.15;

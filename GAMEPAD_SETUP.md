@@ -12,7 +12,7 @@ The main issue is that **8BitDo controllers have multiple modes** that change bu
 3. **Check "Show Debug Info"**
 4. Look at the bottom section - you should see something like:
 
-```
+```text
 Gamepad: 8BitDo Zero 2 (16 btns, 6 axes)
 ```
 
@@ -76,7 +76,7 @@ Once in DirectInput mode:
 
 When enabled, you'll see:
 
-```
+```text
 Pan: 1.000    Tilt: 0.000  [● glowing indicator]
 Zoom: 0.500
 
@@ -134,7 +134,7 @@ Since you're watching remotely:
 
 ## Quick Reference
 
-```
+```text
 8BitDo Zero 2 Modes:
 ┌─────────────────────────────────────────────────┐
 │ Hold X + Start for 3 seconds                    │
