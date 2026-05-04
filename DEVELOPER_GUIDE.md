@@ -67,6 +67,8 @@ Key insight: This is **not Flask**. Routes are hand-written in `do_GET`, `do_POS
 
 ## Development Workflow
 
+> **Note:** This guide uses `default` as the repository's default branch name. Substitute `main` or `master` if your repository uses a different branch name.
+
 ### Step 1: Create a branch
 
 Always create a new branch for your changes:
@@ -96,7 +98,10 @@ Before committing, run these checks:
 ```bash
 ruff check server.py        # Linting
 python -m py_compile server.py  # Syntax check
-uv run pytest tests/test_frontend_contracts.py  # Tests
+# If using uv:
+uv run pytest tests/test_frontend_contracts.py
+# If using pip:
+pytest tests/test_frontend_contracts.py
 ```
 
 If you get errors, fix them before moving on.
@@ -150,8 +155,8 @@ Visit GitHub and create a PR:
 After merging, delete the remote branch on GitHub. Then locally:
 
 ```bash
-git switch main
-git pull origin main
+git switch default
+git pull origin default
 git branch -d feature/your-feature-name
 ```
 
@@ -188,7 +193,7 @@ git reflog
 ### Switching branches
 
 ```bash
-git switch main              # Go to main branch
+git switch default           # Go to default branch
 git switch -c new-feature    # Create and switch to new branch
 git branch -l                # List all branches
 ```
@@ -199,11 +204,11 @@ git branch -l                # List all branches
 # Fetch latest from GitHub (doesn't change your files)
 git fetch origin
 
-# Pull latest main before merging your changes
-git switch main
-git pull origin main
+# Pull latest default branch before merging your changes
+git switch default
+git pull origin default
 git switch -
-git rebase origin/main  # or: git merge origin/main
+git rebase origin/default  # or: git merge origin/default
 
 # Push your work
 git push origin your-branch
@@ -374,8 +379,8 @@ See CLAUDE.md for more on live-production guardrails.
 | Create branch | `git switch -c feature/name` |
 | Commit | `git commit -m "message"` |
 | Push | `git push -u origin feature/name` |
-| Switch branch | `git switch main` |
-| Pull latest | `git pull origin main` |
+| Switch branch | `git switch default` |
+| Pull latest | `git pull origin default` |
 | See history | `git log --oneline -5` |
 | Undo change | `git restore filename.py` |
 | Undo commit | `git reset --soft HEAD~1` |
