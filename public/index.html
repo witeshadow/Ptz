@@ -905,6 +905,15 @@
       z-index: 197;
     }
 
+    /* ── Tablet: larger CUT button touch target ─────────── */
+    @media (min-width: 641px) and (max-width: 1279px) {
+      #cut-live-btn {
+        min-height: 52px;
+        padding: 10px 20px;
+        font-size: 0.8rem;
+      }
+    }
+
     /* ── Grid-settings FAB ───────────────────────────────── */
     #grid-settings-fab {
       position: fixed; bottom: 18px; right: 18px; z-index: 200;
@@ -3425,11 +3434,15 @@
     const toolbarStyles = getComputedStyle(elToolbar);
     const toolbarMarginTop = parseFloat(toolbarStyles.marginTop || '0') || 0;
     const stagePadX = (parseFloat(stageStyles.paddingLeft || '0') || 0) + (parseFloat(stageStyles.paddingRight || '0') || 0);
+    const stagePadY = (parseFloat(stageStyles.paddingTop || '0') || 0) + (parseFloat(stageStyles.paddingBottom || '0') || 0);
+    const stageBorderY = (parseFloat(stageStyles.borderTopWidth || '0') || 0) + (parseFloat(stageStyles.borderBottomWidth || '0') || 0);
+    const mainStyles = getComputedStyle(elMain);
+    const mainPadY = (parseFloat(mainStyles.paddingTop || '0') || 0) + (parseFloat(mainStyles.paddingBottom || '0') || 0);
 
     const availableWidth = Math.max(0, elPresetStage.clientWidth - stagePadX);
     const availableHeight = Math.max(
       0,
-      elMain.clientHeight - elToolbar.offsetHeight - toolbarMarginTop
+      elMain.clientHeight - mainPadY - elToolbar.offsetHeight - toolbarMarginTop - stagePadY - stageBorderY
     );
 
     function fitLayout(cols, rows) {
