@@ -2692,6 +2692,7 @@
         return false;
       }
       lastVirtualPtz = next;
+      checkAllPresetsForDrift();
       return true;
     } catch (err) {
       setStatus('error', `PTZ move failed: ${err.message || err}`);
@@ -4007,6 +4008,13 @@
     } catch (_) {}
   }
 
+  async function checkAllPresetsForDrift(camIdx = state.activeCam) {
+    const presets = presetNumbers();
+    for (const preset of presets) {
+      checkPositionAfterRecall(preset, camIdx);
+    }
+  }
+
   function presetNumbers() {
     const nums = [];
     const range = getDevicePresetRange();
@@ -4029,6 +4037,7 @@
     }
     nums.forEach(n => refreshPresetBtn(n, state.activeCam));
     updatePresetGridBusState();
+    checkAllPresetsForDrift();
   }
 
   function updateFillGridMetrics() {
