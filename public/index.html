@@ -611,11 +611,9 @@
       background: rgba(15, 23, 42, 0.22);
     }
     #preset-grid {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: flex-start;
-      align-content: flex-start;
-      margin: -5px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
     }
 
     .preset-btn {
@@ -628,8 +626,6 @@
       transition: border-color .15s, transform .1s;
       user-select: none;
       touch-action: manipulation;
-      flex: 0 0 calc(25% - 10px);
-      margin: 5px;
     }
     /* 16:9 fallback for Safari < 15 (no aspect-ratio support) */
     .preset-btn::before {
@@ -901,8 +897,7 @@
     body.fill-mode #cam-tabs { display: flex; }
     body.fill-mode .cam-tab { padding: 11px 13px 9px; font-size: 0.88rem; }
     body.fill-mode main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-    body.fill-mode #preset-grid { flex: 1; align-content: start; justify-content: center; margin: -3px; }
-    body.fill-mode #preset-grid .preset-btn { flex: 0 0 calc(25% - 6px); margin: 3px; }
+    body.fill-mode #preset-grid { flex: 1; align-content: start; justify-content: center; gap: 6px; }
     body.fill-mode #toolbar { margin-top: 8px; }
     body.fill-mode #toolbar { flex-shrink: 0; }
     body.fill-mode #toolbar-statuses { display: flex; }
@@ -1165,8 +1160,7 @@
 
     @media (max-width: 480px) {
       /* Preset grid: 2 columns on very small phones */
-      #preset-grid { margin: -5px; }
-      #preset-grid .preset-btn { flex: 0 0 calc(50% - 10px); }
+      #preset-grid { grid-template-columns: repeat(2, 1fr) !important; }
     }
 
     /* ── ATEM output-map table ──────────────────────────────── */
@@ -2144,6 +2138,8 @@
       let lpStartX = 0;
       let lpStartY = 0;
       const handleDown = (e) => {
+        // Guard against duplicate events (browsers that emit both pointer and touch)
+        if (lpTimer !== null) return;
         lpStartX = e.clientX;
         lpStartY = e.clientY;
         lpTimer = setTimeout(async () => {
@@ -2230,6 +2226,8 @@
       let lpTabStartX = 0;
       let lpTabStartY = 0;
       const handleTabDown = (e) => {
+        // Guard against duplicate events (browsers that emit both pointer and touch)
+        if (longPressTimer !== null) return;
         longPressActive = true;
         lpTabStartX = e.clientX;
         lpTabStartY = e.clientY;
