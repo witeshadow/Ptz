@@ -59,15 +59,26 @@ class TestFrontendContracts(unittest.TestCase):
         # positions initialized in state
         self.assertIn("positions: {},", self.html)
         # positions loaded from settings response
-        self.assertIn("if (s.positions) state.positions = { ...s.positions };", self.html)
+        self.assertIn(
+            "if (s.positions) state.positions = { ...s.positions };", self.html
+        )
         # position stored from /api/capture response
-        self.assertIn("if (data.position) state.positions[presetKey(cam, preset)] = data.position;", self.html)
+        self.assertIn(
+            "if (data.position) state.positions[presetKey(cam, preset)] = data.position;",
+            self.html,
+        )
         # position stored from /api/image (webcam fallback) response
-        self.assertIn("if (webcamData.position) state.positions[presetKey(cam, preset)] = webcamData.position;", self.html)
+        self.assertIn(
+            "if (webcamData.position) state.positions[presetKey(cam, preset)] = webcamData.position;",
+            self.html,
+        )
         # position cleared on image delete
         self.assertIn("delete state.positions[presetKey(activeCam, n)];", self.html)
         # position shown as tooltip on preset button
-        self.assertIn("Pan: ${pos.pan_hex}  Tilt: ${pos.tilt_hex}  Zoom: ${pos.zoom_hex}", self.html)
+        self.assertIn(
+            "Pan: ${pos.pan_hex}  Tilt: ${pos.tilt_hex}  Zoom: ${pos.zoom_hex}",
+            self.html,
+        )
 
     def test_snap_on_drift(self):
         # state and threshold
@@ -82,7 +93,6 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("btn.classList.add('needs-snap');", self.html)
         # needs-snap cleared after a new capture
         self.assertIn("clearSnapNeeded(cam, preset);", self.html)
-
 
     def test_active_cam_capture_mode(self):
         # ACT button exists in toolbar with correct data-src

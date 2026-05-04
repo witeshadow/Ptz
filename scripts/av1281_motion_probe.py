@@ -37,7 +37,12 @@ class MotionSample:
 
     def comparable(self, include_focus: bool) -> tuple[int, ...]:
         if include_focus:
-            return (self.pan, self.tilt, self.zoom, -1 if self.focus is None else self.focus)
+            return (
+                self.pan,
+                self.tilt,
+                self.zoom,
+                -1 if self.focus is None else self.focus,
+            )
         return (self.pan, self.tilt, self.zoom)
 
     def format(self) -> str:
@@ -132,7 +137,9 @@ def load_camera_from_settings(camera_index: int) -> dict:
         settings = json.load(f)
     cameras = settings.get("cameras", [])
     if camera_index < 0 or camera_index >= len(cameras):
-        raise ValueError(f"Camera index {camera_index} is out of range for {SETTINGS_F}")
+        raise ValueError(
+            f"Camera index {camera_index} is out of range for {SETTINGS_F}"
+        )
     return cameras[camera_index]
 
 
@@ -323,7 +330,9 @@ def print_replies(replies: list[ViscaReply]) -> None:
         suffix = ""
         if reply.socket_number is not None:
             suffix = f" socket={reply.socket_number}"
-        print(f"  {reply.kind:<10} code=0x{reply.code:02X}{suffix} raw={reply.payload.hex()}")
+        print(
+            f"  {reply.kind:<10} code=0x{reply.code:02X}{suffix} raw={reply.payload.hex()}"
+        )
 
 
 def probe_preset(
@@ -370,7 +379,9 @@ def probe_preset(
             if saw_completion:
                 print("VISCA completion arrived before settle polling.")
             else:
-                print("No VISCA completion arrived in time; falling back to motion polling.")
+                print(
+                    "No VISCA completion arrived in time; falling back to motion polling."
+                )
 
         if not require_settle:
             if verbose:
@@ -413,7 +424,11 @@ def probe_preset(
             if verbose:
                 print(f"[sample {stable_runs}/{stable_count}] {sample.format()}")
             if stable_runs >= stable_count:
-                if observed_change or time.monotonic() >= guard_deadline or saw_completion:
+                if (
+                    observed_change
+                    or time.monotonic() >= guard_deadline
+                    or saw_completion
+                ):
                     if verbose:
                         print("Motion appears settled.")
                     return ProbeResult(
@@ -480,7 +495,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Probe AV-1281 preset recall completion and motion settle behavior."
     )
-    parser.add_argument("--ip", help="Camera IP address. Falls back to data/settings.json if omitted.")
+    parser.add_argument(
+        "--ip", help="Camera IP address. Falls back to data/settings.json if omitted."
+    )
     parser.add_argument(
         "--port",
         type=int,
@@ -491,7 +508,9 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         help="VISCA camera address. Defaults to the configured camera address or 1.",
     )
-    parser.add_argument("--preset", type=int, required=True, help="Preset number to recall.")
+    parser.add_argument(
+        "--preset", type=int, required=True, help="Preset number to recall."
+    )
     parser.add_argument(
         "--camera-index",
         type=int,
@@ -562,7 +581,9 @@ def resolve_args(args: argparse.Namespace) -> argparse.Namespace:
         args.camera_address = int(config.get("viscaAddr", 1) or 1)
 
     if not args.ip:
-        raise ValueError("Camera IP is required. Provide --ip or configure it in data/settings.json.")
+        raise ValueError(
+            "Camera IP is required. Provide --ip or configure it in data/settings.json."
+        )
     if args.port is None:
         args.port = 1259 if args.transport == "raw-udp" else 52381
     if args.camera_address is None:

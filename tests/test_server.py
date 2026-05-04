@@ -77,22 +77,27 @@ class TestAtemPackets(unittest.TestCase):
         self.assertEqual(list(server._parse_commands(b"")), [])
 
     def test_cut_atem_to_source_sets_preview_then_cuts(self):
-        with patch(
-            "server._get_atem",
-            return_value={"preview": 3, "program": 2},
-        ), patch(
-            "server._send_atem_command",
-            side_effect=[
-                (True, "preview ok"),
-                (True, "cut ok"),
-            ],
-        ) as mock_send, patch(
-            "server._wait_for_atem_preview_source",
-            return_value=True,
-        ) as mock_wait_preview, patch(
-            "server._wait_for_atem_program_source",
-            return_value=True,
-        ) as mock_wait:
+        with (
+            patch(
+                "server._get_atem",
+                return_value={"preview": 3, "program": 2},
+            ),
+            patch(
+                "server._send_atem_command",
+                side_effect=[
+                    (True, "preview ok"),
+                    (True, "cut ok"),
+                ],
+            ) as mock_send,
+            patch(
+                "server._wait_for_atem_preview_source",
+                return_value=True,
+            ) as mock_wait_preview,
+            patch(
+                "server._wait_for_atem_program_source",
+                return_value=True,
+            ) as mock_wait,
+        ):
             ok, message = server.cut_atem_to_source(7)
 
         self.assertTrue(ok)
@@ -108,27 +113,34 @@ class TestAtemPackets(unittest.TestCase):
         )
 
     def test_cut_atem_to_source_falls_back_to_direct_program_switch(self):
-        with patch(
-            "server._get_atem",
-            return_value={"preview": 3, "program": 2},
-        ), patch(
-            "server._send_atem_command",
-            side_effect=[
-                (True, "preview ok"),
-                (True, "program ok"),
-            ],
-        ) as mock_send, patch(
-            "server._wait_for_atem_preview_source",
-            return_value=False,
-        ) as mock_wait_preview, patch(
-            "server._wait_for_atem_program_source",
-            return_value=True,
-        ) as mock_wait:
+        with (
+            patch(
+                "server._get_atem",
+                return_value={"preview": 3, "program": 2},
+            ),
+            patch(
+                "server._send_atem_command",
+                side_effect=[
+                    (True, "preview ok"),
+                    (True, "program ok"),
+                ],
+            ) as mock_send,
+            patch(
+                "server._wait_for_atem_preview_source",
+                return_value=False,
+            ) as mock_wait_preview,
+            patch(
+                "server._wait_for_atem_program_source",
+                return_value=True,
+            ) as mock_wait,
+        ):
             ok, message = server.cut_atem_to_source(9)
 
         self.assertTrue(ok)
         self.assertIn("direct program switch", message)
-        self.assertEqual([call.args[0] for call in mock_send.call_args_list], ["CPvI", "CPgI"])
+        self.assertEqual(
+            [call.args[0] for call in mock_send.call_args_list], ["CPvI", "CPgI"]
+        )
         mock_wait_preview.assert_called_once_with(
             9, timeout_s=server.ATEM_STATE_CONFIRM_TIMEOUT_S
         )
@@ -137,21 +149,26 @@ class TestAtemPackets(unittest.TestCase):
         )
 
     def test_cut_atem_to_source_returns_false_when_program_never_confirms(self):
-        with patch(
-            "server._get_atem",
-            return_value={"preview": 3, "program": 2},
-        ), patch(
-            "server._send_atem_command",
-            side_effect=[
-                (True, "preview ok"),
-                (True, "program ok"),
-            ],
-        ), patch(
-            "server._wait_for_atem_preview_source",
-            return_value=False,
-        ), patch(
-            "server._wait_for_atem_program_source",
-            return_value=False,
+        with (
+            patch(
+                "server._get_atem",
+                return_value={"preview": 3, "program": 2},
+            ),
+            patch(
+                "server._send_atem_command",
+                side_effect=[
+                    (True, "preview ok"),
+                    (True, "program ok"),
+                ],
+            ),
+            patch(
+                "server._wait_for_atem_preview_source",
+                return_value=False,
+            ),
+            patch(
+                "server._wait_for_atem_program_source",
+                return_value=False,
+            ),
         ):
             ok, message = server.cut_atem_to_source(11)
 
@@ -159,15 +176,19 @@ class TestAtemPackets(unittest.TestCase):
         self.assertIn("preview or program switched", message)
 
     def test_cut_atem_to_source_cuts_immediately_when_preview_already_matches(self):
-        with patch(
-            "server._get_atem",
-            return_value={"preview": 12, "program": 2},
-        ), patch(
-            "server._send_atem_command",
-            return_value=(True, "cut ok"),
-        ) as mock_send, patch(
-            "server._wait_for_atem_program_source",
-            return_value=True,
+        with (
+            patch(
+                "server._get_atem",
+                return_value={"preview": 12, "program": 2},
+            ),
+            patch(
+                "server._send_atem_command",
+                return_value=(True, "cut ok"),
+            ) as mock_send,
+            patch(
+                "server._wait_for_atem_program_source",
+                return_value=True,
+            ),
         ):
             ok, message = server.cut_atem_to_source(12)
 
@@ -326,11 +347,22 @@ class TestDefaultSettings(unittest.TestCase):
 
     def test_required_keys_present(self):
         for key in self.REQUIRED:
-            self.assertIn(key, server.DEFAULT_SETTINGS, f"DEFAULT_SETTINGS missing {key!r}")
+            self.assertIn(
+                key, server.DEFAULT_SETTINGS, f"DEFAULT_SETTINGS missing {key!r}"
+            )
 
     def test_camera_shape(self):
         cam = server.DEFAULT_SETTINGS["cameras"][0]
-        for key in ("name", "ip", "port", "viscaAddr", "atemInput", "streamUrl", "usbDevice", "enabled"):
+        for key in (
+            "name",
+            "ip",
+            "port",
+            "viscaAddr",
+            "atemInput",
+            "streamUrl",
+            "usbDevice",
+            "enabled",
+        ):
             self.assertIn(key, cam)
 
     def test_default_has_four_cameras(self):
@@ -347,7 +379,9 @@ class TestDefaultSettings(unittest.TestCase):
     def test_labels_key_format(self):
         labels = server.DEFAULT_SETTINGS["labels"]
         for key in labels:
-            self.assertRegex(key, r"^\d+:\d+$", f"label key {key!r} does not match 'cam:preset'")
+            self.assertRegex(
+                key, r"^\d+:\d+$", f"label key {key!r} does not match 'cam:preset'"
+            )
 
 
 # ── VISCA packet construction ──────────────────────────────────────────────────
@@ -570,7 +604,6 @@ class TestViscaPosition(unittest.TestCase):
         self.assertFalse(ok)
 
 
-
 # ── _try_record_position unit tests ───────────────────────────────────────────
 
 
@@ -605,7 +638,9 @@ class TestTryRecordPosition(unittest.TestCase):
 
     def test_returns_none_when_inquiry_fails(self):
         settings = self._settings_with_ip()
-        with patch("server.inquire_visca_absolute_position", return_value=(False, "timeout")):
+        with patch(
+            "server.inquire_visca_absolute_position", return_value=(False, "timeout")
+        ):
             result = server._try_record_position(settings, 0, 1)
         self.assertIsNone(result)
 
@@ -625,7 +660,9 @@ class TestTryRecordPosition(unittest.TestCase):
 
     def test_overwrites_existing_position(self):
         settings = self._settings_with_ip()
-        settings["positions"] = {"0:5": {"pan_hex": "0000", "tilt_hex": "0000", "zoom_hex": "0000"}}
+        settings["positions"] = {
+            "0:5": {"pan_hex": "0000", "tilt_hex": "0000", "zoom_hex": "0000"}
+        }
         with patch(
             "server.inquire_visca_absolute_position",
             return_value=(True, self._MOCK_POSITION),
@@ -690,7 +727,12 @@ class _LiveServer:
 
     def post(self, path, body=b"", content_type="application/json"):
         c = self._conn()
-        c.request("POST", path, body, {"Content-Type": content_type, "Content-Length": str(len(body))})
+        c.request(
+            "POST",
+            path,
+            body,
+            {"Content-Type": content_type, "Content-Length": str(len(body))},
+        )
         r = c.getresponse()
         body = r.read()
         c.close()
@@ -845,7 +887,13 @@ class TestHTTPRoutes(unittest.TestCase):
 
     def test_recall_dwell_mode_passed_through(self):
         payload = json.dumps(
-            {"ip": "10.0.0.1", "port": 1259, "camera": 1, "preset": 5, "waitMode": "dwell"}
+            {
+                "ip": "10.0.0.1",
+                "port": 1259,
+                "camera": 1,
+                "preset": 5,
+                "waitMode": "dwell",
+            }
         ).encode()
         with patch(
             "server.recall_visca_preset",
@@ -983,7 +1031,9 @@ class TestHTTPRoutes(unittest.TestCase):
 
     def test_position_success_returns_inquiry_payload(self):
         settings = dict(server.DEFAULT_SETTINGS)
-        settings["cameras"] = [dict(server.DEFAULT_SETTINGS["cameras"][0], ip="10.0.0.9")]
+        settings["cameras"] = [
+            dict(server.DEFAULT_SETTINGS["cameras"][0], ip="10.0.0.9")
+        ]
         server.write_settings(settings)
 
         with patch(
@@ -1013,7 +1063,9 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertEqual(data["zoom_hex"], "00AA")
         expected_port = server.DEFAULT_SETTINGS["cameras"][0]["port"]
         expected_visca_addr = server.DEFAULT_SETTINGS["cameras"][0]["viscaAddr"]
-        mock_inquire.assert_called_once_with("10.0.0.9", expected_port, expected_visca_addr)
+        mock_inquire.assert_called_once_with(
+            "10.0.0.9", expected_port, expected_visca_addr
+        )
 
     # ── position recording on capture ──────────────────────────────────────────
 
@@ -1090,7 +1142,9 @@ class TestHTTPRoutes(unittest.TestCase):
             self.srv.post("/api/image/0/5", fake_jpeg, "image/jpeg")
 
         # Confirm position was saved
-        self.assertEqual(server.load_settings()["positions"].get("0:5", {}).get("pan_hex"), "1234")
+        self.assertEqual(
+            server.load_settings()["positions"].get("0:5", {}).get("pan_hex"), "1234"
+        )
 
         # Delete image
         status, body = self.srv.delete("/api/image/0/5")
@@ -1214,7 +1268,10 @@ class TestProbeRecallCommandSucceeded(unittest.TestCase):
     def test_returns_true_with_ack_and_completion_replies(self):
         result = SimpleNamespace(
             error=None,
-            replies=[self._reply("ack", b"\x90\x41\xff"), self._reply("completion", b"\x90\x51\xff")],
+            replies=[
+                self._reply("ack", b"\x90\x41\xff"),
+                self._reply("completion", b"\x90\x51\xff"),
+            ],
         )
         self.assertTrue(server._probe_recall_command_succeeded(result))
 
@@ -1249,28 +1306,40 @@ class TestProbeRecallCommandSucceeded(unittest.TestCase):
 
 class TestProbeAutocutReady(unittest.TestCase):
     def test_returns_true_when_settled(self):
-        result = SimpleNamespace(error=None, replies=[], settled=True, saw_completion=False)
+        result = SimpleNamespace(
+            error=None, replies=[], settled=True, saw_completion=False
+        )
         self.assertTrue(server._probe_autocut_ready(result))
 
     def test_returns_true_when_saw_completion(self):
-        result = SimpleNamespace(error=None, replies=[], settled=False, saw_completion=True)
+        result = SimpleNamespace(
+            error=None, replies=[], settled=False, saw_completion=True
+        )
         self.assertTrue(server._probe_autocut_ready(result))
 
     def test_returns_true_when_both_settled_and_saw_completion(self):
-        result = SimpleNamespace(error=None, replies=[], settled=True, saw_completion=True)
+        result = SimpleNamespace(
+            error=None, replies=[], settled=True, saw_completion=True
+        )
         self.assertTrue(server._probe_autocut_ready(result))
 
     def test_returns_false_when_neither_settled_nor_saw_completion(self):
-        result = SimpleNamespace(error=None, replies=[], settled=False, saw_completion=False)
+        result = SimpleNamespace(
+            error=None, replies=[], settled=False, saw_completion=False
+        )
         self.assertFalse(server._probe_autocut_ready(result))
 
     def test_returns_false_when_error_even_if_settled(self):
-        result = SimpleNamespace(error="timeout", replies=[], settled=True, saw_completion=True)
+        result = SimpleNamespace(
+            error="timeout", replies=[], settled=True, saw_completion=True
+        )
         self.assertFalse(server._probe_autocut_ready(result))
 
     def test_returns_false_when_error_is_empty_string(self):
         # error=None is the only "no error" signal; empty string should still fail
-        result = SimpleNamespace(error="", replies=[], settled=True, saw_completion=True)
+        result = SimpleNamespace(
+            error="", replies=[], settled=True, saw_completion=True
+        )
         # Per implementation: `result.error is None` — empty string is not None
         self.assertFalse(server._probe_autocut_ready(result))
 
@@ -1282,8 +1351,15 @@ class TestFormatProbeMessage(unittest.TestCase):
     def _reply(self, kind, payload=b""):
         return SimpleNamespace(kind=kind, payload=payload)
 
-    def _result(self, *, replies=None, settled=False, saw_completion=False,
-                samples=None, error=None):
+    def _result(
+        self,
+        *,
+        replies=None,
+        settled=False,
+        saw_completion=False,
+        samples=None,
+        error=None,
+    ):
         return SimpleNamespace(
             replies=replies or [],
             settled=settled,
@@ -1373,7 +1449,16 @@ class TestDefaultSettingsCamera4(unittest.TestCase):
 
     def test_camera4_has_all_required_keys(self):
         cam = self._cam4()
-        for key in ("name", "ip", "port", "viscaAddr", "atemInput", "streamUrl", "usbDevice", "enabled"):
+        for key in (
+            "name",
+            "ip",
+            "port",
+            "viscaAddr",
+            "atemInput",
+            "streamUrl",
+            "usbDevice",
+            "enabled",
+        ):
             self.assertIn(key, cam)
 
     def test_auto_cut_enabled_removed_from_default_settings(self):
@@ -1397,8 +1482,15 @@ class TestAtemStateConfirmTimeout(unittest.TestCase):
 
 
 class TestRecallViscaPresetEdgeCases(unittest.TestCase):
-    def _make_probe_result(self, *, settled=False, saw_completion=False,
-                           samples=None, error=None, replies=None):
+    def _make_probe_result(
+        self,
+        *,
+        settled=False,
+        saw_completion=False,
+        samples=None,
+        error=None,
+        replies=None,
+    ):
         return SimpleNamespace(
             replies=replies or [],
             saw_completion=saw_completion,
@@ -1410,20 +1502,28 @@ class TestRecallViscaPresetEdgeCases(unittest.TestCase):
     def test_autocut_mode_accepts_settled_without_completion(self):
         probe_result = self._make_probe_result(settled=True, saw_completion=False)
         with patch("server._probe_preset", return_value=probe_result):
-            payload = server.recall_visca_preset("10.0.0.1", 52381, 3, 1, wait_mode="autocut")
+            payload = server.recall_visca_preset(
+                "10.0.0.1", 52381, 3, 1, wait_mode="autocut"
+            )
         self.assertTrue(payload["success"])
         self.assertEqual(payload["waitMode"], "autocut")
 
     def test_autocut_mode_fails_when_error_even_if_settled(self):
-        probe_result = self._make_probe_result(settled=True, saw_completion=True, error="probe error")
+        probe_result = self._make_probe_result(
+            settled=True, saw_completion=True, error="probe error"
+        )
         with patch("server._probe_preset", return_value=probe_result):
-            payload = server.recall_visca_preset("10.0.0.1", 52381, 3, 1, wait_mode="autocut")
+            payload = server.recall_visca_preset(
+                "10.0.0.1", 52381, 3, 1, wait_mode="autocut"
+            )
         self.assertFalse(payload["success"])
 
     def test_autocut_mode_fails_when_neither_settled_nor_completion(self):
         probe_result = self._make_probe_result(settled=False, saw_completion=False)
         with patch("server._probe_preset", return_value=probe_result):
-            payload = server.recall_visca_preset("10.0.0.1", 52381, 3, 1, wait_mode="autocut")
+            payload = server.recall_visca_preset(
+                "10.0.0.1", 52381, 3, 1, wait_mode="autocut"
+            )
         self.assertFalse(payload["success"])
         self.assertIn("not confirmed", payload["message"])
 
@@ -1431,20 +1531,26 @@ class TestRecallViscaPresetEdgeCases(unittest.TestCase):
         error_reply = SimpleNamespace(kind="error", payload=b"\x90\x60\x02\xff")
         probe_result = self._make_probe_result(replies=[error_reply])
         with patch("server._probe_preset", return_value=probe_result):
-            payload = server.recall_visca_preset("10.0.0.1", 52381, 3, 1, wait_mode="confirm")
+            payload = server.recall_visca_preset(
+                "10.0.0.1", 52381, 3, 1, wait_mode="confirm"
+            )
         self.assertFalse(payload["success"])
 
     def test_unknown_wait_mode_normalizes_to_settle(self):
         probe_result = self._make_probe_result(settled=True)
         with patch("server._probe_preset", return_value=probe_result):
-            payload = server.recall_visca_preset("10.0.0.1", 52381, 1, 1, wait_mode="unknown_mode")
+            payload = server.recall_visca_preset(
+                "10.0.0.1", 52381, 1, 1, wait_mode="unknown_mode"
+            )
         self.assertEqual(payload["waitMode"], "settle")
         self.assertTrue(payload["success"])
 
     def test_none_wait_mode_normalizes_to_settle(self):
         probe_result = self._make_probe_result(settled=True)
         with patch("server._probe_preset", return_value=probe_result):
-            payload = server.recall_visca_preset("10.0.0.1", 52381, 1, 1, wait_mode=None)
+            payload = server.recall_visca_preset(
+                "10.0.0.1", 52381, 1, 1, wait_mode=None
+            )
         self.assertEqual(payload["waitMode"], "settle")
         self.assertTrue(payload["success"])
 
@@ -1452,7 +1558,9 @@ class TestRecallViscaPresetEdgeCases(unittest.TestCase):
         for mode in ("settle", "confirm", "autocut", "dwell"):
             probe_result = self._make_probe_result(settled=True, saw_completion=True)
             with patch("server._probe_preset", return_value=probe_result):
-                payload = server.recall_visca_preset("10.0.0.1", 52381, 1, 1, wait_mode=mode)
+                payload = server.recall_visca_preset(
+                    "10.0.0.1", 52381, 1, 1, wait_mode=mode
+                )
             self.assertIn("waitMode", payload, f"waitMode missing for mode={mode!r}")
             self.assertEqual(payload["waitMode"], mode)
 
