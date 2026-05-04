@@ -152,7 +152,7 @@ Or add an explicit bounds check with a clear error message.
 
 **Proposal:** Consider a smaller initial backoff (e.g., 1 second) or a sequence: try immediately, then 1s, 2s, 3s with exponential backoff. This trades reconnect latency for slightly higher CPU in the steady state.
 
-**Trade-off:** Very minor. Could be added later if operators report slow recovery from brief disconnects.
+**Trade-off:** Very minor. This can be added later if operators report slow recovery from brief disconnects.
 
 ---
 
