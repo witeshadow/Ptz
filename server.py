@@ -1086,12 +1086,11 @@ def _pw_capture_url_impl(url: str) -> bytes:
 
 
 def _capture_url(url: str) -> bytes:
-    """Queue URL capture to the dedicated Playwright worker thread."""
-    if not _pw_ready.is_set():
-        raise RuntimeError("Playwright initializing; try again")
-    if _pw_ctx is None:
-        raise RuntimeError("Playwright not initialized; URL capture unavailable")
-    # Queue the request and wait for result
+    """Queue URL capture to the dedicated Playwright worker thread.
+
+    Assumes Playwright has been initialized (_pw_ctx is not None).
+    Call site should check before calling.
+    """
     result_queue = queue.Queue()
     _pw_queue.put((url, result_queue))
     status, result = result_queue.get(timeout=35)
@@ -1758,6 +1757,15 @@ class Handler(BaseHTTPRequestHandler):
                         {
                             "ok": False,
                             "error": "playwright not installed — run: pip install playwright && playwright install chromium",
+                        },
+                    )
+                    return
+                if _pw_ctx is None:
+                    self._json(
+                        503,
+                        {
+                            "ok": False,
+                            "error": "playwright failed to initialize; check server logs",
                         },
                     )
                     return
