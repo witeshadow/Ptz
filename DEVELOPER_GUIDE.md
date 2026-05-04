@@ -168,8 +168,8 @@ git branch -d feature/your-feature-name
 
 ```bash
 git status                    # What files changed?
-git diff                      # Show all changes (staged + unstaged)
-git diff --staged             # Show only staged changes
+git diff                      # Show unstaged changes only
+git diff --staged             # Show staged changes only
 git log --oneline -5          # Last 5 commits
 ```
 
@@ -310,7 +310,10 @@ Test locally by:
 ```bash
 ruff check server.py
 python -m py_compile server.py
+# If using uv:
 uv run pytest tests/test_frontend_contracts.py
+# If using pip:
+pytest tests/test_frontend_contracts.py
 ```
 
 **Manually test:**
@@ -386,7 +389,7 @@ See CLAUDE.md for more on live-production guardrails.
 | Undo commit | `git reset --soft HEAD~1` |
 | Run app | `python server.py` |
 | Check code | `ruff check server.py` |
-| Run tests | `uv run pytest tests/` |
+| Run tests | `uv run pytest tests/` or `pytest tests/` |
 
 ---
 
