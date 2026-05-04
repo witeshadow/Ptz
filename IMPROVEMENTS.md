@@ -1,12 +1,88 @@
-# PTZ Preset Control — Proposed Improvements
+# PTZ Preset Control — Improvements
 
-## 1. Remove Duplicate Function Definitions (High Priority)
+## ✅ Completed in This PR
 
-**Location:** Functions `_send_atem_aux_source()` and `_wait_for_atem_aux_source()` in `server.py`
+### 1. Remove Duplicate Function Definitions (HIGH PRIORITY)
+**Status:** ✅ Implemented  
+**Commit:** `c29e1b0`
 
-These functions are defined twice: the first pair is immediately shadowed by identical definitions later in the file. This is a bug that should be fixed immediately by removing the duplicate definitions.
+Removed duplicate definitions of `_send_atem_aux_source()` and `_wait_for_atem_aux_source()` that were shadowing the first pair (lines 533–550 deleted). The duplicate code eliminated confusion and removed a maintenance hazard.
 
-**Impact:** Reduces code size, eliminates confusion, and removes a maintenance hazard.
+**Impact:** ~18 lines of dead code removed.
+
+---
+
+### 3. Consolidate Endpoint Validation Logic (MEDIUM PRIORITY)
+**Status:** ✅ Implemented  
+**Commit:** `c29e1b0`
+
+Extracted validation helpers:
+- `_require_atem_enabled_and_connected()` - checks ATEM enabled/connected state
+- `_require_camera(settings, cam_idx)` - validates camera index and returns camera config to avoid TOCTOU race
+
+Refactored three HTTP handlers to use helpers:
+- `_handle_atem_cut()` - uses ATEM validation
+- `_handle_atem_preview_post()` - uses both helpers
+- `_handle_atem_aux_route()` - uses both helpers
+
+**Impact:** Removed ~40 lines of duplicate validation code. Improved consistency and eliminated TOCTOU race condition.
+
+---
+
+### 4. Add Logging for Long-Running Operations (MEDIUM PRIORITY)
+**Status:** ✅ Implemented  
+**Commit:** `c29e1b0`
+
+Added diagnostic logging to:
+- `inquire_visca_absolute_position()` - logs when inquiry fails  
+- `_try_record_position()` - logs when recording is skipped (unconfigured camera, failed inquiry, out-of-bounds index)
+- `capture_usb_device()` - logs each device attempt and fallback reason (ffmpeg variants, cv2 fallback)
+
+**Impact:** Improved debuggability for operators troubleshooting captures and position recording.
+
+---
+
+## 📋 Pending Improvements
+
+## 2. Refactor State Management Into a Dedicated Module (LOW PRIORITY)
+
+**Current state:** Global state for ATEM, SSE clients, and Playwright instances is scattered across module-level variables with separate locks:
+- `_atem_state` + `_atem_state_lock`
+- `_atem_last_action` + `_atem_last_action_lock`
+- `_atem_conn` + `_atem_conn_lock`
+- `_sse_clients` + `_sse_lock`
+- `_pw_ctx`, `_pw_browser`, `_pw_page` + `_pw_lock`
+
+**Proposal:** Extract a `StateManager` class that consolidates thread-safe state operations. This would:
+- Reduce boilerplate lock management
+- Make state access more discoverable
+- Enable easier state debugging/inspection
+- Provide a clear place to add state validation in future
+
+**Example shape:**
+
+```python
+import copy
+
+class StateManager:
+    def __init__(self):
+        self._lock = threading.RLock()
+        self._atem = {...}
+        self._atem_last_action = {...}
+        self._atem_conn = {...}
+    
+    def set_atem_preview(self, source: int) -> None:
+        with self._lock:
+            self._atem['preview'] = source
+    
+    def get_atem(self) -> dict:
+        with self._lock:
+            return copy.deepcopy(self._atem)
+    
+    # ... other accessors
+```
+
+**Impact:** Reduces ~100 lines of lock management, improves readability and maintainability. Not urgent but reduces cognitive load for future changes.
 
 ---
 
