@@ -1964,9 +1964,9 @@ class Handler(BaseHTTPRequestHandler):
     def _get_image_position(self, cam: int, preset: int):
         """
         Send the stored VISCA absolute position for a given camera preset as a JSON HTTP response.
-        
+
         If a position exists for the requested camera and preset, responds with HTTP 200 and a JSON body containing "ok": True plus the stored position fields. If no position is found, responds with HTTP 404 and a JSON body containing "ok": False and an "error" message.
-        
+
         Parameters:
             cam (int): Camera index.
             preset (int): Preset number.
@@ -1981,9 +1981,9 @@ class Handler(BaseHTTPRequestHandler):
     def _post_image(self, cam: int, preset: int):
         """
         Handle an uploaded JPEG for a camera preset, record the camera's VISCA absolute position, persist the image file, and update settings.
-        
+
         Attempts to record the current VISCA absolute position for the given camera and preset; if position recording fails, responds with HTTP 400 and does not save the image or modify settings. On successful position recording, writes the uploaded bytes to data/images/<cam>_<preset>.jpg, calls write_settings(settings) to persist the updated positions, and responds with HTTP 200 including the recorded position. If saving the file or persisting settings fails, removes any partially written file (best-effort) and responds with HTTP 500 describing the failure.
-        
+
         Parameters:
             cam (int): Zero-based camera index for which the preset image is being uploaded.
             preset (int): Preset number for the camera.
@@ -2025,11 +2025,11 @@ class Handler(BaseHTTPRequestHandler):
     def _capture_image(self, cam: int, preset: int):
         """
         Capture an image for a camera preset from either a USB device or a stream URL, record the camera's current VISCA absolute position, persist the image file, and respond to the client with the recorded position.
-        
+
         Parameters:
             cam (int): Zero-based camera index to capture for.
             preset (int): Preset slot number to save the image under.
-        
+
         Behavior and responses:
             - On success: sends HTTP 200 with {"ok": True, "position": <position_dict>} where <position_dict> is the recorded VISCA position.
             - If no capture source is provided and none is configured for the camera: sends HTTP 400 with an error.
