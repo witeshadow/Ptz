@@ -1332,6 +1332,13 @@
     <div class="gsp-column gsp-mobile-section active" data-mobile-tab="cameras">
       <div class="gsp-section-title">Camera</div>
       <div class="field">
+        <label for="f-camera-select">Select Camera</label>
+        <select id="f-camera-select"></select>
+        <div id="camera-select-guard" class="field-note" style="color: var(--error); display: none;">
+          Cannot edit active camera in live mode. Exit live mode to modify.
+        </div>
+      </div>
+      <div class="field">
         <label for="f-ip">IP</label>
         <input id="f-ip" type="text" placeholder="192.168.1.100" autocomplete="off" spellcheck="false" />
       </div>
@@ -1652,6 +1659,8 @@
     gridCols: 4,
     gridRows: 3,
     fillWindow: false,
+    // Per-device settings (keyed by device ID)
+    deviceSettings: {},
     // ATEM output → capture source mapping (persisted)
     atemOutputMap: {
       webcam: { webcam: '', streamUrl: '' },
@@ -1672,6 +1681,60 @@
     aux4Source: 0,
   };
   const bootImageVersion = Date.now();
+
+  // Generate a UUID v4
+  function generateUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
+  // Device ID for multi-device support; stays in localStorage
+  function getDeviceId() {
+    let id = localStorage.getItem('ptz-device-id');
+    if (!id) {
+      id = generateUUID();
+      localStorage.setItem('ptz-device-id', id);
+    }
+    return id;
+  }
+
+  // Per-device preset range management
+  function getDevicePresetRange() {
+    const deviceId = getDeviceId();
+    const devSettings = state.deviceSettings[deviceId];
+    if (devSettings && devSettings.presetStart != null && devSettings.presetEnd != null) {
+      return { start: devSettings.presetStart, end: devSettings.presetEnd };
+    }
+    return { start: state.presetStart, end: state.presetEnd };
+  }
+
+  function setDevicePresetRange(start, end) {
+    const deviceId = getDeviceId();
+    if (!state.deviceSettings[deviceId]) {
+      state.deviceSettings[deviceId] = {};
+    }
+    state.deviceSettings[deviceId].presetStart = start;
+    state.deviceSettings[deviceId].presetEnd = end;
+  }
+
+  // Per-device auto-cut setting (persisted in deviceSettings)
+  function getDeviceAutoCutArmed() {
+    const deviceId = getDeviceId();
+    const devSettings = state.deviceSettings[deviceId];
+    return devSettings && devSettings.autoCutArmed === true;
+  }
+
+  function setDeviceAutoCutArmed(armed) {
+    const deviceId = getDeviceId();
+    if (!state.deviceSettings[deviceId]) {
+      state.deviceSettings[deviceId] = {};
+    }
+    state.deviceSettings[deviceId].autoCutArmed = !!armed;
+    schedSave();
+  }
 
   // webcamDeviceId is browser-specific; stays in localStorage
   function getWebcamDeviceId()      { return localStorage.getItem('ptz-webcam-device') || ''; }
@@ -1791,6 +1854,7 @@
         if (s.activeCamAux) state.activeCamAux = normalizeActiveCamAux(s.activeCamAux);
         if (s.positions) state.positions = { ...s.positions };
         if (s.joystick) state.joystick = normalizeJoystickSettings(s.joystick);
+        if (s.deviceSettings) state.deviceSettings = { ...s.deviceSettings };
       }
     } catch (_) {}
   }
@@ -2377,6 +2441,7 @@
     state.activeCam = idx;
     schedSave();
     loadCameraSettings();
+    updateCameraSelectUi();
     renderTabs();
     refreshGridForActiveCamera();
     applyGridLayout();
@@ -2404,6 +2469,7 @@
       nameEl.textContent    = v;
       nameEl.style.display  = '';
       nameWrap.removeChild(inp);
+      initCameraSelector();
     }
 
     inp.addEventListener('blur', commit);
@@ -2414,6 +2480,8 @@
   }
 
   // ── Settings bar ───────────────────────────────────────────────────────────
+  const elCameraSelect = document.getElementById('f-camera-select');
+  const elCameraSelectGuard = document.getElementById('camera-select-guard');
   const elIp        = document.getElementById('f-ip');
   const elPort      = document.getElementById('f-port');
   const elVisca     = document.getElementById('f-visca');
@@ -2425,6 +2493,8 @@
   const elDwell     = document.getElementById('f-dwell');
   const elAutoCutDelay = document.getElementById('f-auto-cut-delay');
 
+  let settingsCameraIdx = 0;
+
   function updateScanWaitModeUi() {
     const manual = state.scanWaitMode === 'dwell';
     if (elScanWaitMode) elScanWaitMode.value = manual ? 'dwell' : 'settle';
@@ -2432,10 +2502,10 @@
     if (elScanDwellField) elScanDwellField.style.opacity = manual ? '1' : '0.6';
   }
 
-  function updateCameraStatusHints() {
+  function updateCameraStatusHints(camIdx = state.activeCam) {
     if (elAtemStatus) {
-      const atemInput = getCameraAtemInput(state.activeCam);
-      const busStatus = getCameraAtemBusStatus(state.activeCam);
+      const atemInput = getCameraAtemInput(camIdx);
+      const busStatus = getCameraAtemBusStatus(camIdx);
 
       let statusText = '';
       let statusClass = '';
@@ -2458,12 +2528,12 @@
       elAtemStatus.className = 'status-hint ' + statusClass;
     }
     if (elCaptureSourceStatus) {
-      elCaptureSourceStatus.textContent = `Scan capture source: ${getCameraCaptureSourceSummary(state.activeCam)}`;
+      elCaptureSourceStatus.textContent = `Scan capture source: ${getCameraCaptureSourceSummary(camIdx)}`;
     }
   }
 
   function loadCameraSettings() {
-    const cam = state.cameras[state.activeCam];
+    const cam = state.cameras[settingsCameraIdx];
     elIp.value        = cam.ip;
     elPort.value      = cam.port;
     elVisca.value     = cam.viscaAddr;
@@ -2479,7 +2549,8 @@
     const url = cam.streamUrl || '';
     elStreamUrl.value = url;
     applyStreamUrl(url);
-    updateCameraStatusHints();
+    updateCameraStatusHints(settingsCameraIdx);
+    updateCameraSelectUi();
   }
 
   function updateCaptureModeVisibility() {
@@ -2491,7 +2562,7 @@
   }
 
   function saveCameraSettings() {
-    const cam      = state.cameras[state.activeCam];
+    const cam      = state.cameras[settingsCameraIdx];
     cam.ip         = elIp.value.trim();
     cam.port       = parseInt(elPort.value, 10) || 52381;
     cam.viscaAddr  = parseInt(elVisca.value, 10) || 1;
@@ -2505,6 +2576,39 @@
     state.autoCutDelayMs = Math.max(0, Math.round(((parseFloat((elAutoCutDelay && elAutoCutDelay.value) || '0') || 0) * 1000)));
     updateCameraStatusHints();
     updateScanWaitModeUi();
+  }
+
+  function updateCameraSelectUi() {
+    const isLiveAndActive = state.liveMode && settingsCameraIdx === state.activeCam;
+    if (elCameraSelect) {
+      elCameraSelect.value = String(settingsCameraIdx);
+    }
+    if (elCameraSelectGuard) {
+      elCameraSelectGuard.style.display = isLiveAndActive ? 'block' : 'none';
+    }
+    // Disable camera input fields when editing the active camera in live mode
+    [elIp, elPort, elVisca, elAtemInput, elUsbDevice, elStreamUrl].forEach(el => {
+      if (el) el.disabled = isLiveAndActive;
+    });
+  }
+
+  function initCameraSelector() {
+    if (!elCameraSelect) return;
+    elCameraSelect.innerHTML = '';
+    state.cameras.forEach((cam, idx) => {
+      const opt = document.createElement('option');
+      opt.value = String(idx);
+      opt.textContent = cam.name;
+      elCameraSelect.appendChild(opt);
+    });
+    updateCameraSelectUi();
+  }
+
+  if (elCameraSelect) {
+    elCameraSelect.addEventListener('change', (e) => {
+      settingsCameraIdx = parseInt(e.target.value, 10) || 0;
+      loadCameraSettings();
+    });
   }
 
   [elIp, elPort, elVisca, elAtemInput, elDwell, elScanWaitMode].forEach(el =>
@@ -2956,6 +3060,7 @@
 
   function setAutoCutArmed(nextArmed) {
     autoCutArmed = !!nextArmed && canArmAutoCut() && !!getActiveCameraCutSource();
+    setDeviceAutoCutArmed(autoCutArmed);
     if (!autoCutArmed) clearPendingAutoCut();
     updateAutoCutButton();
   }
@@ -3145,6 +3250,7 @@
       }
       updateLiveModeButton();
       if (updateLockIcon) updateLockIcon();
+      updateCameraSelectUi();
       schedSave();
       renderTabs();
       updateToolbarVisibility();
@@ -3238,8 +3344,9 @@
   }
 
   function loadGridSettings() {
-    elGspStart.value  = state.presetStart !== undefined && state.presetStart !== null ? state.presetStart : 0;
-    elGspEnd.value    = state.presetEnd !== undefined && state.presetEnd !== null ? state.presetEnd : 11;
+    const range = getDevicePresetRange();
+    elGspStart.value  = range.start !== undefined && range.start !== null ? range.start : 0;
+    elGspEnd.value    = range.end !== undefined && range.end !== null ? range.end : 11;
     elGspCols.value   = state.gridCols !== undefined && state.gridCols !== null ? state.gridCols : 4;
     elGspRows.value   = state.gridRows !== undefined && state.gridRows !== null ? state.gridRows : 3;
     elGspFill.checked = !!state.fillWindow;
@@ -3248,8 +3355,11 @@
   }
 
   function saveGridSettings() {
-    state.presetStart = Math.max(0, parseInt(elGspStart.value, 10) || 0);
-    state.presetEnd   = Math.max(state.presetStart + 1, parseInt(elGspEnd.value, 10) || 11);
+    const start = Math.max(0, parseInt(elGspStart.value, 10) || 0);
+    const end = Math.max(start + 1, parseInt(elGspEnd.value, 10) || 11);
+    state.presetStart = start;
+    state.presetEnd = end;
+    setDevicePresetRange(start, end);
     state.gridCols    = Math.max(1, parseInt(elGspCols.value, 10) || 4);
     state.gridRows    = Math.max(1, parseInt(elGspRows.value, 10) || 3);
     state.fillWindow  = elGspFill.checked;
@@ -3724,14 +3834,14 @@
 
   elStreamUrl.addEventListener('change', () => {
     const url = elStreamUrl.value.trim();
-    state.cameras[state.activeCam].streamUrl = url;
+    state.cameras[settingsCameraIdx].streamUrl = url;
     schedSave();
     if (url) elWebcam.value = '';
     applyStreamUrl(url);
   });
 
   elUsbDevice.addEventListener('change', () => {
-    state.cameras[state.activeCam].usbDevice = elUsbDevice.value;
+    state.cameras[settingsCameraIdx].usbDevice = elUsbDevice.value;
     schedSave();
     updateCameraStatusHints();
   });
@@ -3898,7 +4008,8 @@
 
   function presetNumbers() {
     const nums = [];
-    for (let n = state.presetStart; n <= state.presetEnd; n++) nums.push(n);
+    const range = getDevicePresetRange();
+    for (let n = range.start; n <= range.end; n++) nums.push(n);
     return nums;
   }
 
@@ -4283,6 +4394,9 @@
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
           ip: cam.ip, port: cam.port, camera: cam.viscaAddr, preset, waitMode,
+          // TODO: deviceId reserved for future multi-device action queueing (Issue #64)
+          // Backend /recall handler will use this to queue commands per device
+          deviceId: getDeviceId(),
         }),
       });
       return await res.json();
@@ -4500,8 +4614,12 @@
   // ── Boot ───────────────────────────────────────────────────────────────────
   (async function boot() {
     await loadSettings();
+    settingsCameraIdx = state.activeCam ?? 0;
+    // Hydrate runtime auto-cut armed state from persisted device settings
+    autoCutArmed = getDeviceAutoCutArmed() && canArmAutoCut() && !!getActiveCameraCutSource();
     updateLiveModeButton();
     if (updateLockIcon) updateLockIcon();
+    initCameraSelector();
     loadCameraSettings();
     loadGridSettings();
     loadJoystickSettings();
