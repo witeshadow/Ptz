@@ -1088,7 +1088,7 @@ def capture_usb_device(index: str) -> bytes:
                 break
             else:
                 if _HAS_CV2:
-                    print(f"[Capture] avfoundation exhausted all options, fallback to cv2…")
+                    print("[Capture] avfoundation exhausted all options, fallback to cv2…")
                     return _capture_cv2(int(index))
                 raise RuntimeError(
                     f"ffmpeg avfoundation failed for device {index!r}. "
@@ -1113,7 +1113,7 @@ def capture_usb_device(index: str) -> bytes:
             ]
             if not _ffmpeg_grab(args, tmp):
                 if _HAS_CV2:
-                    print(f"[Capture] v4l2 failed, fallback to cv2…")
+                    print("[Capture] v4l2 failed, fallback to cv2…")
                     return _capture_cv2(int(index))
                 raise RuntimeError(f"ffmpeg v4l2 failed for /dev/video{index}")
 
