@@ -1725,7 +1725,12 @@ class Handler(BaseHTTPRequestHandler):
                             400,
                             {
                                 "ok": False,
-                                "error": "vdo.ninja uses WebRTC streaming which cannot be captured by headless browser. Use a standard RTMP/HLS stream instead, or convert vdo.ninja to a standard format with ffmpeg.",
+                                "error": (
+                                    "vdo.ninja uses WebRTC streaming which cannot be "
+                                    "captured by headless browser. Use a standard RTMP/HLS "
+                                    "stream instead, or convert vdo.ninja to a standard "
+                                    "format with ffmpeg."
+                                ),
                             },
                         )
                         return
