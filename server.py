@@ -960,6 +960,107 @@ def send_visca_preset_recall(
         sock.close()
 
 
+def send_visca_command(
+    ip: str, port: int, command: bytes, camera_address: int = 1, timeout_s: float = 0.5
+) -> tuple[bool, str]:
+    global _sequence_number
+    camera_byte = 0x80 | (camera_address & 0x07)
+    expected_reply_byte = ((camera_address + 8) << 4) & 0xF0
+    visca_payload = bytes([camera_byte]) + command + b"\xff"
+    with _seq_lock:
+        seq = _sequence_number
+        _sequence_number = (_sequence_number + 1) & 0xFFFFFFFF
+    header = struct.pack(">HHI", 0x0100, len(visca_payload), seq)
+    packet = header + visca_payload
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(timeout_s)
+    try:
+        sock.sendto(packet, (ip, port))
+        deadline = time.monotonic() + timeout_s
+        ack_payload = None
+        completion_payload = None
+        raw_payloads = []
+        responder_note = None
+
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            sock.settimeout(remaining)
+            try:
+                response, _ = sock.recvfrom(1024)
+            except socket.timeout:
+                break
+
+            payload = response[8:] if len(response) >= 8 else response
+            if len(payload) < 3 or payload[-1] != 0xFF:
+                continue
+            raw_payloads.append(payload.hex())
+            if payload[0] != expected_reply_byte and responder_note is None:
+                responder_note = (
+                    f"unexpected responder 0x{payload[0]:02x} "
+                    f"(expected 0x{expected_reply_byte:02x})"
+                )
+
+            code = payload[1]
+            if code == 0x41:
+                ack_payload = payload
+            elif code == 0x51:
+                completion_payload = payload
+                break
+            elif code & 0xF0 == 0x60:
+                return False, f"VISCA error {payload.hex()}"
+
+        suffix = f" [{responder_note}]" if responder_note else ""
+        if completion_payload and ack_payload:
+            return (
+                True,
+                f"ACK {ack_payload.hex()} • Completion {completion_payload.hex()}{suffix}",
+            )
+        if completion_payload:
+            return True, f"Completion {completion_payload.hex()}{suffix}"
+        if ack_payload:
+            return True, f"ACK {ack_payload.hex()} (no completion received){suffix}"
+        if raw_payloads:
+            return (
+                True,
+                f"Command sent (unparsed VISCA response: {' | '.join(raw_payloads)})",
+            )
+        return True, "Command sent (no VISCA response received)"
+    except OSError as exc:
+        return False, str(exc)
+    finally:
+        sock.close()
+
+
+def send_visca_pan_tilt_drive(
+    ip: str,
+    port: int,
+    pan_speed: int,
+    tilt_speed: int,
+    pan_dir: int,
+    tilt_dir: int,
+    camera_address: int = 1,
+) -> tuple[bool, str]:
+    pan_speed = max(1, min(0x18, int(pan_speed or 1)))
+    tilt_speed = max(1, min(0x18, int(tilt_speed or 1)))
+    command = bytes([0x01, 0x06, 0x01, pan_speed, tilt_speed, pan_dir, tilt_dir])
+    return send_visca_command(ip, port, command, camera_address=camera_address)
+
+
+def send_visca_zoom_drive(
+    ip: str, port: int, zoom_value: float, camera_address: int = 1
+) -> tuple[bool, str]:
+    zoom_abs = min(1.0, abs(float(zoom_value or 0.0)))
+    zoom_speed = max(0, min(7, int(round(zoom_abs * 7))))
+    if zoom_speed <= 0:
+        zoom_cmd = 0x00
+    else:
+        zoom_cmd = 0x20 | zoom_speed if zoom_value > 0 else 0x30 | zoom_speed
+    command = bytes([0x01, 0x04, 0x07, zoom_cmd])
+    return send_visca_command(ip, port, command, camera_address=camera_address)
+
+
 def inquire_visca_pan_tilt_position(
     ip: str, port: int, camera_address: int = 1
 ) -> tuple[bool, dict | str]:
@@ -1316,6 +1417,24 @@ def _require_atem_enabled_and_connected() -> tuple[bool, dict | None]:
     return True, None
 
 
+def _live_movement_block_reason(settings: dict, cam_idx: int, cfg: dict) -> str | None:
+    if not settings.get("liveMode") or not settings.get("lockLiveMode"):
+        return None
+    if not settings.get("atem", {}).get("enabled"):
+        return None
+    atem_input = int(cfg.get("atemInput", 0) or 0)
+    if atem_input <= 0:
+        return None
+    atem = _get_atem()
+    if not atem.get("connected"):
+        return "ATEM is disconnected. Live lock stays enabled until program state can be confirmed."
+    if int(atem.get("program", 0) or 0) == atem_input:
+        return (
+            "LIVE camera is locked. Switch cameras or unlock Live mode before moving."
+        )
+    return None
+
+
 def _require_camera(
     settings: dict, cam_idx: int
 ) -> tuple[bool, dict | None, dict | None]:
@@ -1413,6 +1532,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_recall()
         elif path == "/atem/cut":
             self._handle_atem_cut()
+        elif path == "/api/ptz/drive":
+            self._handle_ptz_drive()
         elif path == "/api/atem/preview":
             self._handle_atem_preview_post()
         elif path == "/api/atem/aux-route":
@@ -1464,6 +1585,80 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True})
         except Exception as e:
             self._json(400, {"ok": False, "error": str(e)})
+
+    def _handle_ptz_drive(self):
+        body = self._read_body()
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            self._json(400, {"ok": False, "error": "Invalid JSON"})
+            return
+
+        try:
+            cam_idx = int(data.get("camIdx", -1))
+            pan = max(-1.0, min(1.0, float(data.get("pan", 0) or 0)))
+            tilt = max(-1.0, min(1.0, float(data.get("tilt", 0) or 0)))
+            zoom = max(-1.0, min(1.0, float(data.get("zoom", 0) or 0)))
+        except (TypeError, ValueError):
+            self._json(400, {"ok": False, "error": "Invalid PTZ command payload"})
+            return
+
+        settings = load_settings()
+        cameras = settings.get("cameras") or []
+        if cam_idx < 0 or cam_idx >= len(cameras):
+            self._json(404, {"ok": False, "error": "Camera not found"})
+            return
+
+        cfg = cameras[cam_idx] or {}
+        ip = str(cfg.get("ip", "")).strip()
+        if not ip:
+            self._json(400, {"ok": False, "error": "Camera IP is required"})
+            return
+
+        block_reason = _live_movement_block_reason(settings, cam_idx, cfg)
+        if block_reason:
+            self._json(409, {"ok": False, "error": block_reason})
+            return
+
+        port = int(cfg.get("port", 52381) or 52381)
+        visca_addr = int(cfg.get("viscaAddr", 1) or 1)
+        deadzone = 0.05
+        pan_mag = abs(pan)
+        tilt_mag = abs(tilt)
+        pan_dir = 0x03 if pan_mag < deadzone else (0x01 if pan < 0 else 0x02)
+        tilt_dir = 0x03 if tilt_mag < deadzone else (0x01 if tilt > 0 else 0x02)
+        pan_speed = (
+            1 if pan_dir == 0x03 else max(1, min(0x18, int(round(pan_mag * 0x18))))
+        )
+        tilt_speed = (
+            1 if tilt_dir == 0x03 else max(1, min(0x18, int(round(tilt_mag * 0x18))))
+        )
+
+        pt_ok, pt_message = send_visca_pan_tilt_drive(
+            ip,
+            port,
+            pan_speed,
+            tilt_speed,
+            pan_dir,
+            tilt_dir,
+            camera_address=visca_addr,
+        )
+        zoom_ok, zoom_message = send_visca_zoom_drive(
+            ip, port, zoom, camera_address=visca_addr
+        )
+        ok = pt_ok and zoom_ok
+        self._json(
+            200 if ok else 502,
+            {
+                "ok": ok,
+                "camIdx": cam_idx,
+                "pan": pan,
+                "tilt": tilt,
+                "zoom": zoom,
+                "panTiltMessage": pt_message,
+                "zoomMessage": zoom_message,
+            },
+        )
 
     def _handle_atem_cut(self):
         """
