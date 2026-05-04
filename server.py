@@ -246,12 +246,12 @@ def inquire_visca_absolute_position(
 ) -> tuple[bool, dict | str]:
     """
     Query a camera for its absolute pan/tilt/zoom position via VISCA and return the parsed result.
-    
+
     Parameters:
         ip (str): Target camera IP address.
         port (int): Target camera port.
         camera_address (int): VISCA camera logical address (usually 1–7).
-    
+
     Returns:
         tuple:
             - True and a dict with the inquiry result when the probe succeeds.
@@ -539,12 +539,12 @@ def _wait_for_atem_aux_source(
 ) -> bool:
     """
     Waits until the specified AUX output reports the given source or the timeout elapses.
-    
+
     Parameters:
         aux_idx (int): Zero-based AUX index (0 -> "aux1", 1 -> "aux2", etc.).
         source (int): ATEM source id to wait for on the AUX output.
         timeout_s (float): Maximum time in seconds to wait.
-    
+
     Returns:
         True if the AUX routed to `source` before the timeout, False otherwise.
     """
@@ -560,13 +560,13 @@ def _wait_for_atem_aux_source(
 def cut_atem_to_source(source: int, reason: str = "manual") -> tuple[bool, str]:
     """
     Attempt to switch the ATEM to the given program source using a preview-then-cut strategy with fallbacks and record progress to the ATEM last-action state.
-    
+
     Performs staged actions: set preview if required, execute a cut, and if confirmations fail attempt a direct program switch; updates `_atem_last_action` with stage, status, and human-readable messages.
-    
+
     Parameters:
         source (int): Target ATEM source index (must be greater than 0).
         reason (str): Context for the request, typically "manual" or "auto".
-    
+
     Returns:
         tuple: `(ok, message)` where `ok` is `True` if the ATEM ended on the requested source, `False` otherwise, and `message` is a descriptive success or error string.
     """
@@ -1091,14 +1091,14 @@ def _ffmpeg_grab(args: list, tmp: str) -> bool:
 def capture_usb_device(index: str) -> bytes:
     """
     Capture a single JPEG frame from a USB/video device and return its bytes.
-    
+
     Parameters:
         index (str): Device identifier. On macOS this may be an avfoundation device spec (e.g. "0" or "0:none").
                      On Linux this is the numeric video device index (e.g. "0" → /dev/video0).
-    
+
     Returns:
         bytes: JPEG image bytes of the captured frame.
-    
+
     Raises:
         RuntimeError: If ffmpeg capture fails and no cv2 fallback is available, or on macOS when avfoundation
                       cannot access the camera (suggests checking Camera privacy settings).
@@ -1212,12 +1212,12 @@ _MIME = {
 def _try_record_position(settings: dict, cam: int, preset: int) -> dict | None:
     """
     Query a camera's absolute pan/tilt/zoom and store the result in settings["positions"] under the key "{cam}:{preset}".
-    
+
     Parameters:
         settings (dict): Loaded settings dictionary to update; must be written to disk by the caller if persistence is desired.
         cam (int): Camera index within settings["cameras"].
         preset (int): Preset number to use as the storage key suffix.
-    
+
     Returns:
         dict: Position dictionary with keys "pan", "tilt", "zoom", "pan_hex", "tilt_hex", "zoom_hex" on success.
         None: If the camera index is out of bounds, the camera has no IP configured, or the VISCA inquiry fails.
@@ -1259,7 +1259,7 @@ def _try_record_position(settings: dict, cam: int, preset: int) -> dict | None:
 def _require_atem_enabled_and_connected() -> tuple[bool, dict | None]:
     """
     Validate that ATEM is enabled in settings and has an active connection.
-    
+
     Returns:
         (bool, dict|None): Tuple where the first element is `True` when ATEM is enabled and connected, `False` otherwise. The second element is `None` on success or an error response dict (e.g. `{"ok": False, "error": "<message>"}`) describing the failure.
     """
@@ -1276,11 +1276,11 @@ def _require_camera(
 ) -> tuple[bool, dict | None, dict | None]:
     """
     Validate that a zero-based camera index refers to a configured camera.
-    
+
     Parameters:
         settings (dict): Server settings dictionary expected to contain a "cameras" list.
         cam_idx (int): Zero-based index of the camera to validate.
-    
+
     Returns:
         tuple:
             - (bool) True if the camera index is valid, False otherwise.
@@ -1298,11 +1298,11 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):  # noqa: A002
         """
         Log an HTTP request message to standard output prefixed with the client's address.
-        
+
         Parameters:
             format (str): A printf-style format string describing the message.
             *args: Values to be interpolated into `format`.
-        
+
         Description:
             Prints a single line to stdout in the form:
                 "<client-address> — <formatted message>"
@@ -1423,14 +1423,14 @@ class Handler(BaseHTTPRequestHandler):
     def _handle_atem_cut(self):
         """
         Handle POST /atem/cut: validate input, request an ATEM cut, and respond with JSON.
-        
+
         Parses the request JSON body for "source" (int) and optional "reason" ("manual" or "auto", defaults to "manual").
         - Returns HTTP 400 with {"ok": False, "error": ...} when the body is invalid JSON or "source" cannot be parsed as an integer.
         - Calls internal validation to ensure ATEM is enabled and connected; if that check fails responds with the provided error payload and HTTP 409.
         - Invokes cut_atem_to_source(source, reason=reason) and returns:
           - HTTP 200 with {"ok": True, "message": <msg>, "source": <source>, "reason": <reason>, "lastAction": <snapshot>} on success.
           - HTTP 502 with {"ok": False, "message": <msg>, "source": <source>, "reason": <reason>, "lastAction": <snapshot>} on failure.
-        
+
         The JSON response always includes "ok", "message", "source", "reason", and a snapshot of the ATEM last action from _get_atem_last_action().
         """
         body = self._read_body()
@@ -1470,9 +1470,9 @@ class Handler(BaseHTTPRequestHandler):
     def _handle_atem_preview_post(self):
         """
         Handle POST /api/atem/preview: set the ATEM preview source from a camera configuration.
-        
+
         Expects a JSON body with an integer `camIdx` identifying the camera configuration. Validates request JSON and camera index, ensures ATEM is enabled and connected, and that the target camera has an `atemInput` configured. Sends the corresponding preview routing command to the ATEM and returns a JSON response.
-        
+
         Responses:
         - 200: {"ok": true, "message": "<send message>", "source": <atem_input>} on success.
         - 400: {"ok": false, "error": "..."} for invalid JSON, invalid `camIdx`, or when the camera has no ATEM input configured.
@@ -1521,11 +1521,11 @@ class Handler(BaseHTTPRequestHandler):
     def _handle_atem_aux_route(self):
         """
         Route an ATEM AUX channel to a camera's ATEM input based on a JSON POST body.
-        
+
         Expects a JSON body with:
         - "aux": one of "sdi1", "sdi2", "sdi3", "sdi4".
         - "camIdx": integer camera index.
-        
+
         Behavior:
         - Validates JSON and parameters, returns 400 for malformed input or unsupported aux keys.
         - Requires the ATEM feature to be enabled and connected; returns 409 if not available.
@@ -1533,7 +1533,7 @@ class Handler(BaseHTTPRequestHandler):
         - Sends the AUX routing command to the ATEM and returns 502 if the send fails.
         - Waits for ATEM confirmation (1.0s); returns 504 if the routing is not confirmed.
         - On success returns 200 with confirmation details including "aux" and "source".
-        
+
         Responses (examples):
         - 200: {"ok": True, "confirmed": True, "message": <status>, "aux": <aux_key>, "source": <atem_input>}
         - 400: {"ok": False, "error": <message>}
