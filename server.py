@@ -114,6 +114,27 @@ DEFAULT_SETTINGS = {
     "captureOutput": "webcam",
     "activeCamAux": "sdi1",
     "positions": {},
+    "joystick": {
+        "enabled": False,
+        "model": "logitech-extreme-3d",
+        "deadzone": 0.2,
+        "sensitivity": {
+            "pan": 1.0,
+            "tilt": 1.0,
+            "zoom": 0.5,
+        },
+        "axisMap": {
+            "pan": 0,
+            "tilt": 1,
+            "zoom": 2,
+        },
+        "buttonMap": {
+            "preset1": 0,
+            "preset2": 1,
+            "preset3": 2,
+            "preset4": 3,
+        },
+    },
 }
 
 VISCA_RAW_UDP_PORT = 1259
