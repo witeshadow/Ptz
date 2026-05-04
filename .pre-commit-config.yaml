@@ -3,15 +3,12 @@ repos:
     rev: v0.15.12
     hooks:
       - id: ruff-check
-        args: [--fix, .]
-        pass_filenames: false
+        args: [--fix]
       - id: ruff-format
-        args: [.]
-        pass_filenames: false
   - repo: local
     hooks:
       - id: py-compile
         name: python -m py_compile
-        entry: python -m py_compile server.py
+        entry: python -m py_compile
         language: system
-        pass_filenames: false
+        types: [python]
