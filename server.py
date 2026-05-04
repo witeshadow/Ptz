@@ -256,6 +256,9 @@ def inquire_visca_absolute_position(
         )
         return True, result
     except Exception as exc:
+        print(
+            f"[VISCA] Position inquiry failed for {ip}:{port} addr={camera_address}: {exc!r}"
+        )
         return False, str(exc)
 
 
@@ -508,26 +511,6 @@ def _wait_for_atem_preview_source(source: int, timeout_s: float = 1.0) -> bool:
             return True
         time.sleep(0.05)
     return _get_atem().get("preview") == source
-
-
-def _send_atem_aux_source(aux_idx: int, source_id: int) -> tuple[bool, str]:
-    """Route an ATEM AUX output to a given source via CAuS command."""
-    # CAuS payload: mask=0x01, aux channel (0-based), source (big-endian uint16)
-    return _send_atem_command(
-        "CAuS", bytes([0x01, aux_idx]) + struct.pack(">H", source_id)
-    )
-
-
-def _wait_for_atem_aux_source(
-    aux_idx: int, source: int, timeout_s: float = 1.0
-) -> bool:
-    key = f"aux{aux_idx + 1}"
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        if _get_atem().get(key) == source:
-            return True
-        time.sleep(0.05)
-    return _get_atem().get(key) == source
 
 
 def _send_atem_aux_source(aux_idx: int, source_id: int) -> tuple[bool, str]:
@@ -1074,6 +1057,7 @@ def capture_usb_device(index: str) -> bytes:
         tmp = f.name
     try:
         if _IS_MACOS:
+            print(f"[Capture] macOS device={index}, trying avfoundation…")
             # Try each device variant without a forced framerate first (lets avfoundation
             # negotiate the native rate), then retry with supported framerates.
             for device_arg in (index, f"{index}:none"):
@@ -1083,6 +1067,9 @@ def capture_usb_device(index: str) -> bytes:
                     ["-framerate", "30"],
                     [],
                 ):
+                    framerate_str = (
+                        framerate_args[1] if len(framerate_args) > 1 else "auto"
+                    )
                     args = [
                         "ffmpeg",
                         "-y",
@@ -1098,18 +1085,25 @@ def capture_usb_device(index: str) -> bytes:
                         tmp,
                     ]
                     if _ffmpeg_grab(args, tmp):
+                        print(
+                            f"[Capture] Success with device_arg={device_arg} framerate={framerate_str}"
+                        )
                         break
                 else:
                     continue
                 break
             else:
                 if _HAS_CV2:
+                    print(
+                        "[Capture] avfoundation exhausted all options, fallback to cv2…"
+                    )
                     return _capture_cv2(int(index))
                 raise RuntimeError(
                     f"ffmpeg avfoundation failed for device {index!r}. "
                     "Check: System Settings > Privacy > Camera — grant access to Terminal/Python."
                 )
         else:
+            print(f"[Capture] Linux device=/dev/video{index}, trying v4l2…")
             args = [
                 "ffmpeg",
                 "-y",
@@ -1127,6 +1121,7 @@ def capture_usb_device(index: str) -> bytes:
             ]
             if not _ffmpeg_grab(args, tmp):
                 if _HAS_CV2:
+                    print("[Capture] v4l2 failed, fallback to cv2…")
                     return _capture_cv2(int(index))
                 raise RuntimeError(f"ffmpeg v4l2 failed for /dev/video{index}")
 
@@ -1173,15 +1168,22 @@ def _try_record_position(settings: dict, cam: int, preset: int) -> dict | None:
     """
     cams = settings.get("cameras", [])
     if cam < 0 or cam >= len(cams):
+        print(
+            f"[Position] Skip record: camera index {cam} out of bounds (total={len(cams)})"
+        )
         return None
     cfg = cams[cam]
     ip = str(cfg.get("ip", "")).strip()
     if not ip:
+        print(f"[Position] Skip record: camera {cam} has no IP configured")
         return None
     port = int(cfg.get("port", 52381) or 52381)
     visca_addr = int(cfg.get("viscaAddr", 1) or 1)
     ok, result = inquire_visca_absolute_position(ip, port, visca_addr)
     if not ok or not isinstance(result, dict):
+        print(
+            f"[Position] Skip record: inquiry failed for camera {cam} (ok={ok}, result_type={type(result).__name__})"
+        )
         return None
     pos = {
         "pan": result.get("pan"),
@@ -1195,6 +1197,27 @@ def _try_record_position(settings: dict, cam: int, preset: int) -> dict | None:
         settings["positions"] = {}
     settings["positions"][f"{cam}:{preset}"] = pos
     return pos
+
+
+# ── Validation helpers ─────────────────────────────────────────────────────────
+def _require_atem_enabled_and_connected() -> tuple[bool, dict | None]:
+    """Check ATEM enabled and connected. Return (ok, error_response)."""
+    cfg = load_settings().get("atem", {})
+    if not cfg.get("enabled"):
+        return False, {"ok": False, "error": "ATEM is disabled in settings"}
+    if not _get_atem().get("connected"):
+        return False, {"ok": False, "error": "ATEM is not connected"}
+    return True, None
+
+
+def _require_camera(
+    settings: dict, cam_idx: int
+) -> tuple[bool, dict | None, dict | None]:
+    """Validate camera index. Return (ok, error_response, camera_cfg)."""
+    cams = settings.get("cameras", [])
+    if cam_idx < 0 or cam_idx >= len(cams):
+        return False, {"ok": False, "error": "Camera not found"}, None
+    return True, None, cams[cam_idx]
 
 
 # ── HTTP handler ───────────────────────────────────────────────────────────────
@@ -1330,13 +1353,9 @@ class Handler(BaseHTTPRequestHandler):
         if reason not in {"manual", "auto"}:
             reason = "manual"
 
-        cfg = load_settings().get("atem", {})
-        if not cfg.get("enabled"):
-            self._json(409, {"ok": False, "error": "ATEM is disabled in settings"})
-            return
-
-        if not _get_atem().get("connected"):
-            self._json(409, {"ok": False, "error": "ATEM is not connected"})
+        ok, error_resp = _require_atem_enabled_and_connected()
+        if not ok:
+            self._json(409, error_resp)
             return
 
         ok, message = cut_atem_to_source(source, reason=reason)
@@ -1366,23 +1385,19 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"ok": False, "error": "Invalid camIdx"})
             return
 
+        ok, error_resp = _require_atem_enabled_and_connected()
+        if not ok:
+            self._json(409, error_resp)
+            return
+
         settings = load_settings()
-        cfg = settings.get("atem", {})
-        if not cfg.get("enabled"):
-            self._json(409, {"ok": False, "error": "ATEM is disabled in settings"})
-            return
-
-        if not _get_atem().get("connected"):
-            self._json(409, {"ok": False, "error": "ATEM is not connected"})
-            return
-
-        cams = settings.get("cameras", [])
-        if cam_idx < 0 or cam_idx >= len(cams):
-            self._json(404, {"ok": False, "error": "Camera not found"})
+        ok, error_resp, cam_cfg = _require_camera(settings, cam_idx)
+        if not ok:
+            self._json(404, error_resp)
             return
 
         try:
-            atem_input = int(cams[cam_idx].get("atemInput") or 0)
+            atem_input = int(cam_cfg.get("atemInput") or 0)
         except (TypeError, ValueError):
             atem_input = 0
         if not atem_input:
@@ -1416,22 +1431,19 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"ok": False, "error": "Invalid camIdx"})
             return
 
-        settings = load_settings()
-        cfg = settings.get("atem", {})
-        if not cfg.get("enabled"):
-            self._json(409, {"ok": False, "error": "ATEM is disabled in settings"})
-            return
-        if not _get_atem().get("connected"):
-            self._json(409, {"ok": False, "error": "ATEM is not connected"})
+        ok, error_resp = _require_atem_enabled_and_connected()
+        if not ok:
+            self._json(409, error_resp)
             return
 
-        cams = settings.get("cameras", [])
-        if cam_idx < 0 or cam_idx >= len(cams):
-            self._json(404, {"ok": False, "error": "Camera not found"})
+        settings = load_settings()
+        ok, error_resp, cam_cfg = _require_camera(settings, cam_idx)
+        if not ok:
+            self._json(404, error_resp)
             return
 
         try:
-            atem_input = int(cams[cam_idx].get("atemInput") or 0)
+            atem_input = int(cam_cfg.get("atemInput") or 0)
         except (TypeError, ValueError):
             atem_input = 0
         if not atem_input:
