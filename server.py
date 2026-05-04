@@ -1004,8 +1004,38 @@ _pw_page = None
 _pw_page_url = None
 
 
+def _init_playwright() -> None:
+    """Initialize Playwright in the main thread before the HTTP server starts.
+
+    This prevents thread-binding issues with Playwright's sync_api, which fails
+    when the context is created in one thread but accessed from another.
+    """
+    global _pw_ctx, _pw_browser
+    if not _HAS_PLAYWRIGHT:
+        return
+    with _pw_lock:
+        if _pw_ctx is not None:
+            return
+        try:
+            _pw_ctx = _sync_playwright().start()
+            _pw_browser = _pw_ctx.chromium.launch(
+                headless=True,
+                args=[
+                    "--autoplay-policy=no-user-gesture-required",
+                    "--use-fake-ui-for-media-stream",
+                ],
+            )
+            _logger.debug("Playwright initialized in main thread")
+        except Exception as e:
+            _logger.warning(f"Failed to initialize Playwright: {e!r}")
+            _pw_ctx = None
+            _pw_browser = None
+
+
 def _capture_url(url: str) -> bytes:
     global _pw_ctx, _pw_browser, _pw_page, _pw_page_url
+    if _pw_ctx is None:
+        raise RuntimeError("Playwright not initialized; URL capture unavailable")
     with _pw_lock:
         # Redact URL for logging (remove query params that may contain tokens)
         try:
@@ -1016,15 +1046,6 @@ def _capture_url(url: str) -> bytes:
         except Exception:
             redacted_url = "<redacted>"
 
-        if _pw_ctx is None:
-            _pw_ctx = _sync_playwright().start()
-            _pw_browser = _pw_ctx.chromium.launch(
-                headless=True,
-                args=[
-                    "--autoplay-policy=no-user-gesture-required",
-                    "--use-fake-ui-for-media-stream",
-                ],
-            )
         if _pw_page is None or _pw_page_url != url:
             if _pw_page:
                 try:
@@ -1838,6 +1859,7 @@ if __name__ == "__main__":
     )
     logger = logging.getLogger(__name__)
     load_settings()  # ensure data/ and default settings.json exist
+    _init_playwright()  # Initialize Playwright in main thread before server starts
     atem_thread = threading.Thread(target=_atem_loop, daemon=True, name="atem")
     atem_thread.start()
     host, port = "0.0.0.0", 5001
