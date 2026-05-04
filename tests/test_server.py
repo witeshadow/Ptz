@@ -721,6 +721,13 @@ class TestHTTPRoutes(unittest.TestCase):
         settings = dict(server.DEFAULT_SETTINGS)
         settings["positions"] = {}
         server.write_settings(settings)
+        # Clean up any leftover image files from previous tests
+        import glob
+        for img_file in glob.glob(os.path.join(server.IMAGES_DIR, "*.jpg")):
+            try:
+                os.remove(img_file)
+            except Exception:
+                pass
 
     # ── static & settings ──────────────────────────────────────────────────────
 
@@ -1076,6 +1083,9 @@ class TestHTTPRoutes(unittest.TestCase):
         data = json.loads(body)
         self.assertFalse(data["ok"])
         self.assertIn("could not record camera position", data.get("error", "").lower())
+        # Verify image file was not written
+        status_img, _ = self.srv.get("/api/image/0/3")
+        self.assertEqual(status_img, 404)
 
     def test_post_image_position_null_when_inquiry_fails(self):
         server.write_settings(self._settings_with_camera_ip())
@@ -1091,6 +1101,9 @@ class TestHTTPRoutes(unittest.TestCase):
         data = json.loads(body)
         self.assertFalse(data["ok"])
         self.assertIn("could not record camera position", data.get("error", "").lower())
+        # Verify image file was not written
+        status_img, _ = self.srv.get("/api/image/0/3")
+        self.assertEqual(status_img, 404)
 
     def test_delete_image_clears_stored_position(self):
         server.write_settings(self._settings_with_camera_ip())

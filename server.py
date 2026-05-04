@@ -1984,9 +1984,24 @@ class Handler(BaseHTTPRequestHandler):
             return
         _ensure_dirs()
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
-        with open(fpath, "wb") as f:
-            f.write(data)
-        write_settings(settings)
+        try:
+            with open(fpath, "wb") as f:
+                f.write(data)
+            write_settings(settings)
+        except Exception as e:
+            try:
+                if os.path.exists(fpath):
+                    os.remove(fpath)
+            except Exception:
+                pass
+            self._json(
+                500,
+                {
+                    "ok": False,
+                    "error": f"failed to persist preset image: {e}",
+                },
+            )
+            return
         self._json(200, {"ok": True, "position": position})
 
     def _capture_image(self, cam: int, preset: int):
@@ -2081,9 +2096,24 @@ class Handler(BaseHTTPRequestHandler):
                 return
             _ensure_dirs()
             fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
-            with open(fpath, "wb") as f:
-                f.write(jpeg)
-            write_settings(settings)
+            try:
+                with open(fpath, "wb") as f:
+                    f.write(jpeg)
+                write_settings(settings)
+            except Exception as persist_error:
+                try:
+                    if os.path.exists(fpath):
+                        os.remove(fpath)
+                except Exception:
+                    pass
+                self._json(
+                    500,
+                    {
+                        "ok": False,
+                        "error": f"failed to persist captured image: {persist_error}",
+                    },
+                )
+                return
             self._json(200, {"ok": True, "position": position})
         except Exception as e:
             self._json(500, {"ok": False, "error": str(e)})
