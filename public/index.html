@@ -2902,16 +2902,15 @@
     const deadzone = cfg.deadzone || 0.2;
     const sensitivity = cfg.sensitivity || { pan: 1.0, tilt: 1.0, zoom: 0.5 };
     const axisMap = cfg.axisMap || { pan: 0, tilt: 1, zoom: 2 };
+    const applyDeadzone = (v) => Math.abs(v) < deadzone ? 0 : v;
 
     if (cfg.useDpad) {
       updateDpadInput(gamepad, cfg);
     } else {
-      const applyDeadzone = (v) => Math.abs(v) < deadzone ? 0 : v;
       gamepadState.pan = applyDeadzone(gamepad.axes[axisMap.pan] || 0) * (sensitivity.pan || 1.0);
       gamepadState.tilt = applyDeadzone(gamepad.axes[axisMap.tilt] || 0) * (sensitivity.tilt || 1.0);
     }
 
-    const applyDeadzone = (v) => Math.abs(v) < deadzone ? 0 : v;
     gamepadState.zoom = applyDeadzone(gamepad.axes[axisMap.zoom] || 0) * (sensitivity.zoom || 0.5);
 
     // Handle button presses for preset recall
