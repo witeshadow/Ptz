@@ -2507,23 +2507,20 @@
     if (!state.joystick || !state.joystick.enabled) return;
 
     const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-    if (!gamepads.length) {
+    const gamepad = [...gamepads].find(Boolean);
+    if (!gamepad) {
       if (gamepadConnected) {
         gamepadConnected = false;
-        _logger.debug('Gamepad disconnected');
+        updateJoystickStatus();
+        console.debug('Gamepad disconnected');
       }
-      return;
-    }
-
-    const gamepad = gamepads[0];
-    if (!gamepad) {
-      gamepadConnected = false;
       return;
     }
 
     if (!gamepadConnected) {
       gamepadConnected = true;
-      _logger.debug(`Gamepad connected: ${gamepad.id}`);
+      updateJoystickStatus();
+      console.debug(`Gamepad connected: ${gamepad.id}`);
     }
 
     const cfg = state.joystick;
@@ -2566,7 +2563,7 @@
     // Extract preset number (e.g., "preset1" → 0)
     const presetNum = parseInt(presetButton[0].replace('preset', '')) - 1;
     if (presetNum >= 0) {
-      const range = getDevicePresetRange();
+      const range = { start: state.presetStart, end: state.presetEnd };
       const actualPreset = range.start + presetNum;
       if (actualPreset <= range.end) {
         const btn = document.querySelector(`[data-preset="${actualPreset}"]`);
@@ -2586,18 +2583,19 @@
     if (Math.abs(gamepadState.pan) > 0 || Math.abs(gamepadState.tilt) > 0) {
       // Pan/tilt control - normalize to pan tilt speed values
       // This would send VISCA pan/tilt relative commands
-      _logger.debug(`Gamepad pan/tilt: ${gamepadState.pan.toFixed(2)}, ${gamepadState.tilt.toFixed(2)}`);
+      console.debug(`Gamepad pan/tilt: ${gamepadState.pan.toFixed(2)}, ${gamepadState.tilt.toFixed(2)}`);
     }
     if (Math.abs(gamepadState.zoom) > 0) {
       // Zoom control
-      _logger.debug(`Gamepad zoom: ${gamepadState.zoom.toFixed(2)}`);
+      console.debug(`Gamepad zoom: ${gamepadState.zoom.toFixed(2)}`);
     }
   }
 
   // Initialize gamepad support
   window.addEventListener('gamepadconnected', (e) => {
     gamepadConnected = true;
-    _logger.debug(`Gamepad connected: ${e.gamepad.id}`);
+    updateJoystickStatus();
+    console.debug(`Gamepad connected: ${e.gamepad.id}`);
     if (state.joystick && state.joystick.enabled) {
       updateGamepadState();
     }
@@ -2607,7 +2605,8 @@
     gamepadConnected = false;
     gamepadState = { pan: 0, tilt: 0, zoom: 0 };
     gamepadButtonStates = {};
-    _logger.debug('Gamepad disconnected');
+    updateJoystickStatus();
+    console.debug('Gamepad disconnected');
   });
 
   // ── SSE ────────────────────────────────────────────────────────────────────
