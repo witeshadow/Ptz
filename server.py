@@ -1005,6 +1005,11 @@ _pw_page_url = None
 
 
 def _capture_url(url: str) -> bytes:
+    """Capture screenshot from URL using headless Playwright browser.
+
+    Supports standard HTTP streams (RTMP, HLS, etc). Detects and rejects WebRTC
+    streams (vdo.ninja) which cannot be captured in headless mode.
+    """
     global _pw_ctx, _pw_browser, _pw_page, _pw_page_url
     with _pw_lock:
         # Redact URL for logging (remove query params that may contain tokens)
