@@ -2,9 +2,9 @@
 
 ## 1. Remove Duplicate Function Definitions (High Priority)
 
-**Location:** `server.py:513–550`
+**Location:** Functions `_send_atem_aux_source()` and `_wait_for_atem_aux_source()` in `server.py`
 
-The functions `_send_atem_aux_source()` and `_wait_for_atem_aux_source()` are defined twice. The first pair (lines 513–530) is shadowed by identical definitions (lines 533–550). This is a bug that should be fixed immediately.
+These functions are defined twice: the first pair is immediately shadowed by identical definitions later in the file. This is a bug that should be fixed immediately by removing the duplicate definitions.
 
 **Impact:** Reduces code size, eliminates confusion, and removes a maintenance hazard.
 
@@ -26,7 +26,10 @@ The functions `_send_atem_aux_source()` and `_wait_for_atem_aux_source()` are de
 - Provide a clear place to add state validation in future
 
 **Example shape:**
+
 ```python
+import copy
+
 class StateManager:
     def __init__(self):
         self._lock = threading.RLock()
@@ -40,7 +43,7 @@ class StateManager:
     
     def get_atem(self) -> dict:
         with self._lock:
-            return dict(self._atem)
+            return copy.deepcopy(self._atem)
     
     # ... other accessors
 ```
@@ -58,6 +61,7 @@ class StateManager:
 - `_handle_atem_aux_route()`: validates aux key, camIdx, checks ATEM enabled/connected, looks up camera
 
 **Proposal:** Extract a validation helper:
+
 ```python
 def _require_atem_enabled_and_connected() -> tuple[bool, dict | None]:
     """Return (ok, error_response). If not ok, response is ready to send."""
@@ -102,35 +106,34 @@ This helps operators debug why a capture didn't produce position data, or why a 
 
 ## 5. Add Health Check Endpoint
 
-**Proposal:** Add a lightweight `/health` endpoint that returns:
+**Proposal:** Add a lightweight `/health` endpoint that returns minimal liveness data:
+
 ```json
 {
   "status": "ok",
-  "version": "1.0.0",
-  "atem": {"connected": bool, "sources": {...}},
-  "cameras": [{"index": int, "enabled": bool, "configured": bool}, ...]
+  "version": "1.0.0"
 }
 ```
 
+For detailed diagnostics, add a separate authenticated endpoint (e.g., `/health/details` or `/diagnostics`) that includes ATEM/camera state and requires authentication.
+
 This enables:
 - Monitoring scripts to detect if the server is alive
-- Operator dashboards to show at-a-glance system status
 - Load balancers / reverse proxies to health-check the app
+- Operators to access detailed system state via authenticated endpoint
 
-**Impact:** ~20 lines of code, valuable for production deployments.
+The minimal public endpoint avoids exposing internal topology to unauthenticated clients.
+
+**Impact:** ~20 lines of code for basic health check; additional auth-protected diagnostics endpoint for full system state visibility.
 
 ---
 
 ## 6. Validate Preset Number Range on Input
 
-**Current:** `_handle_recall()` does:
-```python
-preset = max(0, int(data.get("preset", 0)))
-```
-
-VISCA presets are typically 0–127 (7-bit). The code allows any non-negative value without validation.
+**Current:** The `_handle_recall()` function validates presets but allows any non-negative value without checking the VISCA preset range. VISCA presets are typically 0–127 (7-bit).
 
 **Proposal:** Enforce range:
+
 ```python
 preset = max(0, min(127, int(data.get("preset", 0))))
 ```
@@ -143,7 +146,7 @@ Or add an explicit bounds check with a clear error message.
 
 ## 7. Reduce ATEM Loop Reconnect Backoff
 
-**Current:** When ATEM connection fails, the loop sleeps for 3 seconds before retrying (line 837).
+**Current:** When the `_atem_loop()` function encounters a connection failure, it sleeps for 3 seconds before retrying.
 
 **Observation:** For a device that's physically powered off or network-disconnected, 3 seconds is reasonable. But for transient socket timeouts or momentary network glitches, 3 seconds is slow. The loop may also be missing packets if it backs off during a state transition.
 
