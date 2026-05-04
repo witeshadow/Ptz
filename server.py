@@ -1071,9 +1071,7 @@ def _pw_capture_url_impl(url: str) -> bytes:
             )
             _logger.debug(f"Capture: Video element ready for {redacted_url}")
         except Exception as e:
-            _logger.error(
-                f"Capture: Failed to load video from {redacted_url}: {e!r}"
-            )
+            _logger.error(f"Capture: Failed to load video from {redacted_url}: {e!r}")
             if _pw_page:
                 _logger.debug("Capture: Falling back to page screenshot")
             _pw_page_url = None
