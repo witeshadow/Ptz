@@ -2495,6 +2495,52 @@
 
   let virtualJoystickActive = false;
   let virtualJoystickTouchId = null;
+  let lastVirtualPtz = { pan: 0, tilt: 0, zoom: 0 };
+
+  function quantizePtzAxis(value) {
+    const n = Math.max(-1, Math.min(1, Number(value) || 0));
+    return Math.round(n * 10) / 10;
+  }
+
+  async function sendPtzDriveCommand(pan = 0, tilt = 0, zoom = 0) {
+    const next = {
+      pan: quantizePtzAxis(pan),
+      tilt: quantizePtzAxis(tilt),
+      zoom: quantizePtzAxis(zoom),
+    };
+
+    if (state.liveMode && state.lockLiveMode && cameraMatchesAtemSource(state.activeCam, state.programSource)) {
+      setStatus('error', 'LIVE camera is locked. Switch cameras or tap Locked to go Unlocked before moving.');
+      return false;
+    }
+
+    const cam = state.cameras[state.activeCam];
+    if (!cam || !cam.ip) {
+      setStatus('error', 'Enter the camera IP address first');
+      return false;
+    }
+    if (next.pan === lastVirtualPtz.pan && next.tilt === lastVirtualPtz.tilt && next.zoom === lastVirtualPtz.zoom) {
+      return true;
+    }
+
+    try {
+      const res = await fetch('/api/ptz/drive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ camIdx: state.activeCam, pan: next.pan, tilt: next.tilt, zoom: next.zoom }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        setStatus('error', data.error || data.message || 'PTZ move failed');
+        return false;
+      }
+      lastVirtualPtz = next;
+      return true;
+    } catch (err) {
+      setStatus('error', `PTZ move failed: ${err.message || err}`);
+      return false;
+    }
+  }
 
   function showVirtualJoystick(show) {
     virtualJoystickActive = show;
@@ -2538,15 +2584,15 @@
 
       elJoystickCenter.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
 
-      // Send pan/tilt commands based on joystick position
-      const pan = (deltaX / maxDistance) * 100;
-      const tilt = (deltaY / maxDistance) * 100;
-
-      _logger.debug(`Virtual joystick: pan=${pan.toFixed(0)}, tilt=${tilt.toFixed(0)}`);
+      const pan = deltaX / maxDistance;
+      const tilt = -(deltaY / maxDistance);
+      sendPtzDriveCommand(pan, tilt, 0);
+      console.debug('[PTZ] Virtual joystick:', { pan: pan.toFixed(2), tilt: tilt.toFixed(2) });
     }
 
     function resetJoystick() {
       elJoystickCenter.style.transform = 'translate(-50%, -50%)';
+      sendPtzDriveCommand(0, 0, 0);
     }
 
     elVirtualJoystick.addEventListener('touchstart', (e) => {
