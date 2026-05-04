@@ -5,6 +5,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 import glob
 import json
+import logging
 import os
 import platform
 import queue
@@ -40,6 +41,8 @@ except ImportError:
 
 _IS_MACOS = platform.system() == "Darwin"
 
+_logger = logging.getLogger(__name__)
+
 # ── Paths ──────────────────────────────────────────────────────────────────────
 _HERE = os.path.dirname(os.path.abspath(__file__))
 PUBLIC_DIR = os.path.join(_HERE, "public")
@@ -53,7 +56,7 @@ DEFAULT_SETTINGS = {
         {
             "name": "Camera 1",
             "ip": "",
-            "port": 52381,
+            "port": 1259,
             "viscaAddr": 1,
             "atemInput": 1,
             "streamUrl": "",
@@ -63,8 +66,8 @@ DEFAULT_SETTINGS = {
         {
             "name": "Camera 2",
             "ip": "",
-            "port": 52381,
-            "viscaAddr": 1,
+            "port": 1259,
+            "viscaAddr": 2,
             "atemInput": 2,
             "streamUrl": "",
             "usbDevice": "",
@@ -73,12 +76,22 @@ DEFAULT_SETTINGS = {
         {
             "name": "Camera 3",
             "ip": "",
-            "port": 52381,
-            "viscaAddr": 1,
+            "port": 1259,
+            "viscaAddr": 3,
             "atemInput": 3,
             "streamUrl": "",
             "usbDevice": "",
             "enabled": True,
+        },
+        {
+            "name": "Camera 4",
+            "ip": "",
+            "port": 52381,
+            "viscaAddr": 1,
+            "atemInput": 4,
+            "streamUrl": "",
+            "usbDevice": "",
+            "enabled": False,
         },
     ],
     "labels": {"0:1": "Stage Left", "0:5": "Wide"},
@@ -89,7 +102,6 @@ DEFAULT_SETTINGS = {
     "lockLiveMode": False,
     "unlockOnExitLiveMode": True,
     "atemFollows": "preview",
-    "autoCutEnabled": False,
     "autoCutDelayMs": 0,
     "atemOutputMap": {
         "webcam": {"webcam": "", "streamUrl": ""},
@@ -100,6 +112,7 @@ DEFAULT_SETTINGS = {
     },
     "atemSourceLabels": {},
     "captureOutput": "webcam",
+    "activeCamAux": "sdi1",
     "positions": {},
 }
 
@@ -109,14 +122,40 @@ VISCA_SETTLE_TIMEOUT_S = 8.0
 VISCA_POLL_INTERVAL_S = 0.2
 VISCA_STABLE_COUNT = 3
 VISCA_INQUIRY_TIMEOUT_S = 1.0
+ATEM_STATE_CONFIRM_TIMEOUT_S = 2.0
 
 
 def _visca_transport_for_port(port: int) -> str:
     return "raw-udp" if port == VISCA_RAW_UDP_PORT else "sony-udp"
 
 
+def _normalize_recall_wait_mode(wait_mode: str | None) -> str:
+    if wait_mode == "dwell":
+        return "dwell"
+    if wait_mode == "confirm":
+        return "confirm"
+    if wait_mode == "autocut":
+        return "autocut"
+    return "settle"
+
+
 def _normalize_scan_wait_mode(wait_mode: str | None) -> str:
-    return "dwell" if wait_mode == "dwell" else "settle"
+    normalized = _normalize_recall_wait_mode(wait_mode)
+    return normalized if normalized in {"dwell", "settle"} else "settle"
+
+
+def _probe_recall_command_succeeded(result: ProbeResult) -> bool:
+    if result.error is not None:
+        return False
+    return not any(r.kind == "error" for r in result.replies)
+
+
+def _probe_autocut_ready(result: ProbeResult) -> bool:
+    return (
+        result.error is None
+        and not any(r.kind == "error" for r in result.replies)
+        and (result.settled or result.saw_completion)
+    )
 
 
 def _format_probe_message(result: ProbeResult, wait_mode: str) -> str:
@@ -138,6 +177,20 @@ def _format_probe_message(result: ProbeResult, wait_mode: str) -> str:
         )
     elif wait_mode == "settle" and not result.settled:
         parts.append("Motion did not settle in time")
+    elif wait_mode == "confirm":
+        if completion is None and ack is None:
+            parts.append("Command sent")
+    elif wait_mode == "autocut":
+        if result.settled and result.samples:
+            pos = _probe_motion_sample_to_dict(result.samples[-1])
+            parts.append(
+                "Settled "
+                f"pan {pos['pan_hex']} tilt {pos['tilt_hex']} zoom {pos['zoom_hex']}"
+            )
+        elif result.saw_completion:
+            parts.append("VISCA completion confirmed")
+        else:
+            parts.append("Motion stop was not confirmed")
     elif wait_mode == "dwell":
         parts.append("Manual dwell mode")
     if result.error:
@@ -154,7 +207,7 @@ def recall_visca_preset(
     camera_address: int = 1,
     wait_mode: str = "settle",
 ):
-    wait_mode = _normalize_scan_wait_mode(wait_mode)
+    wait_mode = _normalize_recall_wait_mode(wait_mode)
     result = _probe_preset(
         ip=ip,
         port=port,
@@ -171,8 +224,12 @@ def recall_visca_preset(
         require_settle=wait_mode == "settle",
         verbose=False,
     )
-    success = result.error is None and (
-        result.settled if wait_mode == "settle" else True
+    success = (
+        _probe_recall_command_succeeded(result) and result.settled
+        if wait_mode == "settle"
+        else _probe_autocut_ready(result)
+        if wait_mode == "autocut"
+        else _probe_recall_command_succeeded(result)
     )
     payload = {
         "success": success,
@@ -190,6 +247,19 @@ def recall_visca_preset(
 def inquire_visca_absolute_position(
     ip: str, port: int, camera_address: int = 1
 ) -> tuple[bool, dict | str]:
+    """
+    Query a camera for its absolute pan/tilt/zoom position via VISCA and return the parsed result.
+
+    Parameters:
+        ip (str): Target camera IP address.
+        port (int): Target camera port.
+        camera_address (int): VISCA camera logical address (usually 1–7).
+
+    Returns:
+        tuple:
+            - True and a dict with the inquiry result when the probe succeeds.
+            - False and an error message string when the inquiry fails (an error line is printed on failure).
+    """
     try:
         result = _probe_inquire_absolute_position(
             ip=ip,
@@ -202,6 +272,9 @@ def inquire_visca_absolute_position(
         )
         return True, result
     except Exception as exc:
+        print(
+            f"[VISCA] Position inquiry failed for {ip}:{port} addr={camera_address}: {exc!r}"
+        )
         return False, str(exc)
 
 
@@ -432,6 +505,12 @@ def _send_atem_command(name: str, payload: bytes) -> tuple[bool, str]:
     return True, f"ATEM packet {packet_id} sent"
 
 
+def _send_atem_preview(source_id: int) -> tuple[bool, str]:
+    """Set ATEM ME1 preview bus to source_id via CPvI command."""
+    # CPvI payload: ME index (1 byte), padding (1 byte), source (2 bytes big-endian)
+    return _send_atem_command("CPvI", b"\x00\x00" + struct.pack(">H", source_id))
+
+
 def _wait_for_atem_program_source(source: int, timeout_s: float = 1.0) -> bool:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
@@ -450,7 +529,50 @@ def _wait_for_atem_preview_source(source: int, timeout_s: float = 1.0) -> bool:
     return _get_atem().get("preview") == source
 
 
+def _send_atem_aux_source(aux_idx: int, source_id: int) -> tuple[bool, str]:
+    """Route an ATEM AUX output to a given source via CAuS command."""
+    # CAuS payload: mask=0x01, aux channel (0-based), source (big-endian uint16)
+    return _send_atem_command(
+        "CAuS", bytes([0x01, aux_idx]) + struct.pack(">H", source_id)
+    )
+
+
+def _wait_for_atem_aux_source(
+    aux_idx: int, source: int, timeout_s: float = 1.0
+) -> bool:
+    """
+    Waits until the specified AUX output reports the given source or the timeout elapses.
+
+    Parameters:
+        aux_idx (int): Zero-based AUX index (0 -> "aux1", 1 -> "aux2", etc.).
+        source (int): ATEM source id to wait for on the AUX output.
+        timeout_s (float): Maximum time in seconds to wait.
+
+    Returns:
+        True if the AUX routed to `source` before the timeout, False otherwise.
+    """
+    key = f"aux{aux_idx + 1}"
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if _get_atem().get(key) == source:
+            return True
+        time.sleep(0.05)
+    return _get_atem().get(key) == source
+
+
 def cut_atem_to_source(source: int, reason: str = "manual") -> tuple[bool, str]:
+    """
+    Attempt to switch the ATEM to the given program source using a preview-then-cut strategy with fallbacks and record progress to the ATEM last-action state.
+
+    Performs staged actions: set preview if required, execute a cut, and if confirmations fail attempt a direct program switch; updates `_atem_last_action` with stage, status, and human-readable messages.
+
+    Parameters:
+        source (int): Target ATEM source index (must be greater than 0).
+        reason (str): Context for the request, typically "manual" or "auto".
+
+    Returns:
+        tuple: `(ok, message)` where `ok` is `True` if the ATEM ended on the requested source, `False` otherwise, and `message` is a descriptive success or error string.
+    """
     if source <= 0:
         _set_atem_last_action(
             "cut", "invalid", source, reason, False, "Invalid ATEM source"
@@ -478,7 +600,9 @@ def cut_atem_to_source(source: int, reason: str = "manual") -> tuple[bool, str]:
                 f"Preview command failed: {message}",
             )
             return False, message
-        if not _wait_for_atem_preview_source(source, timeout_s=1.0):
+        if not _wait_for_atem_preview_source(
+            source, timeout_s=ATEM_STATE_CONFIRM_TIMEOUT_S
+        ):
             _set_atem_last_action(
                 "cut",
                 "preview-confirm",
@@ -501,7 +625,9 @@ def cut_atem_to_source(source: int, reason: str = "manual") -> tuple[bool, str]:
                     False,
                     f"Preview did not change to {source} and direct program switch failed: {program_message}",
                 )
-            if _wait_for_atem_program_source(source, timeout_s=1.0):
+            if _wait_for_atem_program_source(
+                source, timeout_s=ATEM_STATE_CONFIRM_TIMEOUT_S
+            ):
                 msg = f"Preview did not change • direct program switch moved program to {source}"
                 _set_atem_last_action(
                     "cut", "program-fallback-confirm", source, reason, True, msg
@@ -534,7 +660,7 @@ def cut_atem_to_source(source: int, reason: str = "manual") -> tuple[bool, str]:
             f"Cut command failed: {cut_message}",
         )
         return False, cut_message
-    if _wait_for_atem_program_source(source, timeout_s=1.0):
+    if _wait_for_atem_program_source(source, timeout_s=ATEM_STATE_CONFIRM_TIMEOUT_S):
         msg = f"Preview set to {source} • Cut executed"
         _set_atem_last_action("cut", "cut-confirm", source, reason, True, msg)
         return True, msg
@@ -553,7 +679,7 @@ def cut_atem_to_source(source: int, reason: str = "manual") -> tuple[bool, str]:
             False,
             f"Cut did not take and direct program switch failed: {program_message}",
         )
-    if _wait_for_atem_program_source(source, timeout_s=1.0):
+    if _wait_for_atem_program_source(source, timeout_s=ATEM_STATE_CONFIRM_TIMEOUT_S):
         msg = f"Cut did not take • direct program switch moved program to {source}"
         _set_atem_last_action(
             "cut", "program-fallback-confirm", source, reason, True, msg
@@ -584,7 +710,7 @@ def _atem_loop():
             continue
 
         ip = cfg["ip"].strip()
-        print(f"[ATEM] Connecting to {ip}:{ATEM_PORT} …")
+        _logger.info(f"ATEM: Connecting to {ip}:{ATEM_PORT}")
         sock = None
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -592,7 +718,7 @@ def _atem_loop():
             atem_addr = (ip, ATEM_PORT)
             sock.sendto(ATEM_HELLO, atem_addr)
             data, _ = sock.recvfrom(2048)
-            print(f"[ATEM] HELLO response raw={data[:12].hex()}")
+            _logger.debug(f"ATEM: HELLO response raw={data[:12].hex()}")
             # ACK the HELLO response with session_id=0 (not yet assigned)
             _, hello_seq = _parse_header(data)
             sock.sendto(_make_ack(0, hello_seq), atem_addr)
@@ -624,9 +750,7 @@ def _atem_loop():
                         elif cmd in ("PrvI", "PrgI") and len(cmd_data) >= 4:
                             me = cmd_data[0]
                             source = struct.unpack(">H", cmd_data[2:4])[0]
-                            print(
-                                f"[ATEM] init {cmd} me={me} source={source} raw={cmd_data.hex()}"
-                            )
+                            _logger.debug(f"ATEM: init {cmd} me={me} source={source}")
                             if me == 0:
                                 if cmd == "PrvI":
                                     init_preview = source
@@ -637,14 +761,14 @@ def _atem_loop():
                             aux_src = struct.unpack(">H", cmd_data[2:4])[0]
                             _set_atem(False, aux=(aux_idx, aux_src))
                 except socket.timeout:
-                    print(f"[ATEM] init drain timeout after {pkt_count} pkts")
+                    _logger.debug(f"ATEM: init drain timeout after {pkt_count} packets")
                     break  # proceed even if InCm wasn't seen
 
             _set_atem(True, preview=init_preview, program=init_program)
             _update_atem_conn(sock, atem_addr, session_id)
             _broadcast({"type": "atem", **_get_atem()})
-            print(
-                f"[ATEM] Connected — init preview={init_preview} program={init_program}"
+            _logger.info(
+                f"ATEM: Connected with preview={init_preview} program={init_program}"
             )
 
             sock.settimeout(1.0)
@@ -663,7 +787,7 @@ def _atem_loop():
                         not cur_cfg.get("enabled")
                         or cur_cfg.get("ip", "").strip() != ip
                     ):
-                        print("[ATEM] Config changed — reconnecting")
+                        _logger.info("ATEM: Config changed — reconnecting")
                         break
 
                 try:
@@ -686,11 +810,11 @@ def _atem_loop():
                         ):
                             source = struct.unpack(">H", cmd_data[2:4])[0]
                             if cmd == "PrvI" and source != cur["preview"]:
-                                print(f"[ATEM] PrvI source={source}")
+                                _logger.debug(f"ATEM: PrvI source={source}")
                                 _set_atem(True, preview=source)
                                 _broadcast({"type": "preview", "source": source})
                             elif cmd == "PrgI" and source != cur["program"]:
-                                print(f"[ATEM] PrgI source={source}")
+                                _logger.debug(f"ATEM: PrgI source={source}")
                                 _set_atem(True, program=source)
                                 _broadcast({"type": "program", "source": source})
                         elif cmd == "AuxS" and len(cmd_data) >= 4:
@@ -698,7 +822,9 @@ def _atem_loop():
                             aux_src = struct.unpack(">H", cmd_data[2:4])[0]
                             akey = f"aux{aux_idx + 1}"
                             if akey in cur and aux_src != cur[akey]:
-                                print(f"[ATEM] AuxS idx={aux_idx} source={aux_src}")
+                                _logger.debug(
+                                    f"ATEM: AuxS idx={aux_idx} source={aux_src}"
+                                )
                                 _set_atem(True, aux=(aux_idx, aux_src))
                                 _broadcast(
                                     {"type": "aux", "index": aux_idx, "source": aux_src}
@@ -708,18 +834,18 @@ def _atem_loop():
 
                 now = time.monotonic()
                 if now - last_recv > 5.0:
-                    print("[ATEM] No data for 5 s — reconnecting")
+                    _logger.info("ATEM: No data for 5 seconds — reconnecting")
                     break
                 if now - last_keepalive >= 0.5:
                     sock.sendto(_make_ack(session_id, last_seq), atem_addr)
                     last_keepalive = time.monotonic()
 
         except Exception as exc:
-            print(f"[ATEM] Error: {exc!r}")
+            _logger.exception(f"ATEM: Error: {exc!r}")
         finally:
             _clear_atem_conn()
             _set_atem(False)
-            print("[ATEM] Disconnected — will retry in 3 s")
+            _logger.info("ATEM: Disconnected — will retry in 3 seconds")
             try:
                 _broadcast({"type": "atem", "connected": False})
             except Exception:
@@ -881,6 +1007,15 @@ _pw_page_url = None
 def _capture_url(url: str) -> bytes:
     global _pw_ctx, _pw_browser, _pw_page, _pw_page_url
     with _pw_lock:
+        # Redact URL for logging (remove query params that may contain tokens)
+        try:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(url)
+            redacted_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+        except Exception:
+            redacted_url = "<redacted>"
+
         if _pw_ctx is None:
             _pw_ctx = _sync_playwright().start()
             _pw_browser = _pw_ctx.chromium.launch(
@@ -896,14 +1031,26 @@ def _capture_url(url: str) -> bytes:
                     _pw_page.close()
                 except Exception:
                     pass
-            _pw_page = _pw_browser.new_page()
-            _pw_page.goto(url, wait_until="domcontentloaded")
-            # wait up to 15 s for a video element with decoded data
-            _pw_page.wait_for_function(
-                "() => { const v = document.querySelector('video'); "
-                "return v && v.readyState >= 2 && v.videoWidth > 0; }",
-                timeout=15_000,
-            )
+            try:
+                _pw_page = _pw_browser.new_page()
+                _pw_page.goto(url, wait_until="domcontentloaded")
+                _logger.debug(f"Capture: Loaded URL {redacted_url}")
+                # wait up to 30s for a video element with decoded data (longer for vdo.ninja)
+                _pw_page.wait_for_function(
+                    "() => { const v = document.querySelector('video'); "
+                    "return v && v.readyState >= 2 && v.videoWidth > 0; }",
+                    timeout=30_000,
+                )
+                _logger.debug(f"Capture: Video element ready for {redacted_url}")
+            except Exception as e:
+                _logger.error(
+                    f"Capture: Failed to load video from {redacted_url}: {e!r}"
+                )
+                # Try fullpage screenshot as fallback
+                if _pw_page:
+                    _logger.debug("Capture: Falling back to page screenshot")
+                _pw_page_url = None  # force reload next time
+                raise
             _pw_page_url = url
         video = _pw_page.query_selector("video")
         if video:
@@ -966,10 +1113,25 @@ def _ffmpeg_grab(args: list, tmp: str) -> bool:
 
 
 def capture_usb_device(index: str) -> bytes:
+    """
+    Capture a single JPEG frame from a USB/video device and return its bytes.
+
+    Parameters:
+        index (str): Device identifier. On macOS this may be an avfoundation device spec (e.g. "0" or "0:none").
+                     On Linux this is the numeric video device index (e.g. "0" → /dev/video0).
+
+    Returns:
+        bytes: JPEG image bytes of the captured frame.
+
+    Raises:
+        RuntimeError: If ffmpeg capture fails and no cv2 fallback is available, or on macOS when avfoundation
+                      cannot access the camera (suggests checking Camera privacy settings).
+    """
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
         tmp = f.name
     try:
         if _IS_MACOS:
+            print(f"[Capture] macOS device={index}, trying avfoundation…")
             # Try each device variant without a forced framerate first (lets avfoundation
             # negotiate the native rate), then retry with supported framerates.
             for device_arg in (index, f"{index}:none"):
@@ -979,6 +1141,9 @@ def capture_usb_device(index: str) -> bytes:
                     ["-framerate", "30"],
                     [],
                 ):
+                    framerate_str = (
+                        framerate_args[1] if len(framerate_args) > 1 else "auto"
+                    )
                     args = [
                         "ffmpeg",
                         "-y",
@@ -990,39 +1155,47 @@ def capture_usb_device(index: str) -> bytes:
                         "-frames:v",
                         "1",
                         "-q:v",
-                        "3",
+                        "7",
                         tmp,
                     ]
                     if _ffmpeg_grab(args, tmp):
+                        print(
+                            f"[Capture] Success with device_arg={device_arg} framerate={framerate_str}"
+                        )
                         break
                 else:
                     continue
                 break
             else:
                 if _HAS_CV2:
+                    print(
+                        "[Capture] avfoundation exhausted all options, fallback to cv2…"
+                    )
                     return _capture_cv2(int(index))
                 raise RuntimeError(
                     f"ffmpeg avfoundation failed for device {index!r}. "
                     "Check: System Settings > Privacy > Camera — grant access to Terminal/Python."
                 )
         else:
+            print(f"[Capture] Linux device=/dev/video{index}, trying v4l2…")
             args = [
                 "ffmpeg",
                 "-y",
                 "-f",
                 "v4l2",
+                "-thread_queue_size",
+                "1",
                 "-i",
                 f"/dev/video{index}",
-                "-ss",
-                "0.1",
                 "-frames:v",
                 "1",
                 "-q:v",
-                "3",
+                "7",
                 tmp,
             ]
             if not _ffmpeg_grab(args, tmp):
                 if _HAS_CV2:
+                    print("[Capture] v4l2 failed, fallback to cv2…")
                     return _capture_cv2(int(index))
                 raise RuntimeError(f"ffmpeg v4l2 failed for /dev/video{index}")
 
@@ -1043,7 +1216,7 @@ def _capture_cv2(index: int) -> bytes:
     cap.release()
     if not ret:
         raise RuntimeError(f"cv2: no frame from device {index}")
-    _, buf = _cv2.imencode(".jpg", frame, [_cv2.IMWRITE_JPEG_QUALITY, 70])
+    _, buf = _cv2.imencode(".jpg", frame, [_cv2.IMWRITE_JPEG_QUALITY, 80])
     return bytes(buf)
 
 
@@ -1061,23 +1234,36 @@ _MIME = {
 
 
 def _try_record_position(settings: dict, cam: int, preset: int) -> dict | None:
-    """Query the camera's absolute position and persist it in settings['positions'].
+    """
+    Query a camera's absolute pan/tilt/zoom and store the result in settings["positions"] under the key "{cam}:{preset}".
 
-    Returns the position dict on success, or None if the camera is unconfigured
-    or the inquiry fails (e.g. camera offline). Caller must write_settings() if
-    a non-None value is returned.
+    Parameters:
+        settings (dict): Loaded settings dictionary to update; must be written to disk by the caller if persistence is desired.
+        cam (int): Camera index within settings["cameras"].
+        preset (int): Preset number to use as the storage key suffix.
+
+    Returns:
+        dict: Position dictionary with keys "pan", "tilt", "zoom", "pan_hex", "tilt_hex", "zoom_hex" on success.
+        None: If the camera index is out of bounds, the camera has no IP configured, or the VISCA inquiry fails.
     """
     cams = settings.get("cameras", [])
     if cam < 0 or cam >= len(cams):
+        print(
+            f"[Position] Skip record: camera index {cam} out of bounds (total={len(cams)})"
+        )
         return None
     cfg = cams[cam]
     ip = str(cfg.get("ip", "")).strip()
     if not ip:
+        print(f"[Position] Skip record: camera {cam} has no IP configured")
         return None
     port = int(cfg.get("port", 52381) or 52381)
     visca_addr = int(cfg.get("viscaAddr", 1) or 1)
     ok, result = inquire_visca_absolute_position(ip, port, visca_addr)
     if not ok or not isinstance(result, dict):
+        print(
+            f"[Position] Skip record: inquiry failed for camera {cam} (ok={ok}, result_type={type(result).__name__})"
+        )
         return None
     pos = {
         "pan": result.get("pan"),
@@ -1093,9 +1279,58 @@ def _try_record_position(settings: dict, cam: int, preset: int) -> dict | None:
     return pos
 
 
+# ── Validation helpers ─────────────────────────────────────────────────────────
+def _require_atem_enabled_and_connected() -> tuple[bool, dict | None]:
+    """
+    Validate that ATEM is enabled in settings and has an active connection.
+
+    Returns:
+        (bool, dict|None): Tuple where the first element is `True` when ATEM is enabled and connected, `False` otherwise. The second element is `None` on success or an error response dict (e.g. `{"ok": False, "error": "<message>"}`) describing the failure.
+    """
+    cfg = load_settings().get("atem", {})
+    if not cfg.get("enabled"):
+        return False, {"ok": False, "error": "ATEM is disabled in settings"}
+    if not _get_atem().get("connected"):
+        return False, {"ok": False, "error": "ATEM is not connected"}
+    return True, None
+
+
+def _require_camera(
+    settings: dict, cam_idx: int
+) -> tuple[bool, dict | None, dict | None]:
+    """
+    Validate that a zero-based camera index refers to a configured camera.
+
+    Parameters:
+        settings (dict): Server settings dictionary expected to contain a "cameras" list.
+        cam_idx (int): Zero-based index of the camera to validate.
+
+    Returns:
+        tuple:
+            - (bool) True if the camera index is valid, False otherwise.
+            - (dict | None) An error response dict `{"ok": False, "error": <message>}` when invalid, otherwise None.
+            - (dict | None) The camera configuration dict when valid, otherwise None.
+    """
+    cams = settings.get("cameras", [])
+    if cam_idx < 0 or cam_idx >= len(cams):
+        return False, {"ok": False, "error": "Camera not found"}, None
+    return True, None, cams[cam_idx]
+
+
 # ── HTTP handler ───────────────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):  # noqa: A002
+        """
+        Log an HTTP request message to standard output prefixed with the client's address.
+
+        Parameters:
+            format (str): A printf-style format string describing the message.
+            *args: Values to be interpolated into `format`.
+
+        Description:
+            Prints a single line to stdout in the form:
+                "<client-address> — <formatted message>"
+        """
         print(f"  {self.address_string()} — {format % args}")
 
     # ── routing ────────────────────────────────────────────────────────────────
@@ -1128,8 +1363,20 @@ class Handler(BaseHTTPRequestHandler):
             self._sse()
         elif path == "/api/devices":
             self._json(200, list_usb_devices())
+        elif path == "/api/system":
+            self._json(
+                200,
+                {
+                    "playwrightAvailable": _HAS_PLAYWRIGHT,
+                    "playwrightError": None
+                    if _HAS_PLAYWRIGHT
+                    else "Playwright not installed. Run: pip install playwright && playwright install chromium",
+                },
+            )
         elif m := re.match(r"^/api/position/(\d+)$", path):
             self._get_position(int(m.group(1)))
+        elif m := re.match(r"^/api/image/(\d+)/(\d+)/position$", path):
+            self._get_image_position(int(m.group(1)), int(m.group(2)))
         elif m := re.match(r"^/api/image/(\d+)/(\d+)$", path):
             self._get_image(int(m.group(1)), int(m.group(2)))
         else:
@@ -1145,6 +1392,10 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_recall()
         elif path == "/atem/cut":
             self._handle_atem_cut()
+        elif path == "/api/atem/preview":
+            self._handle_atem_preview_post()
+        elif path == "/api/atem/aux-route":
+            self._handle_atem_aux_route()
         elif path == "/settings":
             self._handle_settings_post()
         elif m := re.match(r"^/api/image/(\d+)/(\d+)$", path):
@@ -1177,7 +1428,7 @@ class Handler(BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             self._json(400, {"success": False, "message": "Invalid numeric parameter"})
             return
-        wait_mode = _normalize_scan_wait_mode(str(data.get("waitMode", "settle")))
+        wait_mode = _normalize_recall_wait_mode(str(data.get("waitMode", "settle")))
         if not ip:
             self._json(400, {"success": False, "message": "Camera IP is required"})
             return
@@ -1194,6 +1445,18 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"ok": False, "error": str(e)})
 
     def _handle_atem_cut(self):
+        """
+        Handle POST /atem/cut: validate input, request an ATEM cut, and respond with JSON.
+
+        Parses the request JSON body for "source" (int) and optional "reason" ("manual" or "auto", defaults to "manual").
+        - Returns HTTP 400 with {"ok": False, "error": ...} when the body is invalid JSON or "source" cannot be parsed as an integer.
+        - Calls internal validation to ensure ATEM is enabled and connected; if that check fails responds with the provided error payload and HTTP 409.
+        - Invokes cut_atem_to_source(source, reason=reason) and returns:
+          - HTTP 200 with {"ok": True, "message": <msg>, "source": <source>, "reason": <reason>, "lastAction": <snapshot>} on success.
+          - HTTP 502 with {"ok": False, "message": <msg>, "source": <source>, "reason": <reason>, "lastAction": <snapshot>} on failure.
+
+        The JSON response always includes "ok", "message", "source", "reason", and a snapshot of the ATEM last action from _get_atem_last_action().
+        """
         body = self._read_body()
         try:
             data = json.loads(body)
@@ -1210,13 +1473,9 @@ class Handler(BaseHTTPRequestHandler):
         if reason not in {"manual", "auto"}:
             reason = "manual"
 
-        cfg = load_settings().get("atem", {})
-        if not cfg.get("enabled"):
-            self._json(409, {"ok": False, "error": "ATEM is disabled in settings"})
-            return
-
-        if not _get_atem().get("connected"):
-            self._json(409, {"ok": False, "error": "ATEM is not connected"})
+        ok, error_resp = _require_atem_enabled_and_connected()
+        if not ok:
+            self._json(409, error_resp)
             return
 
         ok, message = cut_atem_to_source(source, reason=reason)
@@ -1229,6 +1488,150 @@ class Handler(BaseHTTPRequestHandler):
                 "source": source,
                 "reason": reason,
                 "lastAction": _get_atem_last_action(),
+            },
+        )
+
+    def _handle_atem_preview_post(self):
+        """
+        Handle POST /api/atem/preview: set the ATEM preview source from a camera configuration.
+
+        Expects a JSON body with an integer `camIdx` identifying the camera configuration. Validates request JSON and camera index, ensures ATEM is enabled and connected, and that the target camera has an `atemInput` configured. Sends the corresponding preview routing command to the ATEM and returns a JSON response.
+
+        Responses:
+        - 200: {"ok": true, "message": "<send message>", "source": <atem_input>} on success.
+        - 400: {"ok": false, "error": "..."} for invalid JSON, invalid `camIdx`, or when the camera has no ATEM input configured.
+        - 404: {"ok": false, "error": "..."} when the requested camera is not found or misconfigured.
+        - 409: error payload from precondition check when ATEM is disabled or not connected.
+        - 502: {"ok": false, "message": "<error message>", "source": <atem_input>} if sending the ATEM command fails.
+        """
+        body = self._read_body()
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            self._json(400, {"ok": False, "error": "Invalid JSON"})
+            return
+
+        try:
+            cam_idx = int(data.get("camIdx", -1))
+        except (TypeError, ValueError):
+            self._json(400, {"ok": False, "error": "Invalid camIdx"})
+            return
+
+        ok, error_resp = _require_atem_enabled_and_connected()
+        if not ok:
+            self._json(409, error_resp)
+            return
+
+        settings = load_settings()
+        ok, error_resp, cam_cfg = _require_camera(settings, cam_idx)
+        if not ok:
+            self._json(404, error_resp)
+            return
+
+        try:
+            atem_input = int(cam_cfg.get("atemInput") or 0)
+        except (TypeError, ValueError):
+            atem_input = 0
+        if not atem_input:
+            self._json(
+                400, {"ok": False, "error": "Camera has no ATEM input configured"}
+            )
+            return
+
+        ok, message = _send_atem_preview(atem_input)
+        status = 200 if ok else 502
+        self._json(status, {"ok": ok, "message": message, "source": atem_input})
+
+    def _handle_atem_aux_route(self):
+        """
+        Route an ATEM AUX channel to a camera's ATEM input based on a JSON POST body.
+
+        Expects a JSON body with:
+        - "aux": one of "sdi1", "sdi2", "sdi3", "sdi4".
+        - "camIdx": integer camera index.
+
+        Behavior:
+        - Validates JSON and parameters, returns 400 for malformed input or unsupported aux keys.
+        - Requires the ATEM feature to be enabled and connected; returns 409 if not available.
+        - Requires the referenced camera to exist and have an ATEM input configured; returns 404 for missing camera or 400 if the camera lacks an ATEM input.
+        - Sends the AUX routing command to the ATEM and returns 502 if the send fails.
+        - Waits for ATEM confirmation (1.0s); returns 504 if the routing is not confirmed.
+        - On success returns 200 with confirmation details including "aux" and "source".
+
+        Responses (examples):
+        - 200: {"ok": True, "confirmed": True, "message": <status>, "aux": <aux_key>, "source": <atem_input>}
+        - 400: {"ok": False, "error": <message>}
+        - 404: {"ok": False, "error": <message>}
+        - 409: <error payload from precondition check>
+        - 502: {"ok": False, "error": <send error message>}
+        - 504: {"ok": False, "confirmed": False, "error": <message>, "aux": <aux_key>, "source": <atem_input>}
+        """
+        body = self._read_body()
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            self._json(400, {"ok": False, "error": "Invalid JSON"})
+            return
+
+        aux_key = str(data.get("aux", "")).strip()
+        aux_map = {"sdi1": 0, "sdi2": 1, "sdi3": 2, "sdi4": 3}
+        if aux_key not in aux_map:
+            self._json(400, {"ok": False, "error": "aux must be sdi1–sdi4"})
+            return
+        aux_idx = aux_map[aux_key]
+
+        try:
+            cam_idx = int(data.get("camIdx", -1))
+        except (TypeError, ValueError):
+            self._json(400, {"ok": False, "error": "Invalid camIdx"})
+            return
+
+        ok, error_resp = _require_atem_enabled_and_connected()
+        if not ok:
+            self._json(409, error_resp)
+            return
+
+        settings = load_settings()
+        ok, error_resp, cam_cfg = _require_camera(settings, cam_idx)
+        if not ok:
+            self._json(404, error_resp)
+            return
+
+        try:
+            atem_input = int(cam_cfg.get("atemInput") or 0)
+        except (TypeError, ValueError):
+            atem_input = 0
+        if not atem_input:
+            self._json(
+                400, {"ok": False, "error": "Camera has no ATEM input configured"}
+            )
+            return
+
+        ok, message = _send_atem_aux_source(aux_idx, atem_input)
+        if not ok:
+            self._json(502, {"ok": False, "error": message})
+            return
+        confirmed = _wait_for_atem_aux_source(aux_idx, atem_input, timeout_s=1.0)
+        if not confirmed:
+            self._json(
+                504,
+                {
+                    "ok": False,
+                    "confirmed": False,
+                    "error": f"ATEM did not confirm route on {aux_key}",
+                    "aux": aux_key,
+                    "source": atem_input,
+                },
+            )
+            return
+        self._json(
+            200,
+            {
+                "ok": True,
+                "confirmed": True,
+                "message": message,
+                "aux": aux_key,
+                "source": atem_input,
             },
         )
 
@@ -1266,6 +1669,14 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True, **result})
         else:
             self._json(502, {"ok": False, "error": result})
+
+    def _get_image_position(self, cam: int, preset: int):
+        positions = load_settings().get("positions", {})
+        pos = positions.get(f"{cam}:{preset}")
+        if pos is None:
+            self._json(404, {"ok": False, "error": "No position data for this preset"})
+            return
+        self._json(200, {"ok": True, **pos})
 
     def _post_image(self, cam: int, preset: int):
         _ensure_dirs()
@@ -1421,14 +1832,18 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+    logger = logging.getLogger(__name__)
     load_settings()  # ensure data/ and default settings.json exist
     atem_thread = threading.Thread(target=_atem_loop, daemon=True, name="atem")
     atem_thread.start()
     host, port = "0.0.0.0", 5001
     httpd = ThreadedHTTPServer((host, port), Handler)
-    print(f"PTZ Preset Control listening on  http://localhost:{port}")
-    print("Press Ctrl-C to stop.\n")
+    logger.info(f"PTZ Preset Control listening on http://localhost:{port}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\nShutting down.")
+        logger.info("Shutting down.")
