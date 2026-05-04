@@ -1657,6 +1657,49 @@
     { name: 'Camera 4', ip: '', port: 52381, viscaAddr: 1, atemInput: 4, streamUrl: '', usbDevice: '', enabled: false },
   ];
 
+  const JOYSTICK_PROFILES = {
+    'logitech-extreme-3d': {
+      name: 'Logitech Extreme 3D',
+      deadzone: 0.2,
+      sensitivity: { pan: 1.0, tilt: 1.0, zoom: 0.5 },
+      axisMap: { pan: 0, tilt: 1, zoom: 2 },
+      buttonMap: { preset1: 0, preset2: 1, preset3: 2, preset4: 3 },
+      useDpad: false,
+    },
+    '8bitdo-zero2': {
+      name: '8BitDo Zero 2',
+      deadzone: 0.15,
+      sensitivity: { pan: 1.0, tilt: 1.0, zoom: 0.5 },
+      axisMap: { zoom: 2 },
+      buttonMap: { preset1: 4, preset2: 5, preset3: 6, preset4: 7 },
+      useDpad: true,
+      dpadMap: { up: 12, down: 13, left: 14, right: 15 },
+    },
+  };
+
+  function normalizeJoystickSettings(value) {
+    const joystick = value && typeof value === 'object' ? value : {};
+    const model = joystick.model || 'logitech-extreme-3d';
+    const profile = JOYSTICK_PROFILES[model] || JOYSTICK_PROFILES['logitech-extreme-3d'];
+
+    const defaults = {
+      enabled: false,
+      model: model,
+      deadzone: profile.deadzone,
+      sensitivity: { ...profile.sensitivity },
+      axisMap: { ...profile.axisMap },
+      buttonMap: { ...profile.buttonMap },
+    };
+
+    return {
+      ...defaults,
+      ...joystick,
+      sensitivity: { ...defaults.sensitivity, ...(joystick.sensitivity || {}) },
+      axisMap: { ...defaults.axisMap, ...(joystick.axisMap || {}) },
+      buttonMap: { ...defaults.buttonMap, ...(joystick.buttonMap || {}) },
+    };
+  }
+
   let state = {
     activeCam: 0,
     cameras: DEF_CAMERAS.map(c => ({ ...c })),
@@ -1818,49 +1861,6 @@
 
   function normalizeActiveCamAux(value) {
     return ['sdi1', 'sdi2', 'sdi3', 'sdi4'].includes(value) ? value : 'sdi1';
-  }
-
-  const JOYSTICK_PROFILES = {
-    'logitech-extreme-3d': {
-      name: 'Logitech Extreme 3D',
-      deadzone: 0.2,
-      sensitivity: { pan: 1.0, tilt: 1.0, zoom: 0.5 },
-      axisMap: { pan: 0, tilt: 1, zoom: 2 },
-      buttonMap: { preset1: 0, preset2: 1, preset3: 2, preset4: 3 },
-      useDpad: false,
-    },
-    '8bitdo-zero2': {
-      name: '8BitDo Zero 2',
-      deadzone: 0.15,
-      sensitivity: { pan: 1.0, tilt: 1.0, zoom: 0.5 },
-      axisMap: { zoom: 2 },
-      buttonMap: { preset1: 4, preset2: 5, preset3: 6, preset4: 7 },
-      useDpad: true,
-      dpadMap: { up: 12, down: 13, left: 14, right: 15 },
-    },
-  };
-
-  function normalizeJoystickSettings(value) {
-    const joystick = value && typeof value === 'object' ? value : {};
-    const model = joystick.model || 'logitech-extreme-3d';
-    const profile = JOYSTICK_PROFILES[model] || JOYSTICK_PROFILES['logitech-extreme-3d'];
-
-    const defaults = {
-      enabled: false,
-      model: model,
-      deadzone: profile.deadzone,
-      sensitivity: { ...profile.sensitivity },
-      axisMap: { ...profile.axisMap },
-      buttonMap: { ...profile.buttonMap },
-    };
-
-    return {
-      ...defaults,
-      ...joystick,
-      sensitivity: { ...defaults.sensitivity, ...(joystick.sensitivity || {}) },
-      axisMap: { ...defaults.axisMap, ...(joystick.axisMap || {}) },
-      buttonMap: { ...defaults.buttonMap, ...(joystick.buttonMap || {}) },
-    };
   }
 
   // ── Server persistence ────────────────────────────────────────────────────
