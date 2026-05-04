@@ -2511,16 +2511,16 @@
     if (!gamepad) {
       if (gamepadConnected) {
         gamepadConnected = false;
-        updateJoystickStatus();
         console.debug('Gamepad disconnected');
+        updateJoystickStatus();
       }
       return;
     }
 
     if (!gamepadConnected) {
       gamepadConnected = true;
-      updateJoystickStatus();
       console.debug(`Gamepad connected: ${gamepad.id}`);
+      updateJoystickStatus();
     }
 
     const cfg = state.joystick;
@@ -2563,9 +2563,10 @@
     // Extract preset number (e.g., "preset1" → 0)
     const presetNum = parseInt(presetButton[0].replace('preset', '')) - 1;
     if (presetNum >= 0) {
-      const range = { start: state.presetStart, end: state.presetEnd };
-      const actualPreset = range.start + presetNum;
-      if (actualPreset <= range.end) {
+      const start = state.presetStart || 0;
+      const end = state.presetEnd != null ? state.presetEnd : 11;
+      const actualPreset = start + presetNum;
+      if (actualPreset <= end) {
         const btn = document.querySelector(`[data-preset="${actualPreset}"]`);
         if (btn) recallPreset(actualPreset, btn);
       }
@@ -2594,8 +2595,8 @@
   // Initialize gamepad support
   window.addEventListener('gamepadconnected', (e) => {
     gamepadConnected = true;
-    updateJoystickStatus();
     console.debug(`Gamepad connected: ${e.gamepad.id}`);
+    updateJoystickStatus();
     if (state.joystick && state.joystick.enabled) {
       updateGamepadState();
     }
@@ -2605,8 +2606,8 @@
     gamepadConnected = false;
     gamepadState = { pan: 0, tilt: 0, zoom: 0 };
     gamepadButtonStates = {};
-    updateJoystickStatus();
     console.debug('Gamepad disconnected');
+    updateJoystickStatus();
   });
 
   // ── SSE ────────────────────────────────────────────────────────────────────
