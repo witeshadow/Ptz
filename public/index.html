@@ -1569,6 +1569,21 @@
              c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
   </svg>
 </button>
+
+<!-- Virtual Joystick for Touch Devices -->
+<div id="virtual-joystick-container" style="display:none; position:fixed; bottom:20px; left:20px; z-index:100; touch-action:none;">
+  <div id="virtual-joystick" style="position:relative; width:120px; height:120px; background:var(--surf2); border:2px solid var(--border); border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:grab; user-select:none;">
+    <div id="joystick-center" style="position:absolute; width:40px; height:40px; background:var(--accent); border-radius:50%; top:50%; left:50%; transform:translate(-50%,-50%); transition:all 0.05s ease-out; box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>
+    <div style="position:absolute; width:100%; height:100%; border:1px dashed var(--border); border-radius:50%; opacity:0.3;"></div>
+  </div>
+  <div id="joystick-label" style="text-align:center; margin-top:8px; font-size:0.75rem; color:var(--muted); white-space:nowrap;">Pan/Tilt</div>
+  <button id="joystick-zoom-up" style="position:absolute; top:-40px; left:50%; transform:translateX(-50%); width:32px; height:32px; padding:0; border:1px solid var(--border); background:var(--surf2); color:var(--accent); border-radius:4px; font-size:18px; cursor:pointer; display:none;">+</button>
+  <button id="joystick-zoom-down" style="position:absolute; bottom:-40px; left:50%; transform:translateX(-50%); width:32px; height:32px; padding:0; border:1px solid var(--border); background:var(--surf2); color:var(--accent); border-radius:4px; font-size:18px; cursor:pointer; display:none;">−</button>
+</div>
+
+<!-- Virtual Joystick Toggle Button -->
+<button id="virtual-joystick-btn" style="display:none; position:fixed; bottom:20px; left:20px; z-index:99; padding:8px 12px; border:1px solid var(--border); background:var(--surf2); color:var(--accent); border-radius:4px; font-size:0.8rem; cursor:pointer;">Virtual Joystick</button>
+
 <script>
 (function () {
   'use strict';
@@ -2468,6 +2483,114 @@
       schedSave();
       updateAutoCutButton();
     });
+  }
+
+  // ── Virtual Joystick (Touch) ─────────────────────────────────────────────────
+  const elVirtualJoystick = document.getElementById('virtual-joystick');
+  const elJoystickCenter = document.getElementById('joystick-center');
+  const elVirtualJoystickBtn = document.getElementById('virtual-joystick-btn');
+  const elVirtualJoystickContainer = document.getElementById('virtual-joystick-container');
+  const elJoystickZoomUp = document.getElementById('joystick-zoom-up');
+  const elJoystickZoomDown = document.getElementById('joystick-zoom-down');
+
+  let virtualJoystickActive = false;
+  let virtualJoystickTouchId = null;
+
+  function showVirtualJoystick(show) {
+    virtualJoystickActive = show;
+    if (elVirtualJoystickContainer) {
+      elVirtualJoystickContainer.style.display = show ? 'block' : 'none';
+    }
+    if (elVirtualJoystickBtn) {
+      elVirtualJoystickBtn.style.display = !show ? 'block' : 'none';
+    }
+  }
+
+  if (elVirtualJoystickBtn) {
+    elVirtualJoystickBtn.addEventListener('click', () => {
+      showVirtualJoystick(true);
+      localStorage.setItem('ptz-virtual-joystick', 'true');
+    });
+  }
+
+  if (elVirtualJoystick) {
+    const joystickRect = { x: 0, y: 0, size: 120, radius: 60 };
+
+    function updateJoystickPosition(touchX, touchY) {
+      const rect = elVirtualJoystick.getBoundingClientRect();
+      joystickRect.x = rect.left;
+      joystickRect.y = rect.top;
+
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+
+      let deltaX = touchX - centerX;
+      let deltaY = touchY - centerY;
+
+      const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      const maxDistance = joystickRect.radius - 20;
+
+      if (distance > maxDistance) {
+        const ratio = maxDistance / distance;
+        deltaX *= ratio;
+        deltaY *= ratio;
+      }
+
+      elJoystickCenter.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
+
+      // Send pan/tilt commands based on joystick position
+      const pan = (deltaX / maxDistance) * 100;
+      const tilt = (deltaY / maxDistance) * 100;
+
+      _logger.debug(`Virtual joystick: pan=${pan.toFixed(0)}, tilt=${tilt.toFixed(0)}`);
+    }
+
+    function resetJoystick() {
+      elJoystickCenter.style.transform = 'translate(-50%, -50%)';
+    }
+
+    elVirtualJoystick.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (virtualJoystickTouchId !== null) return;
+
+      const touch = e.touches[0];
+      virtualJoystickTouchId = touch.identifier;
+      updateJoystickPosition(touch.clientX, touch.clientY);
+    }, { passive: false });
+
+    document.addEventListener('touchmove', (e) => {
+      if (virtualJoystickTouchId === null) return;
+
+      for (let i = 0; i < e.touches.length; i++) {
+        if (e.touches[i].identifier === virtualJoystickTouchId) {
+          e.preventDefault();
+          updateJoystickPosition(e.touches[i].clientX, e.touches[i].clientY);
+          break;
+        }
+      }
+    }, { passive: false });
+
+    document.addEventListener('touchend', (e) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === virtualJoystickTouchId) {
+          virtualJoystickTouchId = null;
+          resetJoystick();
+          break;
+        }
+      }
+    });
+
+    elVirtualJoystick.addEventListener('touchcancel', () => {
+      virtualJoystickTouchId = null;
+      resetJoystick();
+    });
+  }
+
+  // Show virtual joystick button on touch devices
+  if (window.matchMedia('(hover: none)').matches) {
+    if (elVirtualJoystickBtn && localStorage.getItem('ptz-virtual-joystick') !== 'false') {
+      elVirtualJoystickBtn.style.display = 'block';
+    }
   }
 
   // ── SSE ────────────────────────────────────────────────────────────────────
