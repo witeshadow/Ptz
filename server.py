@@ -1785,6 +1785,28 @@ class Handler(BaseHTTPRequestHandler):
             if usb:
                 jpeg = capture_usb_device(usb)
             elif url:
+                # Check for unsupported vdo.ninja URLs early (WebRTC streaming)
+                try:
+                    from urllib.parse import urlparse
+
+                    parsed = urlparse(url)
+                    hostname = parsed.hostname or ""
+                    if hostname == "vdo.ninja" or hostname.endswith(".vdo.ninja"):
+                        self._json(
+                            400,
+                            {
+                                "ok": False,
+                                "error": (
+                                    "vdo.ninja uses WebRTC streaming which cannot be "
+                                    "captured by headless browser. Use a standard RTMP/HLS "
+                                    "stream instead, or convert vdo.ninja to a standard "
+                                    "format with ffmpeg."
+                                ),
+                            },
+                        )
+                        return
+                except Exception:
+                    pass
                 if not _HAS_PLAYWRIGHT:
                     self._json(
                         503,

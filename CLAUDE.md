@@ -109,13 +109,17 @@ If a new UI setting persists, add it to both server defaults and frontend state.
 
 ## Verification
 
-Use these checks before pushing:
+Use these checks before pushing. **Always run `ruff format` first**:
 
 ```bash
+ruff format server.py
 ruff check server.py
 python -m py_compile server.py
 uv run pytest tests/test_frontend_contracts.py
+python -m unittest discover -s tests/ -v
 ```
+
+The CI runs all of these checks, so passing locally ensures your PR will pass.
 
 ## Working Rules
 
