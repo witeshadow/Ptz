@@ -1022,7 +1022,8 @@ def _capture_url(url: str) -> bytes:
             redacted_url = "<redacted>"
 
         # Detect vdo.ninja URLs early and provide helpful error
-        if "vdo.ninja" in url.lower():
+        hostname = parsed.hostname or ""
+        if hostname == "vdo.ninja" or hostname.endswith(".vdo.ninja"):
             raise ValueError(
                 "vdo.ninja uses WebRTC streaming which cannot be captured by headless browser. "
                 "Use a standard RTMP/HLS stream instead, or convert vdo.ninja to a standard format with ffmpeg."

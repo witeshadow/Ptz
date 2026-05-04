@@ -1672,7 +1672,7 @@
     state.deviceSettings[deviceId].presetEnd = end;
   }
 
-  // Per-device auto-cut setting (stored in deviceSettings, not persisted)
+  // Per-device auto-cut setting (persisted in deviceSettings)
   function getDeviceAutoCutArmed() {
     const deviceId = getDeviceId();
     const devSettings = state.deviceSettings[deviceId];
@@ -1685,6 +1685,7 @@
       state.deviceSettings[deviceId] = {};
     }
     state.deviceSettings[deviceId].autoCutArmed = !!armed;
+    schedSave();
   }
 
   // webcamDeviceId is browser-specific; stays in localStorage
@@ -1785,6 +1786,7 @@
         if (s.captureOutput) state.captureOutput = normalizeCaptureOutput(s.captureOutput);
         if (s.activeCamAux) state.activeCamAux = normalizeActiveCamAux(s.activeCamAux);
         if (s.positions) state.positions = { ...s.positions };
+        if (s.deviceSettings) state.deviceSettings = { ...s.deviceSettings };
       }
     } catch (_) {}
   }
@@ -2516,6 +2518,10 @@
     if (elCameraSelectGuard) {
       elCameraSelectGuard.style.display = isLiveAndActive ? 'block' : 'none';
     }
+    // Disable camera input fields when editing the active camera in live mode
+    [elIp, elPort, elVisca, elAtemInput, elUsbDevice, elStreamUrl].forEach(el => {
+      if (el) el.disabled = isLiveAndActive;
+    });
   }
 
   function initCameraSelector() {
@@ -3399,14 +3405,14 @@
 
   elStreamUrl.addEventListener('change', () => {
     const url = elStreamUrl.value.trim();
-    state.cameras[state.activeCam].streamUrl = url;
+    state.cameras[settingsCameraIdx].streamUrl = url;
     schedSave();
     if (url) elWebcam.value = '';
     applyStreamUrl(url);
   });
 
   elUsbDevice.addEventListener('change', () => {
-    state.cameras[state.activeCam].usbDevice = elUsbDevice.value;
+    state.cameras[settingsCameraIdx].usbDevice = elUsbDevice.value;
     schedSave();
     updateCameraStatusHints();
   });
@@ -3959,6 +3965,8 @@
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
           ip: cam.ip, port: cam.port, camera: cam.viscaAddr, preset, waitMode,
+          // TODO: deviceId reserved for future multi-device action queueing (Issue #64)
+          // Backend /recall handler will use this to queue commands per device
           deviceId: getDeviceId(),
         }),
       });
@@ -4177,6 +4185,7 @@
   // ── Boot ───────────────────────────────────────────────────────────────────
   (async function boot() {
     await loadSettings();
+    settingsCameraIdx = state.activeCam ?? 0;
     updateLiveModeButton();
     if (updateLockIcon) updateLockIcon();
     initCameraSelector();
