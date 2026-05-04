@@ -23,15 +23,23 @@ git clone https://github.com/witeshadow/ptz.git
 cd ptz
 ```
 
-### 2. Install dependencies
+### 2. Install optional dependencies (as needed)
+
+The core app uses only Python's standard library. Optional features require additional packages:
 
 ```bash
-# If you're using uv (recommended)
-uv sync
+# For URL-based preset capture (Playwright)
+pip install playwright
+playwright install chromium
 
-# OR if you're using pip
-pip install -r requirements.txt
+# For USB capture fallback (OpenCV)
+pip install opencv-python
+
+# For primary USB capture (requires ffmpeg on system PATH)
+# Install ffmpeg via: brew install ffmpeg (macOS) or apt install ffmpeg (Linux)
 ```
+
+If you don't need these features, skip this step.
 
 ### 3. Run the app
 
