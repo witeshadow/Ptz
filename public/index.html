@@ -4000,6 +4000,7 @@
         snapNeeded[key] = true;
         const btn = elGrid.querySelector(`[data-preset="${preset}"]`);
         if (btn) btn.classList.add('needs-snap');
+        setStatus('warning', `Preset ${preset} position has drifted — tap Snap to update`);
       } else {
         clearSnapNeeded(camIdx, preset);
       }
