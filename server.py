@@ -997,86 +997,107 @@ def inquire_visca_pan_tilt_position(
 
 
 # ── Playwright capture ─────────────────────────────────────────────────────────
-_pw_lock = threading.Lock()
-_pw_ctx = None  # playwright instance
+_pw_queue = queue.Queue()  # requests for dedicated Playwright thread
+_pw_ctx = None  # playwright instance (lives on dedicated thread)
 _pw_browser = None
 _pw_page = None
 _pw_page_url = None
+_pw_ready = threading.Event()  # signals when Playwright is initialized
 
 
-def _init_playwright() -> None:
-    """Initialize Playwright in the main thread before the HTTP server starts.
-
-    This prevents thread-binding issues with Playwright's sync_api, which fails
-    when the context is created in one thread but accessed from another.
-    """
-    global _pw_ctx, _pw_browser
+def _pw_worker() -> None:
+    """Dedicated thread for Playwright operations to avoid thread-binding issues."""
+    global _pw_ctx, _pw_browser, _pw_page, _pw_page_url
     if not _HAS_PLAYWRIGHT:
+        _pw_ready.set()
         return
-    with _pw_lock:
-        if _pw_ctx is not None:
-            return
+    try:
+        _pw_ctx = _sync_playwright().start()
+        _pw_browser = _pw_ctx.chromium.launch(
+            headless=True,
+            args=[
+                "--autoplay-policy=no-user-gesture-required",
+                "--use-fake-ui-for-media-stream",
+            ],
+        )
+        _logger.debug("Playwright initialized on dedicated worker thread")
+    except Exception as e:
+        _logger.warning(f"Failed to initialize Playwright: {e!r}")
+        _pw_ctx = None
+    finally:
+        _pw_ready.set()
+
+    while True:
         try:
-            _pw_ctx = _sync_playwright().start()
-            _pw_browser = _pw_ctx.chromium.launch(
-                headless=True,
-                args=[
-                    "--autoplay-policy=no-user-gesture-required",
-                    "--use-fake-ui-for-media-stream",
-                ],
-            )
-            _logger.debug("Playwright initialized in main thread")
+            item = _pw_queue.get()
+            if item is None:  # Shutdown signal
+                break
+            url, result_queue = item
+            try:
+                result_queue.put(("success", _pw_capture_url_impl(url)))
+            except Exception as e:
+                result_queue.put(("error", e))
         except Exception as e:
-            _logger.warning(f"Failed to initialize Playwright: {e!r}")
-            _pw_ctx = None
-            _pw_browser = None
+            _logger.error(f"Playwright worker error: {e!r}")
+
+
+def _pw_capture_url_impl(url: str) -> bytes:
+    """Implementation of URL capture running on the dedicated Playwright thread."""
+    global _pw_page, _pw_page_url
+    # Redact URL for logging
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        redacted_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+    except Exception:
+        redacted_url = "<redacted>"
+
+    if _pw_page is None or _pw_page_url != url:
+        if _pw_page:
+            try:
+                _pw_page.close()
+            except Exception:
+                pass
+        try:
+            _pw_page = _pw_browser.new_page()
+            _pw_page.goto(url, wait_until="domcontentloaded")
+            _logger.debug(f"Capture: Loaded URL {redacted_url}")
+            # wait up to 30s for a video element with decoded data (longer for vdo.ninja)
+            _pw_page.wait_for_function(
+                "() => { const v = document.querySelector('video'); "
+                "return v && v.readyState >= 2 && v.videoWidth > 0; }",
+                timeout=30_000,
+            )
+            _logger.debug(f"Capture: Video element ready for {redacted_url}")
+        except Exception as e:
+            _logger.error(
+                f"Capture: Failed to load video from {redacted_url}: {e!r}"
+            )
+            if _pw_page:
+                _logger.debug("Capture: Falling back to page screenshot")
+            _pw_page_url = None
+            raise
+        _pw_page_url = url
+    video = _pw_page.query_selector("video")
+    if video:
+        return video.screenshot(type="jpeg", quality=70)
+    return _pw_page.screenshot(type="jpeg", full_page=False)
 
 
 def _capture_url(url: str) -> bytes:
-    global _pw_ctx, _pw_browser, _pw_page, _pw_page_url
+    """Queue URL capture to the dedicated Playwright worker thread."""
+    if not _pw_ready.is_set():
+        raise RuntimeError("Playwright initializing; try again")
     if _pw_ctx is None:
         raise RuntimeError("Playwright not initialized; URL capture unavailable")
-    with _pw_lock:
-        # Redact URL for logging (remove query params that may contain tokens)
-        try:
-            from urllib.parse import urlparse
-
-            parsed = urlparse(url)
-            redacted_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-        except Exception:
-            redacted_url = "<redacted>"
-
-        if _pw_page is None or _pw_page_url != url:
-            if _pw_page:
-                try:
-                    _pw_page.close()
-                except Exception:
-                    pass
-            try:
-                _pw_page = _pw_browser.new_page()
-                _pw_page.goto(url, wait_until="domcontentloaded")
-                _logger.debug(f"Capture: Loaded URL {redacted_url}")
-                # wait up to 30s for a video element with decoded data (longer for vdo.ninja)
-                _pw_page.wait_for_function(
-                    "() => { const v = document.querySelector('video'); "
-                    "return v && v.readyState >= 2 && v.videoWidth > 0; }",
-                    timeout=30_000,
-                )
-                _logger.debug(f"Capture: Video element ready for {redacted_url}")
-            except Exception as e:
-                _logger.error(
-                    f"Capture: Failed to load video from {redacted_url}: {e!r}"
-                )
-                # Try fullpage screenshot as fallback
-                if _pw_page:
-                    _logger.debug("Capture: Falling back to page screenshot")
-                _pw_page_url = None  # force reload next time
-                raise
-            _pw_page_url = url
-        video = _pw_page.query_selector("video")
-        if video:
-            return video.screenshot(type="jpeg", quality=70)
-        return _pw_page.screenshot(type="jpeg", full_page=False)
+    # Queue the request and wait for result
+    result_queue = queue.Queue()
+    _pw_queue.put((url, result_queue))
+    status, result = result_queue.get(timeout=35)
+    if status == "error":
+        raise result
+    return result
 
 
 # ── USB device capture ─────────────────────────────────────────────────────────
@@ -1859,7 +1880,9 @@ if __name__ == "__main__":
     )
     logger = logging.getLogger(__name__)
     load_settings()  # ensure data/ and default settings.json exist
-    _init_playwright()  # Initialize Playwright in main thread before server starts
+    pw_thread = threading.Thread(target=_pw_worker, daemon=True, name="playwright")
+    pw_thread.start()
+    _pw_ready.wait()  # Wait for Playwright to initialize before starting server
     atem_thread = threading.Thread(target=_atem_loop, daemon=True, name="atem")
     atem_thread.start()
     host, port = "0.0.0.0", 5001
