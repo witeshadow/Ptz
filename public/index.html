@@ -4187,9 +4187,9 @@
     const btn = elGrid.querySelector(`[data-preset="${n}"]`);
     if (!btn) return;
 
-    // Only update the button if it's displaying (or should display) the requested camera
-    // Guard against updating the wrong camera's button when camera switches during capture
-    if (btn.dataset.displayCam && btn.dataset.displayCam != cam) return;
+    // Skip updates for cameras that are no longer active to prevent stale captures
+    // from updating buttons when the user has switched to a different camera
+    if (cam != state.activeCam && btn.dataset.displayCam && btn.dataset.displayCam != cam) return;
 
     btn.dataset.displayCam = cam;
     const ovName = btn.querySelector('.ov-name');
