@@ -1332,6 +1332,13 @@
     <div class="gsp-column gsp-mobile-section active" data-mobile-tab="cameras">
       <div class="gsp-section-title">Camera</div>
       <div class="field">
+        <label for="f-camera-select">Select Camera</label>
+        <select id="f-camera-select"></select>
+        <div id="camera-select-guard" class="field-note" style="color: var(--error); display: none;">
+          Cannot edit active camera in live mode. Exit live mode to modify.
+        </div>
+      </div>
+      <div class="field">
         <label for="f-ip">IP</label>
         <input id="f-ip" type="text" placeholder="192.168.1.100" autocomplete="off" spellcheck="false" />
       </div>
@@ -2309,6 +2316,7 @@
     state.activeCam = idx;
     schedSave();
     loadCameraSettings();
+    updateCameraSelectUi();
     renderTabs();
     refreshGridForActiveCamera();
     applyGridLayout();
@@ -2346,6 +2354,8 @@
   }
 
   // ── Settings bar ───────────────────────────────────────────────────────────
+  const elCameraSelect = document.getElementById('f-camera-select');
+  const elCameraSelectGuard = document.getElementById('camera-select-guard');
   const elIp        = document.getElementById('f-ip');
   const elPort      = document.getElementById('f-port');
   const elVisca     = document.getElementById('f-visca');
@@ -2356,6 +2366,8 @@
   const elScanDwellField = document.getElementById('scan-dwell-field');
   const elDwell     = document.getElementById('f-dwell');
   const elAutoCutDelay = document.getElementById('f-auto-cut-delay');
+
+  let settingsCameraIdx = 0;
 
   function updateScanWaitModeUi() {
     const manual = state.scanWaitMode === 'dwell';
@@ -2395,7 +2407,7 @@
   }
 
   function loadCameraSettings() {
-    const cam = state.cameras[state.activeCam];
+    const cam = state.cameras[settingsCameraIdx];
     elIp.value        = cam.ip;
     elPort.value      = cam.port;
     elVisca.value     = cam.viscaAddr;
@@ -2412,6 +2424,7 @@
     elStreamUrl.value = url;
     applyStreamUrl(url);
     updateCameraStatusHints();
+    updateCameraSelectUi();
   }
 
   function updateCaptureModeVisibility() {
@@ -2423,7 +2436,7 @@
   }
 
   function saveCameraSettings() {
-    const cam      = state.cameras[state.activeCam];
+    const cam      = state.cameras[settingsCameraIdx];
     cam.ip         = elIp.value.trim();
     cam.port       = parseInt(elPort.value, 10) || 52381;
     cam.viscaAddr  = parseInt(elVisca.value, 10) || 1;
@@ -2437,6 +2450,36 @@
     state.autoCutDelayMs = Math.max(0, Math.round(((parseFloat((elAutoCutDelay && elAutoCutDelay.value) || '0') || 0) * 1000)));
     updateCameraStatusHints();
     updateScanWaitModeUi();
+  }
+
+  function updateCameraSelectUi() {
+    const isLiveAndActive = state.liveMode && settingsCameraIdx === state.activeCam;
+    if (elCameraSelect) {
+      elCameraSelect.disabled = isLiveAndActive;
+      elCameraSelect.value = String(settingsCameraIdx);
+    }
+    if (elCameraSelectGuard) {
+      elCameraSelectGuard.style.display = isLiveAndActive ? 'block' : 'none';
+    }
+  }
+
+  function initCameraSelector() {
+    if (!elCameraSelect) return;
+    elCameraSelect.innerHTML = '';
+    state.cameras.forEach((cam, idx) => {
+      const opt = document.createElement('option');
+      opt.value = String(idx);
+      opt.textContent = cam.name;
+      elCameraSelect.appendChild(opt);
+    });
+    updateCameraSelectUi();
+  }
+
+  if (elCameraSelect) {
+    elCameraSelect.addEventListener('change', (e) => {
+      settingsCameraIdx = parseInt(e.target.value, 10) || 0;
+      loadCameraSettings();
+    });
   }
 
   [elIp, elPort, elVisca, elAtemInput, elDwell, elScanWaitMode].forEach(el =>
@@ -2818,6 +2861,7 @@
       }
       updateLiveModeButton();
       if (updateLockIcon) updateLockIcon();
+      updateCameraSelectUi();
       schedSave();
       renderTabs();
       updateToolbarVisibility();
@@ -4073,6 +4117,7 @@
     await loadSettings();
     updateLiveModeButton();
     if (updateLockIcon) updateLockIcon();
+    initCameraSelector();
     loadCameraSettings();
     loadGridSettings();
     loadCameraManagement();
