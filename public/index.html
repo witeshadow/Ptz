@@ -1598,8 +1598,9 @@
         5. If wrong, switch gamepad to DirectInput/D-Input mode<br/>
         <br/>
         <strong>8BitDo Zero 2 Modes:</strong><br/>
-        • <strong>D-Input</strong> ✓ (16 buttons) - Use "8BitDo Zero 2" profile<br/>
-        • X-Input (10 buttons) - Switch to D-Input mode on controller
+        • <strong>D-Input</strong> ✓ (16 buttons) - Use "8BitDo Zero 2 (D-Pad)" profile<br/>
+        • X-Input (10 buttons) - Switch to D-Input mode on controller<br/>
+        • Switch mode (17 buttons) - Switch to D-Input mode on controller
       </div>
       <label class="atem-toggle-wrap" style="margin-top:12px;">
         <input id="f-joystick-debug" type="checkbox" />
@@ -1614,7 +1615,7 @@
         <div style="margin-top:6px; color:var(--subtext); font-size:0.75rem;">Raw axes:</div>
         <div>Ax0: <span id="dbg-joystick-ax0">—</span> Ax1: <span id="dbg-joystick-ax1">—</span> Ax2: <span id="dbg-joystick-ax2">—</span></div>
         <div style="margin-top:6px; color:var(--subtext); font-size:0.75rem;">Gamepad:</div>
-        <div id="dbg-joystick-info">—</div>
+        <div id="dbg-joystick-info" style="white-space:pre-line;">—</div>
         <div style="margin-top:6px; color:var(--subtext); font-size:0.75rem;">Pressed buttons:</div>
         <div id="dbg-joystick-buttons" style="word-wrap:break-word;">—</div>
       </div>
@@ -3048,14 +3049,16 @@
     if (!gamepadConnected) return;
     const cmd = { pan: gamepadState.pan, tilt: -gamepadState.tilt, zoom: gamepadState.zoom };
     const isDuplicate = cmd.pan === lastVirtualPtz.pan && cmd.tilt === lastVirtualPtz.tilt && cmd.zoom === lastVirtualPtz.zoom;
-    if (cmd.pan === 0 && cmd.tilt === 0 && cmd.zoom === 0) {
-      if (!isDuplicate) {
-        console.debug('[GAMEPAD] Sending STOP command');
+    if (state.showJoystickDebug) {
+      if (cmd.pan === 0 && cmd.tilt === 0 && cmd.zoom === 0) {
+        if (!isDuplicate) {
+          console.debug('[GAMEPAD] Sending STOP command');
+        } else {
+          console.debug('[GAMEPAD] STOP already sent, deduplicating');
+        }
       } else {
-        console.debug('[GAMEPAD] STOP already sent, deduplicating');
+        console.debug('[GAMEPAD] Sending command:', cmd, isDuplicate ? '(duplicate, skipped)' : '(sent)');
       }
-    } else {
-      console.debug('[GAMEPAD] Sending command:', cmd, isDuplicate ? '(duplicate, skipped)' : '(sent)');
     }
     sendPtzDriveCommand(gamepadState.pan, -gamepadState.tilt, gamepadState.zoom);
   }
