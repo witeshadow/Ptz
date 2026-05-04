@@ -3148,7 +3148,12 @@
   let lastDpadState = { up: false, down: false, left: false, right: false };
 
   function updateDpadInput(gamepad, cfg) {
-    if (!cfg.useDpad) return;
+    if (!cfg.useDpad) {
+      gamepadState.pan = 0;
+      gamepadState.tilt = 0;
+      dpadState = { up: false, down: false, left: false, right: false };
+      return;
+    }
     const dpadMap = JOYSTICK_PROFILES[cfg.model]?.dpadMap || {};
 
     // Validate button indices exist
@@ -3156,6 +3161,9 @@
       .every(idx => idx !== undefined && idx < gamepad.buttons.length);
     if (!validIndices) {
       console.warn('[D-PAD] Invalid button indices for profile:', cfg.model, dpadMap, `gamepad has ${gamepad.buttons.length} buttons`);
+      gamepadState.pan = 0;
+      gamepadState.tilt = 0;
+      dpadState = { up: false, down: false, left: false, right: false };
       return;
     }
 
