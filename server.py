@@ -530,6 +530,26 @@ def _wait_for_atem_aux_source(
     return _get_atem().get(key) == source
 
 
+def _send_atem_aux_source(aux_idx: int, source_id: int) -> tuple[bool, str]:
+    """Route an ATEM AUX output to a given source via CAuS command."""
+    # CAuS payload: mask=0x01, aux channel (0-based), source (big-endian uint16)
+    return _send_atem_command(
+        "CAuS", bytes([0x01, aux_idx]) + struct.pack(">H", source_id)
+    )
+
+
+def _wait_for_atem_aux_source(
+    aux_idx: int, source: int, timeout_s: float = 1.0
+) -> bool:
+    key = f"aux{aux_idx + 1}"
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if _get_atem().get(key) == source:
+            return True
+        time.sleep(0.05)
+    return _get_atem().get(key) == source
+
+
 def cut_atem_to_source(source: int, reason: str = "manual") -> tuple[bool, str]:
     if source <= 0:
         _set_atem_last_action(
@@ -1364,6 +1384,8 @@ class Handler(BaseHTTPRequestHandler):
         ok, message = _send_atem_preview(atem_input)
         status = 200 if ok else 502
         self._json(status, {"ok": ok, "message": message, "source": atem_input})
+
+    def _handle_atem_aux_route(self):
         body = self._read_body()
         try:
             data = json.loads(body)
