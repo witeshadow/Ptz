@@ -2692,7 +2692,7 @@
         return false;
       }
       lastVirtualPtz = next;
-      checkAllPresetsForDrift();
+      checkRecalledPresetForDrift();
       return true;
     } catch (err) {
       setStatus('error', `PTZ move failed: ${err.message || err}`);
@@ -3979,6 +3979,9 @@
     if (btn) btn.classList.remove('needs-snap');
   }
 
+  let lastRecalledPreset = null;
+  let lastRecalledCam = null;
+
   async function checkPositionAfterRecall(preset, camIdx) {
     const cam = state.cameras[camIdx];
     if (!(cam && cam.ip)) return;
@@ -4008,11 +4011,9 @@
     } catch (_) {}
   }
 
-  async function checkAllPresetsForDrift(camIdx = state.activeCam) {
-    const presets = presetNumbers();
-    for (const preset of presets) {
-      checkPositionAfterRecall(preset, camIdx);
-    }
+  async function checkRecalledPresetForDrift(camIdx = state.activeCam) {
+    if (lastRecalledPreset === null || lastRecalledCam !== camIdx) return;
+    checkPositionAfterRecall(lastRecalledPreset, camIdx);
   }
 
   function presetNumbers() {
@@ -4037,7 +4038,8 @@
     }
     nums.forEach(n => refreshPresetBtn(n, state.activeCam));
     updatePresetGridBusState();
-    checkAllPresetsForDrift();
+    lastRecalledPreset = null;
+    lastRecalledCam = null;
   }
 
   function updateFillGridMetrics() {
@@ -4467,6 +4469,8 @@
       );
       setStatus('success', msg);
       scheduleAutoCut(n, autoCutPlan, autoCutTrigger || 'settled', recallElapsedMs);
+      lastRecalledPreset = n;
+      lastRecalledCam = recallCamIdx;
       if (data.settled) checkPositionAfterRecall(n, recallCamIdx);
     } else {
       const recallElapsedMs = Math.max(
