@@ -1560,6 +1560,13 @@
         <span>Enable Joystick</span>
       </label>
       <div class="field">
+        <label for="f-joystick-model">Device Profile</label>
+        <select id="f-joystick-model">
+          <option value="logitech-extreme-3d">Logitech Extreme 3D (Analog Sticks)</option>
+          <option value="8bitdo-zero2">8BitDo Zero 2 (D-Pad)</option>
+        </select>
+      </div>
+      <div class="field">
         <label for="f-joystick-deadzone">Deadzone</label>
         <input id="f-joystick-deadzone" type="range" min="0" max="1" step="0.05" />
         <span id="f-joystick-deadzone-value">0.20</span>
@@ -1813,16 +1820,40 @@
     return ['sdi1', 'sdi2', 'sdi3', 'sdi4'].includes(value) ? value : 'sdi1';
   }
 
-  function normalizeJoystickSettings(value) {
-    const defaults = {
-      enabled: false,
-      model: 'logitech-extreme-3d',
+  const JOYSTICK_PROFILES = {
+    'logitech-extreme-3d': {
+      name: 'Logitech Extreme 3D',
       deadzone: 0.2,
       sensitivity: { pan: 1.0, tilt: 1.0, zoom: 0.5 },
       axisMap: { pan: 0, tilt: 1, zoom: 2 },
       buttonMap: { preset1: 0, preset2: 1, preset3: 2, preset4: 3 },
-    };
+      useDpad: false,
+    },
+    '8bitdo-zero2': {
+      name: '8BitDo Zero 2',
+      deadzone: 0.15,
+      sensitivity: { pan: 1.0, tilt: 1.0, zoom: 0.5 },
+      axisMap: { zoom: 2 },
+      buttonMap: { preset1: 4, preset2: 5, preset3: 6, preset4: 7 },
+      useDpad: true,
+      dpadMap: { up: 12, down: 13, left: 14, right: 15 },
+    },
+  };
+
+  function normalizeJoystickSettings(value) {
     const joystick = value && typeof value === 'object' ? value : {};
+    const model = joystick.model || 'logitech-extreme-3d';
+    const profile = JOYSTICK_PROFILES[model] || JOYSTICK_PROFILES['logitech-extreme-3d'];
+
+    const defaults = {
+      enabled: false,
+      model: model,
+      deadzone: profile.deadzone,
+      sensitivity: { ...profile.sensitivity },
+      axisMap: { ...profile.axisMap },
+      buttonMap: { ...profile.buttonMap },
+    };
+
     return {
       ...defaults,
       ...joystick,
@@ -2872,10 +2903,15 @@
     const sensitivity = cfg.sensitivity || { pan: 1.0, tilt: 1.0, zoom: 0.5 };
     const axisMap = cfg.axisMap || { pan: 0, tilt: 1, zoom: 2 };
 
-    // Read axes with deadzone
+    if (cfg.useDpad) {
+      updateDpadInput(gamepad, cfg);
+    } else {
+      const applyDeadzone = (v) => Math.abs(v) < deadzone ? 0 : v;
+      gamepadState.pan = applyDeadzone(gamepad.axes[axisMap.pan] || 0) * (sensitivity.pan || 1.0);
+      gamepadState.tilt = applyDeadzone(gamepad.axes[axisMap.tilt] || 0) * (sensitivity.tilt || 1.0);
+    }
+
     const applyDeadzone = (v) => Math.abs(v) < deadzone ? 0 : v;
-    gamepadState.pan = applyDeadzone(gamepad.axes[axisMap.pan] || 0) * (sensitivity.pan || 1.0);
-    gamepadState.tilt = applyDeadzone(gamepad.axes[axisMap.tilt] || 0) * (sensitivity.tilt || 1.0);
     gamepadState.zoom = applyDeadzone(gamepad.axes[axisMap.zoom] || 0) * (sensitivity.zoom || 0.5);
 
     // Handle button presses for preset recall
@@ -3014,6 +3050,23 @@
   let gamepadState = { pan: 0, tilt: 0, zoom: 0 };
   let gamepadButtonStates = {};
   let gamepadAnimationFrame = null;
+  let dpadState = { up: false, down: false, left: false, right: false };
+
+  function updateDpadInput(gamepad, cfg) {
+    if (!cfg.useDpad) return;
+    const dpadMap = JOYSTICK_PROFILES[cfg.model]?.dpadMap || {};
+    const newState = {
+      up: gamepad.buttons[dpadMap.up]?.pressed || false,
+      down: gamepad.buttons[dpadMap.down]?.pressed || false,
+      left: gamepad.buttons[dpadMap.left]?.pressed || false,
+      right: gamepad.buttons[dpadMap.right]?.pressed || false,
+    };
+    dpadState = newState;
+    const deadzone = cfg.deadzone || 0.15;
+    const sensitivity = cfg.sensitivity || { pan: 1.0, tilt: 1.0, zoom: 0.5 };
+    gamepadState.pan = ((newState.right ? 1 : 0) - (newState.left ? 1 : 0)) * (sensitivity.pan || 1.0);
+    gamepadState.tilt = ((newState.down ? 1 : 0) - (newState.up ? 1 : 0)) * (sensitivity.tilt || 1.0);
+  }
 
   function getAutoCutDelaySeconds() {
     return ((state.autoCutDelayMs || 0) / 1000).toFixed(1).replace(/\.0$/, '');
@@ -3338,6 +3391,7 @@
 
   // Joystick settings elements
   const elJoystickEnabled = document.getElementById('f-joystick-enabled');
+  const elJoystickModel = document.getElementById('f-joystick-model');
   const elJoystickDeadzone = document.getElementById('f-joystick-deadzone');
   const elJoystickPanSens = document.getElementById('f-joystick-pan-sens');
   const elJoystickTiltSens = document.getElementById('f-joystick-tilt-sens');
@@ -3445,6 +3499,7 @@
   function loadJoystickSettings() {
     const js = state.joystick = normalizeJoystickSettings(state.joystick);
     if (elJoystickEnabled) elJoystickEnabled.checked = !!js.enabled;
+    if (elJoystickModel) elJoystickModel.value = js.model || 'logitech-extreme-3d';
     if (elJoystickDeadzone) {
       elJoystickDeadzone.value = (js.deadzone || 0.2).toFixed(2);
       document.getElementById('f-joystick-deadzone-value').textContent = (js.deadzone || 0.2).toFixed(2);
@@ -3470,6 +3525,7 @@
     state.joystick = normalizeJoystickSettings({
       ...prev,
       enabled: elJoystickEnabled?.checked || false,
+      model: elJoystickModel?.value || 'logitech-extreme-3d',
       deadzone: parseFloat(elJoystickDeadzone?.value || 0.2),
       sensitivity: {
         ...prev.sensitivity,
@@ -3516,7 +3572,7 @@
   }
 
   if (elJoystickEnabled) {
-    [elJoystickEnabled, elJoystickDeadzone, elJoystickPanSens, elJoystickTiltSens, elJoystickZoomSens].forEach(el => {
+    [elJoystickEnabled, elJoystickModel, elJoystickDeadzone, elJoystickPanSens, elJoystickTiltSens, elJoystickZoomSens].forEach(el => {
       if (el) {
         el.addEventListener('change', saveJoystickSettings);
         el.addEventListener('input', () => {
