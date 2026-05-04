@@ -2433,10 +2433,10 @@
     if (elScanDwellField) elScanDwellField.style.opacity = manual ? '1' : '0.6';
   }
 
-  function updateCameraStatusHints() {
+  function updateCameraStatusHints(camIdx = state.activeCam) {
     if (elAtemStatus) {
-      const atemInput = getCameraAtemInput(state.activeCam);
-      const busStatus = getCameraAtemBusStatus(state.activeCam);
+      const atemInput = getCameraAtemInput(camIdx);
+      const busStatus = getCameraAtemBusStatus(camIdx);
 
       let statusText = '';
       let statusClass = '';
@@ -2459,7 +2459,7 @@
       elAtemStatus.className = 'status-hint ' + statusClass;
     }
     if (elCaptureSourceStatus) {
-      elCaptureSourceStatus.textContent = `Scan capture source: ${getCameraCaptureSourceSummary(state.activeCam)}`;
+      elCaptureSourceStatus.textContent = `Scan capture source: ${getCameraCaptureSourceSummary(camIdx)}`;
     }
   }
 
@@ -2480,7 +2480,7 @@
     const url = cam.streamUrl || '';
     elStreamUrl.value = url;
     applyStreamUrl(url);
-    updateCameraStatusHints();
+    updateCameraStatusHints(settingsCameraIdx);
     updateCameraSelectUi();
   }
 
@@ -2512,7 +2512,6 @@
   function updateCameraSelectUi() {
     const isLiveAndActive = state.liveMode && settingsCameraIdx === state.activeCam;
     if (elCameraSelect) {
-      elCameraSelect.disabled = isLiveAndActive;
       elCameraSelect.value = String(settingsCameraIdx);
     }
     if (elCameraSelectGuard) {
@@ -4186,6 +4185,8 @@
   (async function boot() {
     await loadSettings();
     settingsCameraIdx = state.activeCam ?? 0;
+    // Hydrate runtime auto-cut armed state from persisted device settings
+    autoCutArmed = getDeviceAutoCutArmed() && canArmAutoCut() && !!getActiveCameraCutSource();
     updateLiveModeButton();
     if (updateLockIcon) updateLockIcon();
     initCameraSelector();

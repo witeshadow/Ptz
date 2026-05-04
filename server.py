@@ -1007,8 +1007,8 @@ _pw_page_url = None
 def _capture_url(url: str) -> bytes:
     """Capture screenshot from URL using headless Playwright browser.
 
-    Supports standard HTTP streams (RTMP, HLS, etc). Detects and rejects WebRTC
-    streams (vdo.ninja) which cannot be captured in headless mode.
+    Supports standard HTTP streams (RTMP, HLS, etc). Note: vdo.ninja URLs are
+    rejected at the HTTP handler level before reaching this function.
     """
     global _pw_ctx, _pw_browser, _pw_page, _pw_page_url
     with _pw_lock:
@@ -1020,14 +1020,6 @@ def _capture_url(url: str) -> bytes:
             redacted_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
         except Exception:
             redacted_url = "<redacted>"
-
-        # Detect vdo.ninja URLs early and provide helpful error
-        hostname = parsed.hostname or ""
-        if hostname == "vdo.ninja" or hostname.endswith(".vdo.ninja"):
-            raise ValueError(
-                "vdo.ninja uses WebRTC streaming which cannot be captured by headless browser. "
-                "Use a standard RTMP/HLS stream instead, or convert vdo.ninja to a standard format with ffmpeg."
-            )
 
         if _pw_ctx is None:
             _pw_ctx = _sync_playwright().start()
@@ -1723,6 +1715,22 @@ class Handler(BaseHTTPRequestHandler):
             if usb:
                 jpeg = capture_usb_device(usb)
             elif url:
+                # Check for unsupported vdo.ninja URLs early (WebRTC streaming)
+                try:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(url)
+                    hostname = parsed.hostname or ""
+                    if hostname == "vdo.ninja" or hostname.endswith(".vdo.ninja"):
+                        self._json(
+                            400,
+                            {
+                                "ok": False,
+                                "error": "vdo.ninja uses WebRTC streaming which cannot be captured by headless browser. Use a standard RTMP/HLS stream instead, or convert vdo.ninja to a standard format with ffmpeg.",
+                            },
+                        )
+                        return
+                except Exception:
+                    pass
                 if not _HAS_PLAYWRIGHT:
                     self._json(
                         503,
