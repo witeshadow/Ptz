@@ -997,6 +997,7 @@ def inquire_visca_pan_tilt_position(
 
 
 # ── Playwright capture ─────────────────────────────────────────────────────────
+_PW_CAPTURE_TIMEOUT_S = 65  # includes goto + wait_for_function timeouts
 _pw_queue = queue.Queue()  # requests for dedicated Playwright thread
 _pw_ctx = None  # playwright instance (lives on dedicated thread)
 _pw_browser = None
@@ -1091,7 +1092,7 @@ def _capture_url(url: str) -> bytes:
     """
     result_queue = queue.Queue()
     _pw_queue.put((url, result_queue))
-    status, result = result_queue.get(timeout=35)
+    status, result = result_queue.get(timeout=_PW_CAPTURE_TIMEOUT_S)
     if status == "error":
         raise result
     return result
@@ -1758,6 +1759,15 @@ class Handler(BaseHTTPRequestHandler):
                         },
                     )
                     return
+                if not _pw_ready.is_set():
+                    self._json(
+                        503,
+                        {
+                            "ok": False,
+                            "error": "playwright initialization in progress; retry in a few moments",
+                        },
+                    )
+                    return
                 if _pw_ctx is None:
                     self._json(
                         503,
@@ -1888,7 +1898,11 @@ if __name__ == "__main__":
     load_settings()  # ensure data/ and default settings.json exist
     pw_thread = threading.Thread(target=_pw_worker, daemon=True, name="playwright")
     pw_thread.start()
-    _pw_ready.wait()  # Wait for Playwright to initialize before starting server
+    if not _pw_ready.wait(timeout=30):
+        logger.warning(
+            "Playwright initialization is still pending after 30s; "
+            "starting server with URL capture temporarily unavailable"
+        )
     atem_thread = threading.Thread(target=_atem_loop, daemon=True, name="atem")
     atem_thread.start()
     host, port = "0.0.0.0", 5001
