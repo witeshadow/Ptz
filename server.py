@@ -1970,15 +1970,38 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, {"ok": True, **pos})
 
     def _post_image(self, cam: int, preset: int):
-        _ensure_dirs()
         data = self._read_body()
-        fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
-        with open(fpath, "wb") as f:
-            f.write(data)
         settings = load_settings()
         position = _try_record_position(settings, cam, preset)
-        if position is not None:
+        if position is None:
+            self._json(
+                400,
+                {
+                    "ok": False,
+                    "error": "could not record camera position — cannot save preset image without position data",
+                },
+            )
+            return
+        _ensure_dirs()
+        fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
+        try:
+            with open(fpath, "wb") as f:
+                f.write(data)
             write_settings(settings)
+        except Exception as e:
+            try:
+                if os.path.exists(fpath):
+                    os.remove(fpath)
+            except Exception:
+                pass
+            self._json(
+                500,
+                {
+                    "ok": False,
+                    "error": f"failed to persist preset image: {e}",
+                },
+            )
+            return
         self._json(200, {"ok": True, "position": position})
 
     def _capture_image(self, cam: int, preset: int):
@@ -2060,14 +2083,37 @@ class Handler(BaseHTTPRequestHandler):
                     },
                 )
                 return
-            _ensure_dirs()
-            fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
-            with open(fpath, "wb") as f:
-                f.write(jpeg)
             settings = load_settings()
             position = _try_record_position(settings, cam, preset)
-            if position is not None:
+            if position is None:
+                self._json(
+                    400,
+                    {
+                        "ok": False,
+                        "error": "could not record camera position — cannot save preset image without position data",
+                    },
+                )
+                return
+            _ensure_dirs()
+            fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
+            try:
+                with open(fpath, "wb") as f:
+                    f.write(jpeg)
                 write_settings(settings)
+            except Exception as persist_error:
+                try:
+                    if os.path.exists(fpath):
+                        os.remove(fpath)
+                except Exception:
+                    pass
+                self._json(
+                    500,
+                    {
+                        "ok": False,
+                        "error": f"failed to persist captured image: {persist_error}",
+                    },
+                )
+                return
             self._json(200, {"ok": True, "position": position})
         except Exception as e:
             self._json(500, {"ok": False, "error": str(e)})
