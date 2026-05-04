@@ -1582,6 +1582,19 @@
       <div id="joystick-status" style="color:var(--muted); font-size:0.85rem; margin-top:12px;">
         Status: <span id="joystick-status-text">Not connected</span>
       </div>
+      <label class="atem-toggle-wrap" style="margin-top:12px;">
+        <input id="f-joystick-debug" type="checkbox" />
+        <span>Show Debug Info</span>
+      </label>
+      <div id="joystick-debug" style="color:var(--muted); font-size:0.8rem; margin-top:12px; line-height:1.4; font-family:monospace; display:none; padding:8px; background:var(--surf2); border-radius:4px;">
+        <div>Pan: <span id="dbg-joystick-pan">—</span></div>
+        <div>Tilt: <span id="dbg-joystick-tilt">—</span></div>
+        <div>Zoom: <span id="dbg-joystick-zoom">—</span></div>
+        <div style="margin-top:6px; color:var(--subtext); font-size:0.75rem;">Raw axes:</div>
+        <div>Ax0: <span id="dbg-joystick-ax0">—</span> Ax1: <span id="dbg-joystick-ax1">—</span> Ax2: <span id="dbg-joystick-ax2">—</span></div>
+        <div style="margin-top:6px; color:var(--subtext); font-size:0.75rem;">Gamepad:</div>
+        <div id="dbg-joystick-info">—</div>
+      </div>
     </div>
   </div>
 
@@ -1645,6 +1658,7 @@
     scanWaitMode: 'settle',
     atem: { ip: '', enabled: false },
     showAtemDebug: false,
+    showJoystickDebug: false,
     liveMode: true,
     lockLiveMode: false,
     unlockOnExitLiveMode: true,
@@ -1846,6 +1860,7 @@
         if (s.lockLiveMode  != null) state.lockLiveMode  = !!s.lockLiveMode;
         if (s.unlockOnExitLiveMode != null) state.unlockOnExitLiveMode = !!s.unlockOnExitLiveMode;
         if (s.showAtemDebug != null) state.showAtemDebug = !!s.showAtemDebug;
+        if (s.showJoystickDebug != null) state.showJoystickDebug = !!s.showJoystickDebug;
         if (s.atemFollows)           state.atemFollows   = s.atemFollows;
         if (s.autoCutDelayMs != null) state.autoCutDelayMs = Math.max(0, +s.autoCutDelayMs || 0);
         if (s.atemOutputMap) state.atemOutputMap = normalizeAtemOutputMap(s.atemOutputMap);
@@ -2178,6 +2193,38 @@
       })
       .join(' ');
     scheduleDebugPositionPolling();
+  }
+
+  function updateJoystickDebug() {
+    if (!state.showJoystickDebug) {
+      elJoystickDebug.style.display = 'none';
+      return;
+    }
+    elJoystickDebug.style.display = 'block';
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const gamepad = [...gamepads].find(Boolean);
+    if (gamepad) {
+      const cfg = state.joystick || {};
+      const axisMap = cfg.axisMap || { pan: 0, tilt: 1, zoom: 2 };
+      const rawPan = gamepad.axes[axisMap.pan] || 0;
+      const rawTilt = gamepad.axes[axisMap.tilt] || 0;
+      const rawZoom = gamepad.axes[axisMap.zoom] || 0;
+      elDbgJoystickPan.textContent = gamepadState.pan.toFixed(3);
+      elDbgJoystickTilt.textContent = gamepadState.tilt.toFixed(3);
+      elDbgJoystickZoom.textContent = gamepadState.zoom.toFixed(3);
+      elDbgJoystickAx0.textContent = rawPan.toFixed(3);
+      elDbgJoystickAx1.textContent = rawTilt.toFixed(3);
+      elDbgJoystickAx2.textContent = rawZoom.toFixed(3);
+      elDbgJoystickInfo.textContent = `${gamepad.id} (${gamepad.buttons.length} btns, ${gamepad.axes.length} axes)`;
+    } else {
+      elDbgJoystickPan.textContent = '—';
+      elDbgJoystickTilt.textContent = '—';
+      elDbgJoystickZoom.textContent = '—';
+      elDbgJoystickAx0.textContent = '—';
+      elDbgJoystickAx1.textContent = '—';
+      elDbgJoystickAx2.textContent = '—';
+      elDbgJoystickInfo.textContent = 'Not connected';
+    }
   }
 
   // ── Camera tabs ────────────────────────────────────────────────────────────
@@ -2844,6 +2891,7 @@
     }
 
     applyGamepadInput();
+    updateJoystickDebug();
 
     if (gamepadAnimationFrame) {
       cancelAnimationFrame(gamepadAnimationFrame);
@@ -2882,6 +2930,7 @@
     gamepadConnected = true;
     console.debug('[PTZ] Gamepad connected:', e.gamepad.id);
     updateJoystickStatus();
+    updateJoystickDebug();
     if (state.joystick && state.joystick.enabled) {
       updateGamepadState();
     }
@@ -2894,6 +2943,7 @@
     sendPtzDriveCommand(0, 0, 0);
     console.debug('[PTZ] Gamepad disconnected');
     updateJoystickStatus();
+    updateJoystickDebug();
   });
 
   // ── SSE ────────────────────────────────────────────────────────────────────
@@ -3293,6 +3343,15 @@
   const elJoystickTiltSens = document.getElementById('f-joystick-tilt-sens');
   const elJoystickZoomSens = document.getElementById('f-joystick-zoom-sens');
   const elJoystickStatus = document.getElementById('joystick-status-text');
+  const elJoystickDebug = document.getElementById('joystick-debug');
+  const elJoystickDebugCheckbox = document.getElementById('f-joystick-debug');
+  const elDbgJoystickPan = document.getElementById('dbg-joystick-pan');
+  const elDbgJoystickTilt = document.getElementById('dbg-joystick-tilt');
+  const elDbgJoystickZoom = document.getElementById('dbg-joystick-zoom');
+  const elDbgJoystickAx0 = document.getElementById('dbg-joystick-ax0');
+  const elDbgJoystickAx1 = document.getElementById('dbg-joystick-ax1');
+  const elDbgJoystickAx2 = document.getElementById('dbg-joystick-ax2');
+  const elDbgJoystickInfo = document.getElementById('dbg-joystick-info');
 
   let activeSettingsTab = 'cameras';
 
@@ -3344,6 +3403,14 @@
     });
   }
 
+  if (elJoystickDebugCheckbox) {
+    elJoystickDebugCheckbox.addEventListener('change', () => {
+      state.showJoystickDebug = elJoystickDebugCheckbox.checked;
+      schedSave();
+      updateJoystickDebug();
+    });
+  }
+
   function loadGridSettings() {
     const range = getDevicePresetRange();
     elGspStart.value  = range.start !== undefined && range.start !== null ? range.start : 0;
@@ -3352,6 +3419,7 @@
     elGspRows.value   = state.gridRows !== undefined && state.gridRows !== null ? state.gridRows : 3;
     elGspFill.checked = !!state.fillWindow;
     if (elGspAtemDebug) elGspAtemDebug.checked = !!state.showAtemDebug;
+    if (elJoystickDebugCheckbox) elJoystickDebugCheckbox.checked = !!state.showJoystickDebug;
     applyGridLayout();
   }
 
