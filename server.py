@@ -966,7 +966,7 @@ def send_visca_command(
     global _sequence_number
     camera_byte = 0x80 | (camera_address & 0x07)
     expected_reply_byte = ((camera_address + 8) << 4) & 0xF0
-    visca_payload = bytes([camera_byte]) + command + b"\xFF"
+    visca_payload = bytes([camera_byte]) + command + b"\xff"
     with _seq_lock:
         seq = _sequence_number
         _sequence_number = (_sequence_number + 1) & 0xFFFFFFFF
@@ -1429,7 +1429,9 @@ def _live_movement_block_reason(settings: dict, cam_idx: int, cfg: dict) -> str 
     if not atem.get("connected"):
         return "ATEM is disconnected. Live lock stays enabled until program state can be confirmed."
     if int(atem.get("program", 0) or 0) == atem_input:
-        return "LIVE camera is locked. Switch cameras or unlock Live mode before moving."
+        return (
+            "LIVE camera is locked. Switch cameras or unlock Live mode before moving."
+        )
     return None
 
 
@@ -1625,8 +1627,12 @@ class Handler(BaseHTTPRequestHandler):
         tilt_mag = abs(tilt)
         pan_dir = 0x03 if pan_mag < deadzone else (0x01 if pan < 0 else 0x02)
         tilt_dir = 0x03 if tilt_mag < deadzone else (0x01 if tilt > 0 else 0x02)
-        pan_speed = 1 if pan_dir == 0x03 else max(1, min(0x18, int(round(pan_mag * 0x18))))
-        tilt_speed = 1 if tilt_dir == 0x03 else max(1, min(0x18, int(round(tilt_mag * 0x18))))
+        pan_speed = (
+            1 if pan_dir == 0x03 else max(1, min(0x18, int(round(pan_mag * 0x18))))
+        )
+        tilt_speed = (
+            1 if tilt_dir == 0x03 else max(1, min(0x18, int(round(tilt_mag * 0x18))))
+        )
 
         pt_ok, pt_message = send_visca_pan_tilt_drive(
             ip,
