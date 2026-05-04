@@ -25,11 +25,15 @@ from scripts.av1281_motion_probe import (
 )
 
 try:
-    from playwright.sync_api import sync_playwright as _sync_playwright
+    from playwright.sync_api import (
+        sync_playwright as _sync_playwright,
+        TimeoutError as _PlaywrightTimeoutError,
+    )
 
     _HAS_PLAYWRIGHT = True
 except ImportError:
     _HAS_PLAYWRIGHT = False
+    _PlaywrightTimeoutError = None  # type: ignore[assignment]
 
 try:
     import cv2 as _cv2
@@ -1024,7 +1028,13 @@ def _pw_worker() -> None:
         _logger.debug("Playwright initialized on dedicated worker thread")
     except Exception as e:
         _logger.warning(f"Failed to initialize Playwright: {e!r}")
+        if _pw_ctx is not None:
+            try:
+                _pw_ctx.stop()
+            except Exception:
+                pass
         _pw_ctx = None
+        _pw_browser = None
     finally:
         _pw_ready.set()
 
@@ -1040,6 +1050,23 @@ def _pw_worker() -> None:
                 result_queue.put(("error", e))
         except Exception as e:
             _logger.error(f"Playwright worker error: {e!r}")
+
+    # Cleanup on shutdown
+    if _pw_page is not None:
+        try:
+            _pw_page.close()
+        except Exception:
+            pass
+    if _pw_browser is not None:
+        try:
+            _pw_browser.close()
+        except Exception:
+            pass
+    if _pw_ctx is not None:
+        try:
+            _pw_ctx.stop()
+        except Exception:
+            pass
 
 
 def _pw_capture_url_impl(url: str) -> bytes:
@@ -1072,7 +1099,7 @@ def _pw_capture_url_impl(url: str) -> bytes:
             )
             _logger.debug(f"Capture: Video element ready for {redacted_url}")
             _pw_page_url = url
-        except TimeoutError:
+        except _PlaywrightTimeoutError:
             _logger.debug(
                 f"Capture: Video not ready after timeout, falling back to page screenshot for {redacted_url}"
             )
