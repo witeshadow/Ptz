@@ -4218,16 +4218,12 @@
   }
 
   async function capturePreset(n) {
-    const cam = resolveCaptureCamera();
+    const cam = state.activeCam;
     const ok = await captureFrame(cam, n);
     if (ok) {
       clearSnapNeeded(cam, n);
       bumpImageVersion(cam, n);
-      if (cam === state.activeCam) {
-        refreshPresetBtn(n, cam);
-      } else {
-        setStatus('success', `Captured preset ${n} (camera ${cam + 1})`);
-      }
+      refreshPresetBtn(n, cam);
     }
   }
 
