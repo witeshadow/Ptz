@@ -1970,15 +1970,23 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, {"ok": True, **pos})
 
     def _post_image(self, cam: int, preset: int):
-        _ensure_dirs()
         data = self._read_body()
+        settings = load_settings()
+        position = _try_record_position(settings, cam, preset)
+        if position is None:
+            self._json(
+                400,
+                {
+                    "ok": False,
+                    "error": "could not record camera position — cannot save preset image without position data",
+                },
+            )
+            return
+        _ensure_dirs()
         fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
         with open(fpath, "wb") as f:
             f.write(data)
-        settings = load_settings()
-        position = _try_record_position(settings, cam, preset)
-        if position is not None:
-            write_settings(settings)
+        write_settings(settings)
         self._json(200, {"ok": True, "position": position})
 
     def _capture_image(self, cam: int, preset: int):
@@ -2060,14 +2068,22 @@ class Handler(BaseHTTPRequestHandler):
                     },
                 )
                 return
+            settings = load_settings()
+            position = _try_record_position(settings, cam, preset)
+            if position is None:
+                self._json(
+                    400,
+                    {
+                        "ok": False,
+                        "error": "could not record camera position — cannot save preset image without position data",
+                    },
+                )
+                return
             _ensure_dirs()
             fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
             with open(fpath, "wb") as f:
                 f.write(jpeg)
-            settings = load_settings()
-            position = _try_record_position(settings, cam, preset)
-            if position is not None:
-                write_settings(settings)
+            write_settings(settings)
             self._json(200, {"ok": True, "position": position})
         except Exception as e:
             self._json(500, {"ok": False, "error": str(e)})

@@ -931,9 +931,15 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertEqual(status, 404)
 
     def test_image_upload_retrieve_delete(self):
+        server.write_settings(self._settings_with_camera_ip())
         fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
 
-        status, body = self.srv.post("/api/image/0/7", fake_jpeg, "image/jpeg")
+        with patch(
+            "server.inquire_visca_absolute_position",
+            return_value=(True, self._MOCK_POSITION),
+        ):
+            status, body = self.srv.post("/api/image/0/7", fake_jpeg, "image/jpeg")
+
         self.assertEqual(status, 200)
         self.assertTrue(json.loads(body)["ok"])
 
@@ -948,11 +954,18 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertEqual(status, 404)
 
     def test_image_response_is_cacheable(self):
+        server.write_settings(self._settings_with_camera_ip())
         fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
-        status, _ = self.srv.post("/api/image/1/3", fake_jpeg, "image/jpeg")
+
+        with patch(
+            "server.inquire_visca_absolute_position",
+            return_value=(True, self._MOCK_POSITION),
+        ):
+            status, _ = self.srv.post("/api/image/0/3", fake_jpeg, "image/jpeg")
+
         self.assertEqual(status, 200)
 
-        status, headers, data = self.srv.get_with_headers("/api/image/1/3")
+        status, headers, data = self.srv.get_with_headers("/api/image/0/3")
         self.assertEqual(status, 200)
         self.assertEqual(data, fake_jpeg)
         self.assertEqual(
@@ -1056,13 +1069,13 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertEqual(saved["positions"]["0:3"]["pan_hex"], "1234")
 
     def test_post_image_position_null_when_no_camera_ip(self):
-        # DEFAULT_SETTINGS cameras have ip=""
+        # DEFAULT_SETTINGS cameras have ip="" — position recording now required before saving image
         fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
         status, body = self.srv.post("/api/image/0/3", fake_jpeg, "image/jpeg")
-        self.assertEqual(status, 200)
+        self.assertEqual(status, 400)
         data = json.loads(body)
-        self.assertTrue(data["ok"])
-        self.assertIsNone(data["position"])
+        self.assertFalse(data["ok"])
+        self.assertIn("could not record camera position", data.get("error", "").lower())
 
     def test_post_image_position_null_when_inquiry_fails(self):
         server.write_settings(self._settings_with_camera_ip())
@@ -1074,10 +1087,10 @@ class TestHTTPRoutes(unittest.TestCase):
         ):
             status, body = self.srv.post("/api/image/0/3", fake_jpeg, "image/jpeg")
 
-        self.assertEqual(status, 200)
+        self.assertEqual(status, 400)
         data = json.loads(body)
-        self.assertTrue(data["ok"])
-        self.assertIsNone(data["position"])
+        self.assertFalse(data["ok"])
+        self.assertIn("could not record camera position", data.get("error", "").lower())
 
     def test_delete_image_clears_stored_position(self):
         server.write_settings(self._settings_with_camera_ip())
