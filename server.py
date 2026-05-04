@@ -1071,13 +1071,16 @@ def _pw_capture_url_impl(url: str) -> bytes:
                 timeout=30_000,
             )
             _logger.debug(f"Capture: Video element ready for {redacted_url}")
+            _pw_page_url = url
+        except TimeoutError:
+            _logger.debug(
+                f"Capture: Video not ready after timeout, falling back to page screenshot for {redacted_url}"
+            )
+            _pw_page_url = url
         except Exception as e:
             _logger.error(f"Capture: Failed to load video from {redacted_url}: {e!r}")
-            if _pw_page:
-                _logger.debug("Capture: Falling back to page screenshot")
             _pw_page_url = None
             raise
-        _pw_page_url = url
     video = _pw_page.query_selector("video")
     if video:
         return video.screenshot(type="jpeg", quality=70)
