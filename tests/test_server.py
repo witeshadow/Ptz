@@ -718,6 +718,11 @@ class TestHTTPRoutes(unittest.TestCase):
     def setUp(self):
         # Reset settings to defaults before each test for isolation.
         # Use a fresh positions dict so TestTryRecordPosition mutation doesn't bleed in.
+        """
+        Reset persistent test state before each test.
+        
+        Writes DEFAULT_SETTINGS to the settings file with an empty `positions` dictionary to ensure tests start with a clean configuration, and removes any existing JPEG files from the images directory. File-removal errors are ignored.
+        """
         settings = dict(server.DEFAULT_SETTINGS)
         settings["positions"] = {}
         server.write_settings(settings)
@@ -961,6 +966,15 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertEqual(status, 404)
 
     def test_image_response_is_cacheable(self):
+        """
+        Verifies that an uploaded image is retrievable and served with correct cache and content-type headers.
+        
+        Uploads a JPEG for camera 0 preset 3 (with a configured camera IP and a successful VISCA position inquiry), then requests the image and asserts:
+        - response status is 200
+        - response body equals the uploaded JPEG
+        - `Cache-Control` header is "public, max-age=31536000, immutable"
+        - `Content-Type` header is "image/jpeg"
+        """
         server.write_settings(self._settings_with_camera_ip())
         fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
 
@@ -1088,6 +1102,11 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertEqual(status_img, 404)
 
     def test_post_image_position_null_when_inquiry_fails(self):
+        """
+        Ensure uploading an image fails and no file is stored when VISCA position inquiry fails.
+        
+        Mocks `inquire_visca_absolute_position` to fail, posts a JPEG to the image upload endpoint for camera 0 preset 3, and asserts the server responds with HTTP 400, `ok == False`, an error message mentioning inability to record camera position, and that the image is not present afterwards.
+        """
         server.write_settings(self._settings_with_camera_ip())
         fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
 
@@ -1106,6 +1125,11 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertEqual(status_img, 404)
 
     def test_delete_image_clears_stored_position(self):
+        """
+        Verifies that deleting an uploaded image removes the stored VISCA position entry for that camera:preset.
+        
+        Writes settings with a configured camera IP, uploads a fake JPEG while mocking a successful VISCA inquiry so a position is recorded, confirms the position was persisted under "positions" with key "0:5", then deletes the image via the API and asserts the "0:5" entry is removed from stored settings.
+        """
         server.write_settings(self._settings_with_camera_ip())
         fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
 
