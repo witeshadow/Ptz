@@ -2133,6 +2133,8 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 with open(fpath, "wb") as f:
                     f.write(jpeg)
+                    f.flush()
+                    os.fsync(f.fileno())
                 write_settings(settings)
             except Exception as persist_error:
                 try:
