@@ -1606,8 +1606,10 @@
         <span>Show Debug Info</span>
       </label>
       <div id="joystick-debug" style="color:var(--muted); font-size:0.8rem; margin-top:12px; line-height:1.4; font-family:monospace; display:none; padding:8px; background:var(--surf2); border-radius:4px;">
-        <div>Pan: <span id="dbg-joystick-pan">—</span></div>
-        <div>Tilt: <span id="dbg-joystick-tilt">—</span></div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="flex:1;">Pan: <span id="dbg-joystick-pan">—</span> Tilt: <span id="dbg-joystick-tilt">—</span></div>
+          <div id="gamepad-input-indicator" style="width:12px; height:12px; border-radius:50%; background:var(--muted); transition:all 0.1s;"></div>
+        </div>
         <div>Zoom: <span id="dbg-joystick-zoom">—</span></div>
         <div style="margin-top:6px; color:var(--subtext); font-size:0.75rem;">Raw axes:</div>
         <div>Ax0: <span id="dbg-joystick-ax0">—</span> Ax1: <span id="dbg-joystick-ax1">—</span> Ax2: <span id="dbg-joystick-ax2">—</span></div>
@@ -2311,6 +2313,18 @@
       const elDbgButtons = document.getElementById('dbg-joystick-buttons');
       if (elDbgButtons) {
         elDbgButtons.textContent = pressedButtons.length > 0 ? `[${pressedButtons.join(', ')}]` : 'None';
+      }
+
+      const elIndicator = document.getElementById('gamepad-input-indicator');
+      if (elIndicator) {
+        const hasInput = gamepadState.pan !== 0 || gamepadState.tilt !== 0 || gamepadState.zoom !== 0;
+        if (hasInput) {
+          elIndicator.style.background = 'var(--accent)';
+          elIndicator.style.boxShadow = '0 0 8px var(--accent)';
+        } else {
+          elIndicator.style.background = 'var(--muted)';
+          elIndicator.style.boxShadow = 'none';
+        }
       }
     } else {
       elDbgJoystickPan.textContent = '—';
