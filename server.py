@@ -714,9 +714,7 @@ def _atem_loop():
                         elif cmd in ("PrvI", "PrgI") and len(cmd_data) >= 4:
                             me = cmd_data[0]
                             source = struct.unpack(">H", cmd_data[2:4])[0]
-                            _logger.debug(
-                                f"ATEM: init {cmd} me={me} source={source}"
-                            )
+                            _logger.debug(f"ATEM: init {cmd} me={me} source={source}")
                             if me == 0:
                                 if cmd == "PrvI":
                                     init_preview = source
@@ -788,7 +786,9 @@ def _atem_loop():
                             aux_src = struct.unpack(">H", cmd_data[2:4])[0]
                             akey = f"aux{aux_idx + 1}"
                             if akey in cur and aux_src != cur[akey]:
-                                _logger.debug(f"ATEM: AuxS idx={aux_idx} source={aux_src}")
+                                _logger.debug(
+                                    f"ATEM: AuxS idx={aux_idx} source={aux_src}"
+                                )
                                 _set_atem(True, aux=(aux_idx, aux_src))
                                 _broadcast(
                                     {"type": "aux", "index": aux_idx, "source": aux_src}
@@ -1692,7 +1692,7 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
     logger = logging.getLogger(__name__)
     load_settings()  # ensure data/ and default settings.json exist
