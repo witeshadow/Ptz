@@ -1612,6 +1612,8 @@
     gridCols: 4,
     gridRows: 3,
     fillWindow: false,
+    // Per-device settings (keyed by device ID)
+    deviceSettings: {},
     // ATEM output → capture source mapping (persisted)
     atemOutputMap: {
       webcam: { webcam: '', streamUrl: '' },
@@ -1631,6 +1633,59 @@
     aux4Source: 0,
   };
   const bootImageVersion = Date.now();
+
+  // Generate a UUID v4
+  function generateUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
+  // Device ID for multi-device support; stays in localStorage
+  function getDeviceId() {
+    let id = localStorage.getItem('ptz-device-id');
+    if (!id) {
+      id = generateUUID();
+      localStorage.setItem('ptz-device-id', id);
+    }
+    return id;
+  }
+
+  // Per-device preset range management
+  function getDevicePresetRange() {
+    const deviceId = getDeviceId();
+    const devSettings = state.deviceSettings[deviceId];
+    if (devSettings && devSettings.presetStart != null && devSettings.presetEnd != null) {
+      return { start: devSettings.presetStart, end: devSettings.presetEnd };
+    }
+    return { start: state.presetStart, end: state.presetEnd };
+  }
+
+  function setDevicePresetRange(start, end) {
+    const deviceId = getDeviceId();
+    if (!state.deviceSettings[deviceId]) {
+      state.deviceSettings[deviceId] = {};
+    }
+    state.deviceSettings[deviceId].presetStart = start;
+    state.deviceSettings[deviceId].presetEnd = end;
+  }
+
+  // Per-device auto-cut setting (stored in deviceSettings, not persisted)
+  function getDeviceAutoCutArmed() {
+    const deviceId = getDeviceId();
+    const devSettings = state.deviceSettings[deviceId];
+    return devSettings && devSettings.autoCutArmed === true;
+  }
+
+  function setDeviceAutoCutArmed(armed) {
+    const deviceId = getDeviceId();
+    if (!state.deviceSettings[deviceId]) {
+      state.deviceSettings[deviceId] = {};
+    }
+    state.deviceSettings[deviceId].autoCutArmed = !!armed;
+  }
 
   // webcamDeviceId is browser-specific; stays in localStorage
   function getWebcamDeviceId()      { return localStorage.getItem('ptz-webcam-device') || ''; }
@@ -2672,6 +2727,7 @@
 
   function setAutoCutArmed(nextArmed) {
     autoCutArmed = !!nextArmed && canArmAutoCut() && !!getActiveCameraCutSource();
+    setDeviceAutoCutArmed(autoCutArmed);
     if (!autoCutArmed) clearPendingAutoCut();
     updateAutoCutButton();
   }
@@ -2946,8 +3002,9 @@
   }
 
   function loadGridSettings() {
-    elGspStart.value  = state.presetStart !== undefined && state.presetStart !== null ? state.presetStart : 0;
-    elGspEnd.value    = state.presetEnd !== undefined && state.presetEnd !== null ? state.presetEnd : 11;
+    const range = getDevicePresetRange();
+    elGspStart.value  = range.start !== undefined && range.start !== null ? range.start : 0;
+    elGspEnd.value    = range.end !== undefined && range.end !== null ? range.end : 11;
     elGspCols.value   = state.gridCols !== undefined && state.gridCols !== null ? state.gridCols : 4;
     elGspRows.value   = state.gridRows !== undefined && state.gridRows !== null ? state.gridRows : 3;
     elGspFill.checked = !!state.fillWindow;
@@ -2956,8 +3013,11 @@
   }
 
   function saveGridSettings() {
-    state.presetStart = Math.max(0, parseInt(elGspStart.value, 10) || 0);
-    state.presetEnd   = Math.max(state.presetStart + 1, parseInt(elGspEnd.value, 10) || 11);
+    const start = Math.max(0, parseInt(elGspStart.value, 10) || 0);
+    const end = Math.max(start + 1, parseInt(elGspEnd.value, 10) || 11);
+    state.presetStart = start;
+    state.presetEnd = end;
+    setDevicePresetRange(start, end);
     state.gridCols    = Math.max(1, parseInt(elGspCols.value, 10) || 4);
     state.gridRows    = Math.max(1, parseInt(elGspRows.value, 10) || 3);
     state.fillWindow  = elGspFill.checked;
@@ -3513,7 +3573,8 @@
 
   function presetNumbers() {
     const nums = [];
-    for (let n = state.presetStart; n <= state.presetEnd; n++) nums.push(n);
+    const range = getDevicePresetRange();
+    for (let n = range.start; n <= range.end; n++) nums.push(n);
     return nums;
   }
 
@@ -3898,6 +3959,7 @@
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
           ip: cam.ip, port: cam.port, camera: cam.viscaAddr, preset, waitMode,
+          deviceId: getDeviceId(),
         }),
       });
       return await res.json();
