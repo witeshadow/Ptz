@@ -805,7 +805,7 @@ def _atem_loop():
                     last_keepalive = time.monotonic()
 
         except Exception as exc:
-            _logger.error(f"ATEM: Error: {exc!r}")
+            _logger.exception(f"ATEM: Error: {exc!r}")
         finally:
             _clear_atem_conn()
             _set_atem(False)
@@ -971,6 +971,15 @@ _pw_page_url = None
 def _capture_url(url: str) -> bytes:
     global _pw_ctx, _pw_browser, _pw_page, _pw_page_url
     with _pw_lock:
+        # Redact URL for logging (remove query params that may contain tokens)
+        try:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(url)
+            redacted_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+        except Exception:
+            redacted_url = "<redacted>"
+
         if _pw_ctx is None:
             _pw_ctx = _sync_playwright().start()
             _pw_browser = _pw_ctx.chromium.launch(
@@ -989,16 +998,18 @@ def _capture_url(url: str) -> bytes:
             try:
                 _pw_page = _pw_browser.new_page()
                 _pw_page.goto(url, wait_until="domcontentloaded")
-                _logger.debug(f"Capture: Loaded URL {url}")
+                _logger.debug(f"Capture: Loaded URL {redacted_url}")
                 # wait up to 30s for a video element with decoded data (longer for vdo.ninja)
                 _pw_page.wait_for_function(
                     "() => { const v = document.querySelector('video'); "
                     "return v && v.readyState >= 2 && v.videoWidth > 0; }",
                     timeout=30_000,
                 )
-                _logger.debug(f"Capture: Video element ready for {url}")
+                _logger.debug(f"Capture: Video element ready for {redacted_url}")
             except Exception as e:
-                _logger.error(f"Capture: Failed to load video from {url}: {e!r}")
+                _logger.error(
+                    f"Capture: Failed to load video from {redacted_url}: {e!r}"
+                )
                 # Try fullpage screenshot as fallback
                 if _pw_page:
                     _logger.debug("Capture: Falling back to page screenshot")

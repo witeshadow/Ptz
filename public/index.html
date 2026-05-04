@@ -6,7 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="manifest" href="/manifest.json" />
-  <title>PTZ Preset Control — AVIPAS — TEST123</title>
+  <title>PTZ Preset Control — AVIPAS</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -2682,18 +2682,6 @@
     } catch (err) {
       setStatus('error', `Manual cut failed: ${err.message || err}`);
     }
-  }
-
-  async function setAtemPreview(idx) {
-    if (!state.atem.enabled || !atemConnected) return;
-    const atemInput = getCameraAtemInput(idx);
-    if (!atemInput) return;
-    if (cameraMatchesAtemSource(idx, state.previewSource)) return;
-    await fetch('/api/atem/preview', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ camIdx: idx }),
-    }).catch(() => ({}));
   }
 
   function scheduleAutoCut(preset, autoCutPlan, trigger = 'settled', recallElapsedMs = 0) {
