@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-Guidance for Claude Code or similar coding agents working in this repository.
+Guidance for coding agents working in this repository.
 
 ## Project
 

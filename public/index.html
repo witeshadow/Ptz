@@ -39,17 +39,10 @@
       padding: 6px 16px;
       display: flex;
       align-items: center;
+      gap: 12px;
       flex-shrink: 0;
     }
 
-    .brand-icon {
-      width: 28px; height: 28px;
-      background: var(--accent);
-      border-radius: 6px;
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
-    }
-    .brand-icon svg { width: 15px; height: 15px; fill: #fff; }
     .brand-text h1  { font-size: 0.9rem; font-weight: 600; color: #fff; }
     .brand-text p   { font-size: 0.65rem; color: var(--muted); margin-top: 1px; }
 
@@ -57,12 +50,29 @@
       margin-left: auto;
       display: flex;
       align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+      margin-left: auto;
+      min-width: 0;
     }
 
     #fill-cam-strip {
       display: none;
       align-items: center;
       gap: 6px;
+      flex: 1 1 auto;
+      min-width: 0;
+      justify-content: flex-end;
+      flex-wrap: wrap;
     }
 
     .fill-cam-indicator {
@@ -98,6 +108,16 @@
 
     .fill-cam-indicator.preview {
       background: rgba(34, 197, 94, 0.12);
+    }
+
+    @keyframes pvw-set-flash {
+      0%   { box-shadow: 0 0 0 0 rgba(34,197,94,.8); border-color: var(--success); }
+      60%  { box-shadow: 0 0 0 6px rgba(34,197,94,0); border-color: var(--success); }
+      100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+    }
+
+    .fill-cam-indicator.setting-preview {
+      animation: pvw-set-flash 0.8s ease-out;
     }
 
     .fill-cam-num {
@@ -136,6 +156,15 @@
       color: var(--muted);
     }
 
+    @keyframes pvw-set-flash {
+      0%   { box-shadow: 0 0 0 0 rgba(34,197,94,.8); border-color: var(--success); }
+      60%  { box-shadow: 0 0 0 6px rgba(34,197,94,0); border-color: var(--success); }
+      100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+    }
+    .fill-cam-indicator.setting-preview {
+      animation: pvw-set-flash 0.8s ease-out;
+    }
+
     #status {
       display: flex; align-items: center;
       background: var(--surf2);
@@ -144,7 +173,11 @@
       padding: 4px 10px;
       font-size: 0.75rem;
       color: var(--label);
-      min-width: 140px;
+      width: 180px;
+      min-width: 0;
+      max-width: 180px;
+      flex: 0 0 180px;
+      overflow: hidden;
       transition: border-color 0.3s, color 0.3s;
     }
     #status.success { border-color: var(--success); color: var(--success); }
@@ -159,6 +192,17 @@
     #status.error   .status-dot { background: var(--error);   }
     #status.busy    .status-dot { background: var(--accent); animation: blink .8s ease-in-out infinite; }
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+    #status-text {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .status-hint { display: block; font-size: 0.85rem; margin-top: 4px; }
+    .status-hint.status-live { color: var(--error); font-weight: 600; }
+    .status-hint.status-preview { color: var(--success); font-weight: 600; }
 
     #atem-pill {
       display: flex; align-items: center;
@@ -181,12 +225,17 @@
       background: var(--surf2);
       border: 1px solid var(--border);
       border-radius: 6px;
-      padding: 5px 10px;
+      padding: 7px 12px;
+      min-height: 46px;
       color: var(--muted);
       font-size: 1rem;
       line-height: 1;
       cursor: pointer;
       transition: border-color 0.2s, color 0.2s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
     }
     #fullscreen-btn:hover { border-color: var(--accent); color: var(--accent); }
 
@@ -194,15 +243,21 @@
       background: var(--surf2);
       border: 1px solid var(--border);
       border-radius: 6px;
-      padding: 6px 12px;
+      padding: 8px 14px;
+      min-height: 46px;
       color: var(--muted);
       font-size: 0.75rem;
       font-weight: 600;
+      line-height: 1;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       cursor: pointer;
       transition: border-color 0.2s, color 0.2s, background-color 0.2s;
       user-select: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
     }
     #live-mode-btn:hover { border-color: var(--accent); color: var(--accent); }
     #live-mode-btn.live {
@@ -212,6 +267,89 @@
       font-weight: 700;
     }
     #live-mode-btn.live:hover { background: var(--success); opacity: 0.9; }
+    #cut-live-btn {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      border-radius: 999px;
+      padding: 8px 14px;
+      min-height: 46px;
+      color: #fca5a5;
+      font-size: 0.75rem;
+      font-weight: 700;
+      line-height: 1;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s, background-color 0.2s, opacity 0.2s;
+      user-select: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+    }
+    #cut-live-btn:hover {
+      border-color: #f87171;
+      color: #fecaca;
+      background: rgba(239, 68, 68, 0.2);
+    }
+    #cut-live-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    #btn-auto-cut {
+      padding: 8px 14px;
+      min-height: 46px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      line-height: 1;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+    }
+    #lock-live-btn {
+      background: #d97706;
+      border: 1px solid #d97706;
+      border-radius: 6px;
+      padding: 7px 8px;
+      min-height: 46px;
+      color: white;
+      font-size: 0.75rem;
+      font-weight: 600;
+      line-height: 1;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s, background-color 0.2s, box-shadow 0.3s;
+      min-width: 86px;
+      text-align: center;
+      box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.7);
+      animation: unlock-pulse 2s infinite;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+    }
+    @keyframes unlock-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.7); }
+      50% { box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.2); }
+    }
+    #lock-live-btn:hover { background: #b45309; border-color: #b45309; }
+    #lock-live-btn.locked {
+      color: white;
+      background: var(--accent);
+      border-color: var(--accent);
+      font-weight: 600;
+      animation: none;
+      box-shadow: none;
+    }
+    #lock-live-btn.locked:hover {
+      background: #2563eb;
+      border-color: #2563eb;
+      opacity: 1;
+    }
 
     .atem-dot {
       width: 7px; height: 7px; border-radius: 50%;
@@ -220,11 +358,10 @@
 
     /* ── Camera tabs ─────────────────────────────────── */
     #cam-tabs {
-      background: var(--surf);
-      border-bottom: 2px solid var(--border);
-      padding: 0 20px;
       display: flex;
-      flex-shrink: 0;
+      align-items: stretch;
+      flex: 1 1 auto;
+      min-width: 0;
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
       scrollbar-width: none;
@@ -232,28 +369,54 @@
     #cam-tabs::-webkit-scrollbar { display: none; }
 
     .cam-tab {
-      background: transparent;
-      border: none;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -2px;
-      padding: 11px 22px;
+      background: rgba(15, 23, 42, 0.18);
+      border: 2px solid rgba(148, 163, 184, 0.38);
+      border-radius: 12px;
+      padding: 12px 10px 10px;
+      min-height: 46px;
       color: var(--muted);
-      font-size: 0.88rem;
+      font-size: 0.84rem;
       cursor: pointer;
-      transition: color 0.2s, border-color 0.2s;
+      transition: color 0.2s, border-color 0.2s, background-color 0.2s, transform 0.15s;
       user-select: none;
       display: flex; align-items: center;
+      flex: 0 0 auto;
+      white-space: nowrap;
     }
     .cam-tab:hover { color: var(--text); }
-    .cam-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
-    .cam-tab.live { background: rgba(34, 197, 94, 0.1); }
-    .cam-tab.edit { background: rgba(107, 114, 128, 0.05); }
-
+    .cam-tab.active {
+      color: var(--accent);
+      font-weight: 600;
+      box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.2);
+    }
+    .cam-tab.active.bus-selected {
+      border-color: rgba(59, 130, 246, 0.68);
+      background: rgba(30, 64, 175, 0.14);
+    }
+    .cam-tab.bus-live { border-color: rgba(239, 68, 68, 0.78); background: rgba(127, 29, 29, 0.14); }
+    .cam-tab.bus-preview { border-color: rgba(34, 197, 94, 0.78); background: rgba(20, 83, 45, 0.14); }
+    .cam-tab.bus-idle { border-color: rgba(148, 163, 184, 0.45); background: rgba(15, 23, 42, 0.18); }
+    .cam-tab.bus-selected { border-color: rgba(59, 130, 246, 0.68); background: rgba(30, 64, 175, 0.14); }
+    .cam-tab.live { background: rgba(239, 68, 68, 0.08); }
+    .cam-tab.preview { background: rgba(34, 197, 94, 0.08); }
+    .cam-tab.edit { background: rgba(217, 119, 6, 0.08); }
+    .cam-state-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      flex: 0 0 9px;
+      background: rgba(148, 163, 184, 0.55);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+    }
+    .cam-state-dot.live { background: var(--error); }
+    .cam-state-dot.preview { background: var(--success); }
+    .cam-state-dot.selected { background: var(--accent); }
+    .cam-state-dot.idle { background: rgba(148, 163, 184, 0.55); }
     .cam-badge {
       display: inline-block;
-      font-size: 0.6rem;
+      font-size: 0.55rem;
       font-weight: 700;
-      padding: 2px 6px;
+      padding: 2px 5px;
       border-radius: 3px;
       margin-left: 4px;
       text-transform: uppercase;
@@ -261,20 +424,55 @@
     }
     .cam-badge.live { background: var(--error); color: white; }
     .cam-badge.preview { background: var(--success); color: white; }
-    .cam-badge.edit { background: var(--muted); color: var(--surf); }
+    .cam-badge.edit { background: #d97706; color: white; }
 
-    .cam-num {
-      font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
-      letter-spacing: .06em; color: inherit; opacity: .6;
+    .cam-name-wrap {
+      position: relative;
+      min-width: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex: 1 1 auto;
+      overflow: hidden;
     }
 
-    .cam-name-wrap { position: relative; }
+    .cam-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
     .cam-name-input {
       font-size: 0.88rem; font-weight: 600;
       background: var(--surf2); border: 1px solid var(--accent);
       border-radius: 4px; color: var(--text);
       padding: 1px 6px; outline: none; width: 110px;
+    }
+
+    body.header-compact #fullscreen-btn {
+      padding: 5px 10px;
+      min-height: 40px;
+    }
+    body.header-compact #live-mode-btn {
+      padding: 6px 12px;
+      min-height: 40px;
+    }
+    body.header-compact #cut-live-btn {
+      padding: 6px 12px;
+      min-height: 40px;
+    }
+    body.header-compact #btn-auto-cut {
+      padding: 6px 12px;
+      min-height: 40px;
+    }
+    body.header-compact #lock-live-btn {
+      padding: 5px 8px;
+      min-height: 40px;
+    }
+    body.header-compact .cam-tab {
+      padding: 9px 10px 7px;
+      min-height: 40px;
     }
 
     /* ── Settings bar ────────────────────────────────── */
@@ -349,6 +547,7 @@
       border: 1px solid var(--border);
       background: rgba(20, 22, 28, 0.96);
       box-shadow: 0 10px 28px rgba(0,0,0,.42);
+      -webkit-backdrop-filter: blur(8px);
       backdrop-filter: blur(8px);
       flex-direction: column;
       gap: 8px;
@@ -377,13 +576,40 @@
     /* ── Main ────────────────────────────────────────── */
     main {
       flex: 1;
-      padding: 20px;
+      padding: 10px 20px 20px;
       max-width: 860px;
       width: 100%;
       margin: 0 auto;
     }
 
     /* ── Preset grid ─────────────────────────────────── */
+    #preset-stage {
+      padding: 12px;
+      border: 2px solid rgba(148, 163, 184, 0.45);
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.22);
+      transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
+    }
+    #preset-stage.bus-live {
+      border-color: rgba(239, 68, 68, 0.78);
+      box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.28);
+      background: rgba(127, 29, 29, 0.14);
+    }
+    #preset-stage.bus-preview {
+      border-color: rgba(34, 197, 94, 0.78);
+      box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.22);
+      background: rgba(20, 83, 45, 0.14);
+    }
+    #preset-stage.bus-selected {
+      border-color: rgba(59, 130, 246, 0.78);
+      box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.22);
+      background: rgba(30, 64, 175, 0.14);
+    }
+    #preset-stage.bus-idle {
+      border-color: rgba(148, 163, 184, 0.45);
+      box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.12);
+      background: rgba(15, 23, 42, 0.22);
+    }
     #preset-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -457,6 +683,22 @@
       text-shadow: 0 1px 3px rgba(0,0,0,.9);
     }
 
+    .preset-capture {
+      position: absolute; top: 6px; left: 6px;
+      min-width: 44px; height: 24px;
+      padding: 0 8px;
+      background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.25);
+      border-radius: 999px; color: #fff; font-size: .65rem; line-height: 1;
+      font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+      cursor: pointer; display: none;
+      align-items: center; justify-content: center;
+      transition: background .15s;
+      z-index: 2;
+    }
+    .preset-btn.edit-mode .preset-capture { display: inline-flex; opacity: 0.92; }
+    .preset-btn.edit-mode:hover .preset-capture { opacity: 1; }
+    .preset-capture:hover { background: var(--accent); border-color: var(--accent); }
+
     .preset-clear {
       position: absolute; top: 5px; right: 5px;
       width: 20px; height: 20px;
@@ -486,13 +728,56 @@
     .preset-btn.edit-mode:hover { border-color: var(--border); }
     .preset-btn.edit-mode:hover .preset-num { color: var(--border); }
 
+    @keyframes snap-pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
+    .preset-btn.needs-snap .preset-capture {
+      display: flex;
+      background: rgba(234,179,8,.85);
+      border-color: rgba(234,179,8,.85);
+      animation: snap-pulse 1.5s ease-in-out infinite;
+    }
+    .preset-btn.needs-snap .preset-capture:hover {
+      background: #eab308;
+      border-color: #eab308;
+      animation: none;
+    }
+
     /* ── Toolbar ─────────────────────────────────────── */
     #toolbar {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       margin-top: 16px;
+      gap: 10px;
     }
 
+    #toolbar-right {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex: 1 1 100%;
+      width: 100%;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+
+    #toolbar-statuses {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex: 0 0 auto;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+
+    #capture-source-toggle { display: flex; gap: 4px; }
+    #capture-source-toggle .csrc-btn {
+      padding: 5px 9px; font-size: .75rem; font-weight: 600;
+    }
+    #capture-source-toggle .csrc-btn.active {
+      border-color: var(--accent); color: var(--accent);
+    }
     .btn-primary {
       background: var(--accent); border: none; border-radius: 7px;
       color: #fff; padding: 8px 18px; font-size: .85rem; font-weight: 600;
@@ -508,13 +793,28 @@
       transition: border-color .2s, color .2s;
     }
     .btn-ghost:hover, .btn-ghost.active { border-color: var(--accent); color: var(--accent); }
+    #btn-edit.active {
+      border-color: #d97706;
+      color: #fbbf24;
+      background: rgba(217, 119, 6, 0.14);
+    }
+    #btn-auto-cut.active {
+      border-color: var(--success);
+      color: var(--success);
+      background: rgba(16, 185, 129, 0.12);
+    }
+    #btn-auto-cut:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
 
     /* ── Scan bar ────────────────────────────────────── */
     #scan-bar {
       display: none;
       align-items: center;
-      margin-left: auto;
-      flex: 1; max-width: 380px;
+      flex: 1 1 240px;
+      max-width: 380px;
+      min-width: 180px;
     }
     #scan-bar.visible { display: flex; }
 
@@ -534,29 +834,85 @@
       padding: 10px 20px;
       font-size: .68rem; color: var(--muted);
       text-align: center; flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      flex-wrap: wrap;
     }
+
+    #build-indicator {
+      position: static;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 7px;
+      border: 1px solid rgba(148,163,184,.12);
+      border-radius: 999px;
+      background: rgba(13,15,22,.55);
+      color: rgba(148,163,184,.82);
+      font-size: 0.58rem;
+      font-weight: 500;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      box-shadow: 0 2px 8px rgba(0,0,0,.16);
+      pointer-events: none;
+      user-select: none;
+      -webkit-backdrop-filter: blur(4px);
+      backdrop-filter: blur(4px);
+      opacity: 0.8;
+    }
+
+    #build-indicator .build-commit { color: rgba(148,163,184,.72); }
+    #build-indicator .build-mode { color: rgba(59,130,246,.82); }
 
     /* ── Fill-window layout ──────────────────────────────── */
     body.fill-mode { height: 100vh; overflow: hidden; }
     body.fill-mode header { padding: 4px 8px; }
+    body.fill-mode .header-pills { gap: 6px; }
+    body.fill-mode .header-actions { gap: 4px; }
     body.fill-mode .brand-icon { width: 24px; height: 24px; border-radius: 5px; }
     body.fill-mode .brand-icon svg { width: 13px; height: 13px; }
-    body.fill-mode .brand-text h1 { font-size: 0.8rem; }
-    body.fill-mode .brand-text p { display: none; }
-    body.fill-mode #fill-cam-strip { display: inline-flex; }
+    body.fill-mode .brand-text { display: none; }
+    body.fill-mode #fill-cam-strip { display: none; }
     body.fill-mode #fullscreen-btn { padding: 4px 8px; font-size: 0.92rem; }
-    body.fill-mode #live-mode-btn { padding: 4px 9px; font-size: 0.68rem; }
+    body.fill-mode #live-mode-btn { padding: 4px 9px; font-size: 0.68rem; min-height: 40px; }
+    body.fill-mode #cut-live-btn { min-height: 40px; }
+    body.fill-mode #btn-auto-cut { min-height: 40px; font-size: 0.68rem; padding: 4px 9px; }
+    body.fill-mode #lock-live-btn { padding: 4px 7px; font-size: 0.65rem; min-width: 82px; min-height: 40px; }
     body.fill-mode #atem-pill { padding: 4px 8px; font-size: 0.68rem; }
-    body.fill-mode #status { min-width: 112px; padding: 3px 8px; font-size: 0.7rem; }
-    body.fill-mode #cam-tabs { display: none; }
+    body.fill-mode #status { width: 150px; max-width: 150px; flex-basis: 150px; padding: 3px 8px; font-size: 0.7rem; }
+    body.fill-mode #cam-tabs { display: flex; }
+    body.fill-mode .cam-tab { padding: 11px 13px 9px; font-size: 0.88rem; }
     body.fill-mode main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
     body.fill-mode #preset-grid { flex: 1; align-content: start; justify-content: center; gap: 6px; }
     body.fill-mode #toolbar { margin-top: 8px; }
     body.fill-mode #toolbar { flex-shrink: 0; }
+    body.fill-mode #toolbar-statuses { display: flex; }
+    body.fill-mode #toolbar-right { flex: 1 1 100%; width: 100%; }
     body.fill-mode .btn-primary { padding: 6px 12px; font-size: 0.76rem; }
     body.fill-mode .btn-ghost { padding: 5px 10px; font-size: 0.74rem; }
     body.fill-mode #scan-label { font-size: 0.68rem; }
     body.fill-mode footer { display: none; }
+    body.fill-mode #build-indicator {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 12px;
+      padding: 3px 7px;
+      font-size: 0.56rem;
+      z-index: 197;
+    }
+
+    /* ── Tablet: larger CUT button touch target ─────────── */
+    @media (min-width: 641px) and (max-width: 1279px) {
+      #cut-live-btn {
+        min-height: 52px;
+        padding: 10px 20px;
+        font-size: 0.8rem;
+      }
+    }
 
     /* ── Grid-settings FAB ───────────────────────────────── */
     #grid-settings-fab {
@@ -587,11 +943,45 @@
     }
     #gsp-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1rem; line-height: 1; }
     #gsp-close:hover { color: var(--text); }
+    .gsp-mobile-tabs {
+      display: none;
+      flex-shrink: 0;
+      gap: 8px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      background: var(--surf);
+    }
+    .gsp-mobile-tab-btn {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--surf2);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 7px 11px;
+      font-size: .74rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .gsp-mobile-tab-btn.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(59,130,246,.12);
+    }
     .gsp-body {
       display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
       padding: 16px; overflow-y: auto; flex: 1;
     }
     .gsp-column { display: flex; flex-direction: column; }
+    .gsp-extra-card {
+      grid-column: 1 / -1;
+      border-top: 1px solid var(--border);
+      padding: 12px 0 0;
+    }
     .gsp-section-title { font-size: .75rem; font-weight: 600; color: var(--label); text-transform: uppercase; letter-spacing: 0.5px; }
     .gsp-body .field { display: flex; flex-direction: column; }
     .gsp-body .field label { font-size: .75rem; color: var(--label); font-weight: 500; }
@@ -599,6 +989,17 @@
     .gsp-body .atem-toggle-wrap { display: flex; align-items: center; }
     .gsp-body .atem-toggle-wrap input { width: 16px; height: 16px; }
     .gsp-body .atem-toggle-wrap span { font-size: .8rem; color: var(--text); }
+    .camera-management-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .camera-management-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 4px 0;
+    }
 
     /* ── ATEM debug panel display ───────────────────────── */
     #atem-debug {
@@ -629,17 +1030,42 @@
     @media (max-width: 700px) {
       /* Settings panel becomes a bottom sheet */
       #grid-settings-panel {
-        bottom: 0; right: 0; left: 0;
+        top: 0; bottom: 0; right: 0; left: 0;
         width: 100%; max-width: 100%;
-        border-radius: 12px 12px 0 0;
+        max-height: none;
+        height: 100vh;
+        border-radius: 0;
         padding-bottom: env(safe-area-inset-bottom);
       }
       #grid-settings-fab {
         bottom: max(18px, env(safe-area-inset-bottom));
         right:  max(18px, env(safe-area-inset-right));
       }
-      /* Stack settings columns */
-      .gsp-body { grid-template-columns: 1fr; }
+      .gsp-mobile-tabs { display: flex; }
+      .gsp-body {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        padding: 12px;
+      }
+      .gsp-mobile-section { display: none !important; }
+      .gsp-mobile-section.active { display: block !important; }
+      .gsp-column.gsp-mobile-section.active { display: flex !important; }
+      .gsp-extra-card {
+        grid-column: auto;
+        border-top: none;
+        padding: 12px;
+        background: var(--surf2);
+        border-radius: 8px;
+      }
+      .camera-management-grid { grid-template-columns: 1fr; gap: 10px; }
+      .camera-management-item {
+        margin: 0;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: rgba(13,15,22,.24);
+        justify-content: flex-start;
+      }
       /* Remove fixed widths on settings inputs so they fill their column */
       .gsp-body .field input,
       .gsp-body .field select { width: 100%; }
@@ -647,11 +1073,65 @@
 
     @media (max-width: 640px) {
       /* Header: hide subtitle and compress pills */
+      header { flex-wrap: wrap; }
+      .header-pills {
+        margin-left: 0;
+        width: 100%;
+        flex-wrap: wrap;
+      }
+      #cam-tabs {
+        order: 2;
+        flex-basis: 100%;
+        padding-top: 4px;
+        overflow: hidden;
+      }
+      .cam-tab {
+        flex: 1 1 0;
+        min-width: 0;
+        justify-content: center;
+        padding: 8px 6px 7px;
+      }
+      .cam-tab .cam-badge {
+        display: none;
+      }
+      .cam-tab .cam-name-wrap,
+      .cam-tab .cam-name,
+      .cam-tab .cam-name-input {
+        min-width: 0;
+        max-width: 100%;
+      }
+      .cam-tab .cam-name {
+        font-size: 0.76rem;
+        text-align: center;
+      }
+      .header-actions {
+        order: 3;
+        width: 100%;
+        flex-wrap: nowrap;
+        justify-content: flex-end;
+      }
       .brand-text p { display: none; }
-      #fullscreen-btn { display: none; }
+      #fullscreen-btn { padding: 4px 8px; font-size: 0.92rem; }
       #atem-pill span { display: none; }
       #atem-pill { min-width: unset; padding: 5px 8px; }
-      #status { min-width: unset; }
+      #status {
+        width: 140px;
+        max-width: 140px;
+        flex-basis: 140px;
+      }
+      #toolbar-right {
+        width: 100%;
+        margin-left: 0;
+        justify-content: space-between;
+      }
+      #toolbar-statuses {
+        width: 100%;
+        justify-content: flex-end;
+      }
+      #scan-bar {
+        max-width: none;
+        min-width: 0;
+      }
     }
 
     @media (max-width: 480px) {
@@ -737,6 +1217,7 @@
     /* ── Flex gap fallbacks (Safari < 14.5) ─────────────── */
     header > * + *          { margin-left: 12px; }
     .header-pills > * + *   { margin-left: 8px; }
+    .header-actions > * + * { margin-left: 8px; }
     #status > * + *         { margin-left: 7px; }
     #atem-pill > * + *      { margin-left: 6px; }
     #cam-tabs > * + *       { margin-left: 2px; }
@@ -744,6 +1225,8 @@
     .atem-toggle-wrap > * + * { margin-left: 8px; }
     .preset-overlay > * + * { margin-left: 4px; }
     #toolbar > * + *        { margin-left: 10px; }
+    #toolbar-right > * + *  { margin-left: 10px; }
+    #toolbar-statuses > * + * { margin-left: 8px; }
     #scan-bar > * + *       { margin-left: 12px; }
     .field > * + *          { margin-top: 4px; }
     #webcam-preview > * + * { margin-top: 4px; }
@@ -753,56 +1236,76 @@
 <body>
 
 <header>
-  <div class="brand-icon">
-    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-      <path d="M23 7l-7 5 7 5V7z"/>
-      <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-    </svg>
-  </div>
   <div class="brand-text">
     <h1>PTZ Preset Control</h1>
     <p>AVIPAS Camera &nbsp;&middot;&nbsp; VISCA over IP</p>
   </div>
   <div class="header-pills">
     <div id="fill-cam-strip" aria-label="Camera status controls"></div>
-    <button id="fullscreen-btn" title="Toggle fullscreen">&#x26F6;</button>
-    <button id="live-mode-btn" class="live" title="Toggle Live/Edit mode">Live</button>
-    <div id="atem-pill" class="disabled">
-      <div class="atem-dot"></div>
-      <span>ATEM</span>
-    </div>
-    <div id="status" role="status" aria-live="polite">
-      <div class="status-dot"></div>
-      <span id="status-text">Ready</span>
+    <div id="cam-tabs"><!-- rendered by JS --></div>
+    <div class="header-actions">
+      <button id="cut-live-btn" style="display:none" title="Cut active camera to ATEM program">Cut</button>
+      <button type="button" id="live-mode-btn" class="live" title="Toggle Live/Edit mode">Live</button>
+      <button type="button" id="lock-live-btn" title="Lock camera to prevent preset movement"></button>
+      <button type="button" class="btn-ghost" id="btn-auto-cut" style="display:none">Auto Cut</button>
+      <button type="button" id="fullscreen-btn" title="Toggle fullscreen">&#x26F6;</button>
     </div>
   </div>
 </header>
 
-<div id="cam-tabs"><!-- rendered by JS --></div>
-
 <main>
-  <div id="preset-grid"><!-- rendered by JS --></div>
+  <div id="preset-stage">
+    <div id="preset-grid"><!-- rendered by JS --></div>
+  </div>
   <div id="toolbar">
     <button class="btn-primary" id="btn-scan">Scan All Presets</button>
-    <button class="btn-ghost"    id="btn-edit">Edit Labels</button>
-    <div id="scan-bar">
-      <div id="scan-track"><div id="scan-fill"></div></div>
-      <span id="scan-label"></span>
+    <button class="btn-ghost"    id="btn-edit">Edit Labels / Snap</button>
+    <div id="capture-source-toggle" style="display:none">
+      <button class="btn-ghost csrc-btn" data-src="active"   title="Capture from active camera">ACT</button>
+      <button class="btn-ghost csrc-btn" data-src="preview"  title="Capture from ATEM preview">PVW</button>
+      <button class="btn-ghost csrc-btn" data-src="program"  title="Capture from ATEM program">PGM</button>
+    </div>
+    <div id="toolbar-right">
+      <div id="scan-bar">
+        <div id="scan-track"><div id="scan-fill"></div></div>
+        <span id="scan-label"></span>
+      </div>
+      <div id="toolbar-statuses">
+        <div id="atem-pill" class="disabled">
+          <div class="atem-dot"></div>
+          <span>ATEM</span>
+        </div>
+        <div id="status" role="status" aria-live="polite">
+          <div class="status-dot"></div>
+          <span id="status-text">Ready</span>
+        </div>
+      </div>
     </div>
   </div>
 </main>
 
-<footer>Tap a preset to recall it &nbsp;&middot;&nbsp;
-  Turn on Edit Labels to rename presets &nbsp;&middot;&nbsp; Double-click a camera tab to rename it</footer>
+<footer>
+  <span>Tap a preset to recall it &nbsp;&middot;&nbsp; Turn on Edit Labels / Snap to rename presets or refresh images &nbsp;&middot;&nbsp; Double-click a camera tab to rename it</span>
+  <div id="build-indicator" aria-live="polite">
+    <span class="build-commit">build <span id="build-commit">5efe1f2</span></span>
+    <span class="build-mode" id="build-mode">normal</span>
+  </div>
+</footer>
 
 <div id="grid-settings-panel" role="dialog" aria-modal="true" aria-label="Settings">
   <div class="gsp-header">
     <span>Settings</span>
     <button id="gsp-close">&#x2715;</button>
   </div>
+  <div class="gsp-mobile-tabs" role="tablist" aria-label="Settings sections">
+    <button class="gsp-mobile-tab-btn active" type="button" data-tab="cameras" role="tab" aria-selected="true">Cameras</button>
+    <button class="gsp-mobile-tab-btn" type="button" data-tab="grid" role="tab" aria-selected="false">Grid</button>
+    <button class="gsp-mobile-tab-btn" type="button" data-tab="atem" role="tab" aria-selected="false">ATEM</button>
+    <button class="gsp-mobile-tab-btn" type="button" data-tab="capture" role="tab" aria-selected="false">Capture</button>
+  </div>
   <div class="gsp-body">
     <!-- Camera Settings (Col 1) -->
-    <div class="gsp-column">
+    <div class="gsp-column gsp-mobile-section active" data-mobile-tab="cameras">
       <div class="gsp-section-title">Camera</div>
       <div class="field">
         <label for="f-ip">IP</label>
@@ -831,56 +1334,95 @@
 
     <!-- Capture & Live (Col 2) -->
     <div class="gsp-column">
-      <div id="direct-capture-settings">
+      <div id="system-warnings" class="gsp-mobile-section active" data-mobile-tab="capture" style="display: none;">
+        <div class="gsp-section-title" style="color: var(--error);">⚠ System Warnings</div>
+        <div id="playwright-warning" style="display: none; color: var(--error); font-size: 0.85rem; line-height: 1.5; margin-bottom: 12px;">
+          <strong>Playwright not installed:</strong> URL-based stream capture is unavailable. Install with:
+          <code style="display: block; background: var(--surf1); padding: 6px; border-radius: 4px; margin-top: 4px; font-size: 0.8rem;">
+            pip install playwright && playwright install chromium
+          </code>
+        </div>
+        <div id="vdo-warning" style="color: var(--error); font-size: 0.85rem; line-height: 1.5;">
+          <strong>vdo.ninja not supported:</strong> Uses WebRTC which can't be captured by headless browser. Use standard RTMP/HLS streams instead.
+        </div>
+      </div>
+      <div id="direct-capture-settings" class="gsp-mobile-section active" data-mobile-tab="capture">
         <div class="gsp-section-title">Direct Camera Capture</div>
-        <p class="capture-mode-note">Used only when ATEM routing is off.</p>
+        <p class="capture-mode-note">Used when ATEM routing is off, or when <strong>ACT</strong> capture mode is selected.</p>
         <div class="field">
           <label for="f-usb-device">USB Device</label>
           <select id="f-usb-device"><option value="">— none —</option></select>
         </div>
         <div class="field">
-          <label for="f-stream-url">VDO.ninja / URL</label>
-          <input id="f-stream-url" type="text" placeholder="https://vdo.ninja/?view=…" autocomplete="off" spellcheck="false" />
+          <label for="f-stream-url">Stream URL (RTMP, HLS, etc.)</label>
+          <input id="f-stream-url" type="text" placeholder="https://example.com/stream.m3u8" autocomplete="off" spellcheck="false" />
+          <div class="field-note" style="color: var(--muted);">Supported: standard HTTP streams, RTMP, HLS. Not supported: vdo.ninja, WebRTC.</div>
         </div>
         <div id="f-capture-source-status" class="field-note">Scan capture source: Not configured</div>
       </div>
-      <div id="local-preview-settings">
+      <div id="local-preview-settings" class="gsp-mobile-section active" data-mobile-tab="capture">
         <div class="gsp-section-title">Local Preview PIP</div>
         <p class="capture-mode-note">Local browser-only preview. Not used as the primary ATEM scan source.</p>
+        <label class="toggle-wrap">
+          <input id="f-preview-visible" type="checkbox" />
+          <span>Show Preview</span>
+        </label>
         <div class="field">
           <label for="f-webcam">Preview Device</label>
           <select id="f-webcam"><option value="">— select —</option></select>
         </div>
       </div>
-      <div class="field">
-        <label for="f-dwell">Dwell (s)</label>
-        <input id="f-dwell" type="number" value="3" min="1" max="60" />
+      <div class="field gsp-mobile-section active" data-mobile-tab="capture">
+        <label for="f-scan-wait-mode">Scan Wait</label>
+        <select id="f-scan-wait-mode">
+          <option value="settle">Confirmed Camera Stop</option>
+          <option value="dwell">Manual Dwell</option>
+        </select>
+        <div class="field-note">
+          Choose either camera stop confirmation or a fixed manual dwell before capture.
+        </div>
       </div>
-      <label class="atem-toggle-wrap">
+      <div class="field gsp-mobile-section active" data-mobile-tab="capture" id="scan-dwell-field">
+        <label for="f-dwell">Manual Dwell (s)</label>
+        <input id="f-dwell" type="number" value="3" min="0" max="60" step="0.5" />
+        <div class="field-note">
+          Used only when Scan Wait is set to Manual Dwell.
+        </div>
+      </div>
+      <label class="atem-toggle-wrap gsp-mobile-section active" data-mobile-tab="atem">
         <input id="f-atem-enabled" type="checkbox" />
         <span>Follow ATEM</span>
       </label>
-      <div class="field">
-        <label for="f-atem-ip">ATEM IP</label>
-        <input id="f-atem-ip" type="text" placeholder="192.168.1.200" autocomplete="off" spellcheck="false" />
+      <div class="field gsp-mobile-section active" data-mobile-tab="atem">
+      <label for="f-atem-ip">ATEM IP</label>
+      <input id="f-atem-ip" type="text" placeholder="192.168.1.200" autocomplete="off" spellcheck="false" />
+    </div>
+      <div class="field gsp-mobile-section active" data-mobile-tab="atem">
+        <label for="f-auto-cut-delay">Auto Cut Fallback Max (s)</label>
+        <input id="f-auto-cut-delay" type="number" min="0" max="30" step="0.5" />
+        <div class="field-note">
+          Confirmed Camera Stop cuts immediately. VISCA completion also cuts immediately. This max is used only if neither signal arrives, so Auto Cut can still fire by that time after recall starts.
+        </div>
       </div>
-      <label class="atem-toggle-wrap">
+      <label class="atem-toggle-wrap gsp-mobile-section active" data-mobile-tab="atem">
         <input id="gsp-atem-debug" type="checkbox" />
         <span>Show Debug Overlay</span>
       </label>
-      <div id="atem-debug">
+      <div id="atem-debug" class="gsp-mobile-section active" data-mobile-tab="atem">
         CAM <span id="dbg-cam">—</span> &nbsp;
         PGM <span id="dbg-pgm">—</span> &nbsp;
         PVW <span id="dbg-pvw">—</span> &nbsp;
         PAN <span id="dbg-pan">—</span> &nbsp;
         TILT <span id="dbg-tilt">—</span> &nbsp;
+        ZOOM <span id="dbg-zoom">—</span> &nbsp;
         VISCA <span id="dbg-visca">—</span> &nbsp;
+        ACUT <span id="dbg-autocut">—</span> &nbsp;
         <span id="dbg-inputs"></span>
       </div>
     </div>
 
     <!-- Grid Layout (Col 3) -->
-    <div class="gsp-column">
+    <div class="gsp-column gsp-mobile-section active" data-mobile-tab="grid">
       <div class="gsp-section-title">Grid Layout</div>
       <div class="field">
         <label for="gsp-start">Start</label>
@@ -902,67 +1444,82 @@
         <input id="gsp-fill" type="checkbox" />
         <span>Fill Window</span>
       </label>
-      <div class="field" id="live-preference-field" style="display:none;">
-        <label>Live Mode Follows</label>
-        <select id="f-atem-follows">
-          <option value="preview">Preview</option>
-          <option value="program">Program</option>
-        </select>
-      </div>
     </div>
-  </div>
 
-  <!-- Camera Management -->
-  <div style="border-top: 1px solid var(--border); padding: 12px;">
-    <div class="gsp-section-title">Camera Management</div>
-    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
-      <label class="atem-toggle-wrap" style="margin: 4px 0;">
+    <!-- Camera Management -->
+    <div class="gsp-extra-card gsp-mobile-section active" data-mobile-tab="cameras">
+      <div class="gsp-section-title">Camera Management</div>
+      <div class="camera-management-grid">
+        <label class="atem-toggle-wrap camera-management-item">
         <input id="f-cam-0-enabled" type="checkbox" class="cam-enable-cb" data-idx="0" />
         <span>Camera 1</span>
       </label>
-      <label class="atem-toggle-wrap" style="margin: 4px 0;">
+        <label class="atem-toggle-wrap camera-management-item">
         <input id="f-cam-1-enabled" type="checkbox" class="cam-enable-cb" data-idx="1" />
         <span>Camera 2</span>
       </label>
-      <label class="atem-toggle-wrap" style="margin: 4px 0;">
+      <label class="atem-toggle-wrap camera-management-item">
         <input id="f-cam-2-enabled" type="checkbox" class="cam-enable-cb" data-idx="2" />
         <span>Camera 3</span>
       </label>
-    </div>
-  </div>
-
-  <!-- ATEM Capture Sources (shown only when ATEM enabled) -->
-  <div id="atem-capture-section" style="display:none; border-top:1px solid var(--border); padding:12px;">
-    <div class="gsp-section-title" style="margin-bottom:10px;">ATEM Routing</div>
-    <p class="capture-section-note">
-      Map each physical ATEM output to the Mac capture device or URL that carries it. PTZ scans use the output selected below, including the ATEM virtual webcam if it appears as a USB device.
-    </p>
-    <div style="display:flex; align-items:flex-end; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
-      <div class="field" style="flex-shrink:0;">
-        <label for="f-capture-output">PTZ scan uses:</label>
-        <select id="f-capture-output">
-          <option value="webcam">USB Webcam</option>
-          <option value="sdi1">SDI Out 1</option>
-          <option value="sdi2">SDI Out 2</option>
-          <option value="sdi3">SDI Out 3</option>
-          <option value="sdi4">SDI Out 4</option>
-        </select>
+        <label class="atem-toggle-wrap camera-management-item">
+        <input id="f-cam-3-enabled" type="checkbox" class="cam-enable-cb" data-idx="3" />
+        <span>Camera 4</span>
+      </label>
       </div>
-      <span style="font-size:.8rem; color:var(--muted); padding-bottom:6px;">Current routed source:</span>
-      <span id="capture-output-label" style="font-size:.8rem; color:var(--label); padding-bottom:6px;"></span>
     </div>
-    <table id="output-map-table">
-      <thead>
-        <tr style="color:var(--muted); text-align:left;">
-          <th style="padding:4px 8px; font-weight:600;">Feed</th>
-          <th style="padding:4px 8px; font-weight:600;">Current Assignment</th>
-          <th style="padding:4px 8px; font-weight:600;">Source Label</th>
-          <th style="padding:4px 8px; font-weight:600;">Mac Capture Device</th>
-          <th style="padding:4px 8px; font-weight:600;">Stream URL</th>
-        </tr>
-      </thead>
-      <tbody id="output-map-body"><!-- rendered by JS --></tbody>
-    </table>
+
+    <div class="field gsp-extra-card gsp-mobile-section active" id="live-preference-field" data-mobile-tab="atem" style="display:none;">
+      <label>Live Mode Follows</label>
+      <select id="f-atem-follows">
+        <option value="preview">Preview</option>
+        <option value="program">Program</option>
+      </select>
+    </div>
+
+    <!-- ATEM Capture Sources (shown only when ATEM enabled) -->
+    <div id="atem-capture-section" class="gsp-extra-card gsp-mobile-section active" data-mobile-tab="atem" style="display:none;">
+      <div class="gsp-section-title" style="margin-bottom:10px;">ATEM Routing</div>
+      <p class="capture-section-note">
+        Map each physical ATEM output to the Mac capture device or URL that carries it. PTZ scans use the output selected below, including the ATEM virtual webcam if it appears as a USB device.
+      </p>
+      <div style="display:flex; align-items:flex-end; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+        <div class="field" style="flex-shrink:0;">
+          <label for="f-capture-output">PTZ scan uses:</label>
+          <select id="f-capture-output">
+            <option value="activeCam">Active Cam</option>
+            <option value="webcam">USB Webcam</option>
+            <option value="sdi1">SDI Out 1</option>
+            <option value="sdi2">SDI Out 2</option>
+            <option value="sdi3">SDI Out 3</option>
+            <option value="sdi4">SDI Out 4</option>
+          </select>
+        </div>
+        <div id="active-cam-aux-row" class="field" style="display:none; flex-shrink:0;">
+          <label for="f-active-cam-aux">Route to:</label>
+          <select id="f-active-cam-aux">
+            <option value="sdi1">SDI Out 1</option>
+            <option value="sdi2">SDI Out 2</option>
+            <option value="sdi3">SDI Out 3</option>
+            <option value="sdi4">SDI Out 4</option>
+          </select>
+        </div>
+        <span style="font-size:.8rem; color:var(--muted); padding-bottom:6px;">Current routed source:</span>
+        <span id="capture-output-label" style="font-size:.8rem; color:var(--label); padding-bottom:6px;"></span>
+      </div>
+      <table id="output-map-table">
+        <thead>
+          <tr style="color:var(--muted); text-align:left;">
+            <th style="padding:4px 8px; font-weight:600;">Feed</th>
+            <th style="padding:4px 8px; font-weight:600;">Current Assignment</th>
+            <th style="padding:4px 8px; font-weight:600;">Source Label</th>
+            <th style="padding:4px 8px; font-weight:600;">Mac Capture Device</th>
+            <th style="padding:4px 8px; font-weight:600;">Stream URL</th>
+          </tr>
+        </thead>
+        <tbody id="output-map-body"><!-- rendered by JS --></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- Webcam preview at bottom -->
@@ -988,16 +1545,18 @@
              c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
   </svg>
 </button>
-
 <script>
 (function () {
   'use strict';
+
+  const BUILD_COMMIT = '5efe1f2';
 
   // ── State ──────────────────────────────────────────────────────────────────
   const DEF_CAMERAS = [
     { name: 'Camera 1', ip: '', port: 52381, viscaAddr: 1, atemInput: 1, streamUrl: '', usbDevice: '', enabled: true },
     { name: 'Camera 2', ip: '', port: 52381, viscaAddr: 1, atemInput: 2, streamUrl: '', usbDevice: '', enabled: true },
     { name: 'Camera 3', ip: '', port: 52381, viscaAddr: 1, atemInput: 3, streamUrl: '', usbDevice: '', enabled: true },
+    { name: 'Camera 4', ip: '', port: 52381, viscaAddr: 1, atemInput: 4, streamUrl: '', usbDevice: '', enabled: false },
   ];
 
   let state = {
@@ -1005,12 +1564,18 @@
     cameras: DEF_CAMERAS.map(c => ({ ...c })),
     labels: {},
     dwellMs: 3000,
+    scanWaitMode: 'settle',
     atem: { ip: '', enabled: false },
     showAtemDebug: false,
     liveMode: true,
+    lockLiveMode: false,
+    unlockOnExitLiveMode: true,
     atemFollows: 'preview',
+    autoCutDelayMs: 0,
     previewSource: null,
     programSource: null,
+    captureSource: 'active',
+    localPreviewVisible: true,
     presetStart: 0,
     presetEnd: 11,
     gridCols: 4,
@@ -1026,6 +1591,8 @@
     },
     atemSourceLabels: {},
     captureOutput: 'webcam',
+    activeCamAux: 'sdi1',
+    positions: {},
     // Runtime ATEM AUX sources (not persisted, updated via SSE)
     aux1Source: 0,
     aux2Source: 0,
@@ -1035,8 +1602,10 @@
   const bootImageVersion = Date.now();
 
   // webcamDeviceId is browser-specific; stays in localStorage
-  function getWebcamDeviceId()    { return localStorage.getItem('ptz-webcam-device') || ''; }
-  function setWebcamDeviceId(id)  { localStorage.setItem('ptz-webcam-device', id); }
+  function getWebcamDeviceId()      { return localStorage.getItem('ptz-webcam-device') || ''; }
+  function setWebcamDeviceId(id)    { localStorage.setItem('ptz-webcam-device', id); }
+  function getLocalPreviewVisible() { return localStorage.getItem('ptz-preview-visible') !== 'false'; }
+  function setLocalPreviewVisible(v) { localStorage.setItem('ptz-preview-visible', v ? 'true' : 'false'); }
 
   function blankOutputRoute() {
     return { webcam: '', streamUrl: '' };
@@ -1075,6 +1644,7 @@
 
   function normalizeCaptureOutput(value) {
     const map = {
+      activeCam: 'activeCam',
       webcam: 'webcam',
       sdi1: 'sdi1',
       sdi2: 'sdi2',
@@ -1090,6 +1660,10 @@
     return map[value] || 'webcam';
   }
 
+  function normalizeActiveCamAux(value) {
+    return ['sdi1', 'sdi2', 'sdi3', 'sdi4'].includes(value) ? value : 'sdi1';
+  }
+
   // ── Server persistence ────────────────────────────────────────────────────
   let saveTimer = null;
 
@@ -1099,11 +1673,15 @@
       if (res.ok) {
         const s = await res.json();
         if (Array.isArray(s.cameras) && s.cameras.length) {
-          state.cameras  = s.cameras.map(c => ({ ...DEF_CAMERAS[0], ...c }));
+          state.cameras = DEF_CAMERAS.map((defaults, idx) => ({
+            ...defaults,
+            ...(s.cameras[idx] || {}),
+          }));
         }
         if (s.activeCam != null) state.activeCam = +s.activeCam;
         if (s.labels)   state.labels  = s.labels;
-        if (s.dwellMs)  state.dwellMs = +s.dwellMs;
+        if (s.dwellMs != null) state.dwellMs = Math.max(0, +s.dwellMs || 0);
+        if (s.scanWaitMode) state.scanWaitMode = s.scanWaitMode === 'dwell' ? 'dwell' : 'settle';
         if (s.atem)     state.atem    = { ip: '', enabled: false, ...s.atem };
         if (s.presetStart != null) state.presetStart = +s.presetStart;
         if (s.presetEnd   != null) state.presetEnd   = +s.presetEnd;
@@ -1111,11 +1689,16 @@
         if (s.gridRows    != null) state.gridRows    = +s.gridRows;
         if (s.fillWindow  != null) state.fillWindow  = !!s.fillWindow;
         if (s.liveMode      != null) state.liveMode      = !!s.liveMode;
+        if (s.lockLiveMode  != null) state.lockLiveMode  = !!s.lockLiveMode;
+        if (s.unlockOnExitLiveMode != null) state.unlockOnExitLiveMode = !!s.unlockOnExitLiveMode;
         if (s.showAtemDebug != null) state.showAtemDebug = !!s.showAtemDebug;
         if (s.atemFollows)           state.atemFollows   = s.atemFollows;
+        if (s.autoCutDelayMs != null) state.autoCutDelayMs = Math.max(0, +s.autoCutDelayMs || 0);
         if (s.atemOutputMap) state.atemOutputMap = normalizeAtemOutputMap(s.atemOutputMap);
         if (s.atemSourceLabels) state.atemSourceLabels = { ...s.atemSourceLabels };
         if (s.captureOutput) state.captureOutput = normalizeCaptureOutput(s.captureOutput);
+        if (s.activeCamAux) state.activeCamAux = normalizeActiveCamAux(s.activeCamAux);
+        if (s.positions) state.positions = { ...s.positions };
       }
     } catch (_) {}
   }
@@ -1138,7 +1721,16 @@
   // ── Status pill ────────────────────────────────────────────────────────────
   const elStatus     = document.getElementById('status');
   const elStatusText = document.getElementById('status-text');
+  const elBuildCommit = document.getElementById('build-commit');
+  const elBuildMode = document.getElementById('build-mode');
   let statusTimer    = null;
+
+  if (elBuildCommit) elBuildCommit.textContent = BUILD_COMMIT;
+
+  function updateBuildIndicator() {
+    if (!elBuildMode) return;
+    elBuildMode.textContent = state.fillWindow ? 'fill' : 'normal';
+  }
 
   function setStatus(type, msg, autoClear = true) {
     clearTimeout(statusTimer);
@@ -1222,6 +1814,14 @@
     return 'Neither';
   }
 
+  function getCameraBusClass(idx) {
+    const status = getCameraAtemBusStatus(idx);
+    if (status === 'Program') return 'bus-live';
+    if (status === 'Preview') return 'bus-preview';
+    if (idx === state.activeCam) return 'bus-selected';
+    return 'bus-idle';
+  }
+
   function getCameraCaptureSourceSummary(idx) {
     const cam = state.cameras[idx];
     if (!cam) return 'Not configured';
@@ -1237,6 +1837,9 @@
       elAtemPill.className = 'disabled';
       elAtemPillText.textContent = 'ATEM Off';
       elAtemPill.title = 'ATEM integration is disabled';
+      updatePresetGridBusState();
+      updateManualCutButton();
+      updateAutoCutButton();
       return;
     }
 
@@ -1244,14 +1847,49 @@
       elAtemPill.className = 'waiting';
       elAtemPillText.textContent = 'ATEM Wait';
       elAtemPill.title = 'ATEM is enabled but not connected yet';
+      updatePresetGridBusState();
+      updateManualCutButton();
+      updateAutoCutButton();
       return;
     }
 
     const program = state.programSource != null && state.programSource !== 0 ? state.programSource : '—';
     const preview = state.previewSource != null && state.previewSource !== 0 ? state.previewSource : '—';
+
+    let liveCameraName = '';
+    if (program !== '—') {
+      const liveCam = state.cameras.find(c => +c.atemInput === +program);
+      if (liveCam) {
+        liveCameraName = liveCam.name;
+      }
+    }
+
     elAtemPill.className = 'connected';
-    elAtemPillText.textContent = `ATEM P${program} V${preview}`;
-    elAtemPill.title = `ATEM connected • Program ${program} • Preview ${preview}`;
+    const baseText = `ATEM P${program} V${preview}`;
+    elAtemPillText.textContent = liveCameraName ? `${baseText} • 📹 ${liveCameraName} LIVE` : baseText;
+    elAtemPill.title = `ATEM connected • Program ${program}${liveCameraName ? ` (${liveCameraName})` : ''} • Preview ${preview}`;
+    updatePresetGridBusState();
+    updateManualCutButton();
+    updateAutoCutButton();
+  }
+
+  function applyAtemStateSnapshot(snapshot = {}) {
+    if ('preview' in snapshot && snapshot.preview != null) state.previewSource = snapshot.preview || 0;
+    if ('program' in snapshot && snapshot.program != null) state.programSource = snapshot.program || 0;
+    if ('aux1' in snapshot && snapshot.aux1 != null) state.aux1Source = snapshot.aux1 || 0;
+    if ('aux2' in snapshot && snapshot.aux2 != null) state.aux2Source = snapshot.aux2 || 0;
+    if ('aux3' in snapshot && snapshot.aux3 != null) state.aux3Source = snapshot.aux3 || 0;
+    if ('aux4' in snapshot && snapshot.aux4 != null) state.aux4Source = snapshot.aux4 || 0;
+  }
+
+  function applyConfirmedProgramSource(source) {
+    state.programSource = source || 0;
+    updateAtemPill();
+    updateCameraStatusHints();
+    renderTabs();
+    updateAtemDebug();
+    updateCaptureOutputLabel();
+    renderOutputMapTable();
   }
 
   // ── ATEM debug overlay ─────────────────────────────────────────────────────
@@ -1261,15 +1899,37 @@
   const elDbgPvw    = document.getElementById('dbg-pvw');
   const elDbgPan    = document.getElementById('dbg-pan');
   const elDbgTilt   = document.getElementById('dbg-tilt');
+  const elDbgZoom   = document.getElementById('dbg-zoom');
   const elDbgVisca  = document.getElementById('dbg-visca');
+  const elDbgAutoCut = document.getElementById('dbg-autocut');
   const elDbgInputs = document.getElementById('dbg-inputs');
   let debugPositionTimer = null;
   let debugPositionRequestId = 0;
+  let autoCutDebugText = 'IDLE';
 
-  function setDebugPosition(pan = '—', tilt = '—', visca = '—') {
+  function setDebugPosition(pan = '—', tilt = '—', zoom = '—', visca = '—') {
     elDbgPan.textContent = pan;
     elDbgTilt.textContent = tilt;
+    elDbgZoom.textContent = zoom;
     elDbgVisca.textContent = visca;
+  }
+
+  function setAutoCutDebug(message = 'IDLE') {
+    autoCutDebugText = message;
+    if (elDbgAutoCut) elDbgAutoCut.textContent = message;
+  }
+
+  function formatDebugAxis(hexValue, signedValue) {
+    if (!hexValue || hexValue === '—') return '—';
+    return signedValue == null ? hexValue : `${hexValue} (${signedValue})`;
+  }
+
+  function applyDebugPositionData(data = {}) {
+    const pan = formatDebugAxis(data.pan_hex || '—', data.pan_signed);
+    const tilt = formatDebugAxis(data.tilt_hex || '—', data.tilt_signed);
+    const zoom = data.zoom_hex || '—';
+    const visca = data.transport ? `OK ${String(data.transport).toUpperCase()}` : 'OK';
+    setDebugPosition(pan, tilt, zoom, visca);
   }
 
   async function fetchDebugPosition() {
@@ -1277,7 +1937,7 @@
     const camIdx = state.activeCam;
     const cam = state.cameras[camIdx];
     if (!cam?.ip) {
-      setDebugPosition('—', '—', 'NO IP');
+      setDebugPosition('—', '—', '—', 'NO IP');
       return;
     }
 
@@ -1288,16 +1948,12 @@
       if (requestId !== debugPositionRequestId) return;
       if (!res.ok || !data.ok) {
         const msg = (data.error || `${res.status}`).slice(0, 48);
-        setDebugPosition('ERR', 'ERR', msg);
+        setDebugPosition('ERR', 'ERR', 'ERR', msg);
         return;
       }
-      const visca = data.responder && data.expected_responder &&
-        data.responder !== data.expected_responder
-        ? `${data.responder} != ${data.expected_responder}`
-        : 'OK';
-      setDebugPosition(data.pan_hex || '—', data.tilt_hex || '—', visca);
+      applyDebugPositionData(data);
     } catch (_) {
-      if (requestId === debugPositionRequestId) setDebugPosition('ERR', 'ERR', 'FETCH ERR');
+      if (requestId === debugPositionRequestId) setDebugPosition('ERR', 'ERR', 'ERR', 'FETCH ERR');
     }
   }
 
@@ -1325,6 +1981,7 @@
     elDbgCam.textContent = `CAM ${state.activeCam + 1}`;
     elDbgPgm.textContent = state.programSource != null ? state.programSource : '—';
     elDbgPvw.textContent = state.previewSource != null ? state.previewSource : '—';
+    if (elDbgAutoCut) elDbgAutoCut.textContent = autoCutDebugText;
     elDbgInputs.textContent = state.cameras
       .filter(c => c.enabled !== false)
       .map((c, i) => `CAM${i + 1}=${getCameraAtemInput(c) ?? '—'}`)
@@ -1348,15 +2005,48 @@
 
     if (onProgram) return 'LIVE';
     if (onPreview) return 'PVW';
+    if (idx === state.activeCam && state.liveMode) return 'SEL';
     if (idx === state.activeCam && !state.liveMode) return 'EDIT';
     return '';
+  }
+
+  function getCameraDotClass(idx) {
+    const badge = getCameraBadgeText(idx);
+    if (badge === 'LIVE') return 'live';
+    if (badge === 'PVW') return 'preview';
+    if (badge === 'SEL') return 'selected';
+    return 'idle';
   }
 
   function getCompactCameraState(idx) {
     const badge = getCameraBadgeText(idx);
     if (badge === 'LIVE') return { text: 'LIVE', className: 'live' };
     if (badge === 'PVW') return { text: 'PVW', className: 'preview' };
+    if (badge === 'SEL') return { text: 'SEL', className: 'selected' };
     return { text: 'IDLE', className: 'idle' };
+  }
+
+  async function setAtemPreview(idx) {
+    if (!state.atem.enabled || !atemConnected) return false;
+    const atemInput = getCameraAtemInput(idx);
+    if (!atemInput) return false;
+    if (cameraMatchesAtemSource(idx, state.previewSource)) return false;
+    try {
+      const res = await fetch('/api/atem/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ camIdx: idx }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        setStatus('error', data.error || data.message || 'ATEM preview update failed');
+        return false;
+      }
+      return true;
+    } catch (err) {
+      setStatus('error', `ATEM preview update failed: ${err.message || err}`);
+      return false;
+    }
   }
 
   function renderFillCamStrip() {
@@ -1381,9 +2071,40 @@
 
       btn.appendChild(num);
       btn.appendChild(stateEl);
+      btn.title = state.atem.enabled ? 'Click to switch · Hold to set preview' : 'Click to switch';
+
+      // Long-press (500 ms) to set ATEM preview bus
+      let lpTimer = null;
+      let lpHandled = false;
+      let lpStartX = 0;
+      let lpStartY = 0;
+      btn.addEventListener('pointerdown', (e) => {
+        lpStartX = e.clientX;
+        lpStartY = e.clientY;
+        lpTimer = setTimeout(async () => {
+          lpTimer = null;
+          lpHandled = true;
+          const ok = await setAtemPreview(idx);
+          if (ok) {
+            btn.classList.add('setting-preview');
+            setTimeout(() => btn.classList.remove('setting-preview'), 800);
+          }
+        }, 500);
+      });
+      const clearFillLp = () => { clearTimeout(lpTimer); lpTimer = null; };
+      btn.addEventListener('pointerup',     clearFillLp);
+      btn.addEventListener('pointerleave',  clearFillLp);
+      btn.addEventListener('pointermove',   (e) => {
+        if (Math.hypot(e.clientX - lpStartX, e.clientY - lpStartY) > 8) clearFillLp();
+      });
+      btn.addEventListener('pointercancel', clearFillLp);
+
       btn.addEventListener('click', () => {
+        if (lpHandled) { lpHandled = false; return; }
         if (idx !== state.activeCam) switchCamera(idx);
       });
+
+      btn.title = state.atem.enabled ? 'Click to switch · Hold to set preview' : 'Click to switch';
 
       elFillCamStrip.appendChild(btn);
     });
@@ -1398,11 +2119,13 @@
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'cam-tab' + (idx === state.activeCam ? ' active' : '');
+      btn.classList.add(getCameraBusClass(idx));
       btn.dataset.idx = idx;
+      btn.title = cam.name;
 
-      const numEl = document.createElement('span');
-      numEl.className = 'cam-num';
-      numEl.textContent = `CAM ${idx + 1}`;
+      const dot = document.createElement('span');
+      dot.className = `cam-state-dot ${getCameraDotClass(idx)}`;
+      dot.setAttribute('aria-hidden', 'true');
 
       const nameWrap = document.createElement('span');
       nameWrap.className = 'cam-name-wrap';
@@ -1411,52 +2134,66 @@
       nameEl.className = 'cam-name';
       nameEl.textContent = cam.name;
 
-      // Add badge for mode/ATEM indicator
-      let badgeText = '', badgeClass = '';
+      const badge = getCameraBadgeText(idx);
+      if (badge === 'LIVE') btn.classList.add('live');
+      else if (badge === 'PVW') btn.classList.add('preview');
+      else if (badge === 'EDIT') btn.classList.add('edit');
 
-      const onProgram = cameraMatchesAtemSource(idx, state.programSource);
-      const onPreview = cameraMatchesAtemSource(idx, state.previewSource);
-
-      if (onProgram) {
-        badgeText = 'LIVE';
-        badgeClass = 'live';
-        btn.classList.add('live');
-      } else if (onPreview) {
-        badgeText = 'PREVIEW';
-        badgeClass = 'preview';
-        btn.classList.add('preview');
-      }
-
-      if (!badgeText && idx === state.activeCam && !state.liveMode) {
-        badgeText = 'EDIT';
-        badgeClass = 'edit';
-        btn.classList.add('edit');
-      }
-
-      if (badgeText) {
-        const badge = document.createElement('span');
-        badge.className = 'cam-badge ' + badgeClass;
-        badge.textContent = badgeText;
-        nameWrap.appendChild(badge);
-      }
-
+      btn.appendChild(dot);
       nameWrap.appendChild(nameEl);
-      btn.appendChild(numEl);
       btn.appendChild(nameWrap);
 
-      // Long-press rename for touch devices (500 ms hold)
+      // Tiered long-press for touch devices:
+      //   500 ms → set ATEM preview (when ATEM enabled and connected)
+      //   700 ms → rename tab (always available; +200 ms after preview)
       let longPressTimer = null;
       let longPressHandled = false;
-      btn.addEventListener('pointerdown', () => {
-        longPressTimer = setTimeout(() => {
-          longPressTimer = null;
+      let previewTriggered = false;
+      let longPressActive = false;
+      let lpTabStartX = 0;
+      let lpTabStartY = 0;
+      btn.addEventListener('pointerdown', (e) => {
+        longPressActive = true;
+        lpTabStartX = e.clientX;
+        lpTabStartY = e.clientY;
+        longPressTimer = setTimeout(async () => {
           longPressHandled = true;
-          openTabNameEditor(idx, nameEl, nameWrap);
+          if (state.atem.enabled && atemConnected) {
+            previewTriggered = true;
+            await setAtemPreview(idx);
+            if (!longPressActive) return;
+            // Schedule rename after an additional 200 ms (700 ms total)
+            longPressTimer = setTimeout(() => {
+              if (!longPressActive) return;
+              longPressTimer = null;
+              openTabNameEditor(idx, nameEl, nameWrap);
+            }, 200);
+          } else {
+            longPressTimer = null;
+            openTabNameEditor(idx, nameEl, nameWrap);
+          }
         }, 500);
       });
-      btn.addEventListener('pointerup',    () => clearTimeout(longPressTimer));
-      btn.addEventListener('pointerleave', () => clearTimeout(longPressTimer));
-      btn.addEventListener('pointermove',  () => clearTimeout(longPressTimer));
+      btn.addEventListener('pointerup', () => {
+        longPressActive = false;
+        if (longPressTimer !== null) {
+          // In the 500–700 ms window: rename was pending, cancel it; only
+          // reset longPressHandled if preview wasn't already triggered.
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+          if (!previewTriggered) longPressHandled = false;
+        } else {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+        previewTriggered = false;
+      });
+      const clearTabLp = () => { longPressActive = false; clearTimeout(longPressTimer); longPressTimer = null; previewTriggered = false; };
+      btn.addEventListener('pointerleave',  clearTabLp);
+      btn.addEventListener('pointermove',   (e) => {
+        if (Math.hypot(e.clientX - lpTabStartX, e.clientY - lpTabStartY) > 8) clearTabLp();
+      });
+      btn.addEventListener('pointercancel', clearTabLp);
 
       btn.addEventListener('click', () => {
         if (longPressHandled) { longPressHandled = false; return; }
@@ -1471,6 +2208,7 @@
       elTabs.appendChild(btn);
     });
     renderFillCamStrip();
+    scheduleHeaderDensityUpdate();
   }
 
   function switchCamera(idx) {
@@ -1478,6 +2216,7 @@
       setStatus('busy', 'Finish or cancel the current scan before changing cameras', false);
       return;
     }
+    clearPendingAutoCut();
     saveCameraSettings();
     state.activeCam = idx;
     schedSave();
@@ -1486,6 +2225,7 @@
     refreshGridForActiveCamera();
     applyGridLayout();
     updateAtemDebug();
+    updateToolbarVisibility();
   }
 
   function openTabNameEditor(idx, nameEl, nameWrap) {
@@ -1524,15 +2264,42 @@
   const elAtemInput = document.getElementById('f-atem-input');
   const elAtemStatus = document.getElementById('f-atem-status');
   const elCaptureSourceStatus = document.getElementById('f-capture-source-status');
+  const elScanWaitMode = document.getElementById('f-scan-wait-mode');
+  const elScanDwellField = document.getElementById('scan-dwell-field');
   const elDwell     = document.getElementById('f-dwell');
+  const elAutoCutDelay = document.getElementById('f-auto-cut-delay');
+
+  function updateScanWaitModeUi() {
+    const manual = state.scanWaitMode === 'dwell';
+    if (elScanWaitMode) elScanWaitMode.value = manual ? 'dwell' : 'settle';
+    if (elDwell) elDwell.disabled = !manual;
+    if (elScanDwellField) elScanDwellField.style.opacity = manual ? '1' : '0.6';
+  }
 
   function updateCameraStatusHints() {
     if (elAtemStatus) {
       const atemInput = getCameraAtemInput(state.activeCam);
       const busStatus = getCameraAtemBusStatus(state.activeCam);
-      elAtemStatus.textContent = atemInput
-        ? `ATEM bus status: ${busStatus} on ${formatAtemSourceSummary(atemInput)}`
-        : 'ATEM bus status: Unmapped';
+
+      let statusText = '';
+      let statusClass = '';
+
+      if (atemInput) {
+        statusText = `ATEM bus status: ${busStatus} on ${formatAtemSourceSummary(atemInput)}`;
+
+        if (busStatus === 'Program') {
+          statusText += ' • 🔴 LIVE - Camera is broadcasting';
+          statusClass = 'status-live';
+        } else if (busStatus === 'Preview') {
+          statusText += ' • 🟢 Preview - Safe to operate';
+          statusClass = 'status-preview';
+        }
+      } else {
+        statusText = 'ATEM bus status: Unmapped';
+      }
+
+      elAtemStatus.textContent = statusText;
+      elAtemStatus.className = 'status-hint ' + statusClass;
     }
     if (elCaptureSourceStatus) {
       elCaptureSourceStatus.textContent = `Scan capture source: ${getCameraCaptureSourceSummary(state.activeCam)}`;
@@ -1547,8 +2314,10 @@
     const atemInput = getCameraAtemInput(cam);
     elAtemInput.value = atemInput != null ? String(atemInput) : '';
     elDwell.value     = state.dwellMs / 1000;
+    updateScanWaitModeUi();
     elAtemEnabled.checked = !!state.atem.enabled;
     elAtemIp.value        = state.atem.ip || '';
+    if (elAutoCutDelay) elAutoCutDelay.value = String((state.autoCutDelayMs || 0) / 1000);
     updateAtemPill();
     elUsbDevice.value = cam.usbDevice || '';
     const url = cam.streamUrl || '';
@@ -1560,7 +2329,8 @@
   function updateCaptureModeVisibility() {
     const directCapture = document.getElementById('direct-capture-settings');
     const atemCaptureSection = document.getElementById('atem-capture-section');
-    if (directCapture) directCapture.style.display = state.atem.enabled ? 'none' : 'flex';
+    const showDirect = !state.atem.enabled || state.captureSource === 'active';
+    if (directCapture) directCapture.style.display = showDirect ? 'flex' : 'none';
     if (atemCaptureSection) atemCaptureSection.style.display = state.atem.enabled ? 'block' : 'none';
   }
 
@@ -1572,13 +2342,16 @@
     cam.atemInput  = getCameraAtemInput({ atemInput: elAtemInput.value });
     cam.usbDevice  = elUsbDevice.value;
     cam.streamUrl  = elStreamUrl.value.trim();
-    state.dwellMs  = (parseInt(elDwell.value, 10) || 3) * 1000;
+    state.dwellMs  = Math.max(0, Math.round((parseFloat(elDwell.value) || 0) * 1000));
+    state.scanWaitMode = elScanWaitMode?.value === 'dwell' ? 'dwell' : 'settle';
     state.atem.enabled = elAtemEnabled.checked;
     state.atem.ip      = elAtemIp.value.trim();
+    state.autoCutDelayMs = Math.max(0, Math.round(((parseFloat(elAutoCutDelay?.value || '0') || 0) * 1000)));
     updateCameraStatusHints();
+    updateScanWaitModeUi();
   }
 
-  [elIp, elPort, elVisca, elAtemInput, elDwell].forEach(el =>
+  [elIp, elPort, elVisca, elAtemInput, elDwell, elScanWaitMode].forEach(el =>
     el.addEventListener('change', () => { saveCameraSettings(); schedSave(); })
   );
 
@@ -1590,9 +2363,10 @@
     saveCameraSettings();
     schedSave();
     if (!state.atem.enabled) atemConnected = false;
+    if (!state.atem.enabled) setAutoCutArmed(false);
     updateAtemPill();
     updateAtemDebug();
-    updateCaptureModeVisibility();
+    updateToolbarVisibility();
     // Show/hide dependent fields based on ATEM enabled state
     if (elLivePreferenceField) {
       elLivePreferenceField.style.display = state.atem.enabled ? 'block' : 'none';
@@ -1600,6 +2374,13 @@
     updateCaptureOutputLabel();
   });
   elAtemIp.addEventListener('change', () => { saveCameraSettings(); schedSave(); });
+  if (elAutoCutDelay) {
+    elAutoCutDelay.addEventListener('change', () => {
+      saveCameraSettings();
+      schedSave();
+      updateAutoCutButton();
+    });
+  }
 
   // ── SSE ────────────────────────────────────────────────────────────────────
   (function initSSE() {
@@ -1609,14 +2390,8 @@
         const ev = JSON.parse(e.data);
         if (ev.type === 'atem') {
           atemConnected = !!ev.connected;
-          // Apply initial preview/program/aux sources sent with the connection event
-          if (ev.preview != null && ev.preview !== 0) state.previewSource = ev.preview;
-        if (ev.program != null && ev.program !== 0) state.programSource = ev.program;
-        if (ev.aux1 != null && ev.aux1 !== 0) state.aux1Source = ev.aux1;
-        if (ev.aux2 != null && ev.aux2 !== 0) state.aux2Source = ev.aux2;
-        if (ev.aux3 != null && ev.aux3 !== 0) state.aux3Source = ev.aux3;
-        if (ev.aux4 != null && ev.aux4 !== 0) state.aux4Source = ev.aux4;
-        updateAtemPill();
+          applyAtemStateSnapshot(ev);
+          updateAtemPill();
           updateCameraStatusHints();
           renderTabs();
           updateAtemDebug();
@@ -1663,17 +2438,310 @@
   })();
 
   // ── Live/Edit mode toggle ──────────────────────────────────────────────────
+  const elCaptureToggle = document.getElementById('capture-source-toggle');
+  const elAutoCutBtn = document.getElementById('btn-auto-cut');
+  const elCutLiveBtn = document.getElementById('cut-live-btn');
+  let autoCutArmed = false;
+  let autoCutTimer = null;
+  let autoCutPending = null;
+
+  function getAutoCutDelaySeconds() {
+    return ((state.autoCutDelayMs || 0) / 1000).toFixed(1).replace(/\.0$/, '');
+  }
+
+  function clearPendingAutoCut() {
+    if (autoCutTimer) {
+      clearTimeout(autoCutTimer);
+      autoCutTimer = null;
+    }
+    autoCutPending = null;
+    if (!autoCutArmed) setAutoCutDebug('OFF');
+  }
+
+  function getActiveCameraCutSource() {
+    return getCameraAtemInput(state.activeCam);
+  }
+
+  function canArmAutoCut() {
+    return !!state.atem.enabled && !!atemConnected;
+  }
+
+  function getAutoCutPlan(camIdx) {
+    if (!autoCutArmed || !canArmAutoCut()) return null;
+    const source = getCameraAtemInput(camIdx);
+    if (!source) return null;
+    return {
+      source,
+      camIdx,
+      camName: state.cameras[camIdx]?.name || `Camera ${camIdx + 1}`,
+      delayMs: Math.max(0, state.autoCutDelayMs || 0),
+    };
+  }
+
+  function canManualCut() {
+    return !!state.atem.enabled && !!atemConnected && !!getActiveCameraCutSource();
+  }
+
+  function getAutoCutDebugState() {
+    const source = getActiveCameraCutSource();
+    if (!state.atem.enabled) return 'ATEM OFF';
+    if (!atemConnected) return 'ATEM WAIT';
+    if (!source) return 'NO SRC';
+    if (autoCutArmed) return `ARM ${source}`;
+    return `READY ${source}`;
+  }
+
+  function updateManualCutButton() {
+    if (!elCutLiveBtn) return;
+    const source = getActiveCameraCutSource();
+    const camName = state.cameras[state.activeCam]?.name || `Camera ${state.activeCam + 1}`;
+    const alreadyLive = !!source && cameraMatchesAtemSource(state.activeCam, state.programSource);
+    elCutLiveBtn.style.display = state.atem.enabled ? '' : 'none';
+    elCutLiveBtn.disabled = !canManualCut() || alreadyLive;
+    elCutLiveBtn.textContent = source ? `Cut ${source}` : 'Cut';
+    if (!state.atem.enabled) {
+      elCutLiveBtn.title = 'Enable ATEM to use manual cut';
+    } else if (!atemConnected) {
+      elCutLiveBtn.title = 'Wait for ATEM to connect';
+    } else if (!source) {
+      elCutLiveBtn.title = 'Set an ATEM source number for this camera first';
+    } else if (alreadyLive) {
+      elCutLiveBtn.title = `${camName} is already live on source ${source}`;
+    } else {
+      elCutLiveBtn.title = `Cut ${camName} to air on source ${source}`;
+    }
+  }
+
+  function updateAutoCutButton() {
+    if (!elAutoCutBtn) return;
+    const delayText = `${getAutoCutDelaySeconds()}s`;
+    const source = getActiveCameraCutSource();
+    const armable = canArmAutoCut();
+    if (!autoCutPending && !autoCutTimer) setAutoCutDebug(getAutoCutDebugState());
+    elAutoCutBtn.textContent = 'Auto Cut';
+    elAutoCutBtn.classList.toggle('active', autoCutArmed);
+    elAutoCutBtn.setAttribute('aria-pressed', autoCutArmed ? 'true' : 'false');
+    elAutoCutBtn.disabled = !armable || !source;
+    if (!state.atem.enabled) {
+      elAutoCutBtn.title = 'Enable ATEM to use Auto Cut';
+    } else if (!atemConnected) {
+      elAutoCutBtn.title = 'Wait for ATEM to connect';
+    } else if (!source) {
+      elAutoCutBtn.title = 'Set an ATEM source number for this camera first';
+    } else if (autoCutArmed) {
+      elAutoCutBtn.title = delayText === '0s'
+        ? `Armed: cut ${state.cameras[state.activeCam]?.name || 'camera'} to air when camera stop or VISCA completion is confirmed`
+        : `Armed: cut ${state.cameras[state.activeCam]?.name || 'camera'} to air when camera stop or VISCA completion is confirmed, or by ${delayText} max if neither arrives`;
+    } else {
+      elAutoCutBtn.title = delayText === '0s'
+        ? 'Arm the next automatic cut (confirmed stop or VISCA completion)'
+        : `Arm the next automatic cut (confirmed stop or VISCA completion, with ${delayText} max fallback)`;
+    }
+  }
+
+  function setAutoCutArmed(nextArmed) {
+    autoCutArmed = !!nextArmed && canArmAutoCut() && !!getActiveCameraCutSource();
+    if (!autoCutArmed) clearPendingAutoCut();
+    updateAutoCutButton();
+  }
+
+  async function fireAutoCut(source, camName, preset) {
+    try {
+      setStatus('busy', `Auto Cut: switching ${camName} preset ${preset} to ATEM source ${source}…`, false);
+      setAutoCutDebug(`FIRE ${source}`);
+      const res = await fetch('/atem/cut', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source, reason: 'auto' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        setAutoCutDebug(`ERR ${source}`);
+        throw new Error(data.error || data.message || `HTTP ${res.status}`);
+      }
+      applyConfirmedProgramSource(source);
+      setAutoCutDebug(`OK ${source}`);
+      setStatus('success', `Auto Cut: ${camName} preset ${preset} is now live on source ${source}`);
+    } catch (err) {
+      setAutoCutDebug(`FAIL ${source}`);
+      setStatus('error', `Auto Cut failed: ${err.message || err}`);
+    } finally {
+      autoCutTimer = null;
+      autoCutPending = null;
+    }
+  }
+
+  async function cutActiveCameraLive() {
+    const source = getActiveCameraCutSource();
+    const camName = state.cameras[state.activeCam]?.name || `Camera ${state.activeCam + 1}`;
+    if (!source) {
+      setStatus('error', 'Set an ATEM source number for this camera first');
+      return;
+    }
+    try {
+      setStatus('busy', `Cutting ${camName} to ATEM source ${source}…`, false);
+      const res = await fetch('/atem/cut', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source, reason: 'manual' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || data.message || `HTTP ${res.status}`);
+      }
+      applyConfirmedProgramSource(source);
+      setStatus('success', `Cut complete: ${camName} is now live on source ${source}`);
+    } catch (err) {
+      setStatus('error', `Manual cut failed: ${err.message || err}`);
+    }
+  }
+
+  async function setAtemPreview(idx) {
+    if (!state.atem.enabled || !atemConnected) return;
+    const atemInput = getCameraAtemInput(idx);
+    if (!atemInput) return;
+    if (cameraMatchesAtemSource(idx, state.previewSource)) return;
+    await fetch('/api/atem/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ camIdx: idx }),
+    }).catch(() => ({}));
+  }
+
+  function scheduleAutoCut(preset, autoCutPlan, trigger = 'settled', recallElapsedMs = 0) {
+    if (!autoCutPlan || !autoCutPlan.source) return;
+    clearPendingAutoCut();
+    const { source, camName, delayMs } = autoCutPlan;
+    if (delayMs > 0) {
+      autoCutPending = { source, camName, preset };
+      setAutoCutDebug(`WAIT ${source}`);
+      setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} after confirmed stop + ${(delayMs / 1000).toFixed(1).replace(/\.0$/, '')}s`, false);
+      autoCutTimer = setTimeout(() => {
+        const pending = autoCutPending;
+        if (!pending) return;
+        fireAutoCut(pending.source, pending.camName, pending.preset);
+      }, delayMs);
+      return;
+    }
+    setAutoCutDebug(`READY ${source}`);
+    setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} when camera stop is confirmed`, false);
+    void fireAutoCut(source, camName, preset);
+  }
+
+  if (elAutoCutBtn) {
+    elAutoCutBtn.addEventListener('click', () => {
+      if (!state.atem.enabled) {
+        setStatus('error', 'Enable ATEM first');
+        setAutoCutDebug('ATEM OFF');
+        return;
+      }
+      if (!atemConnected) {
+        setStatus('error', 'Wait for ATEM to connect first');
+        setAutoCutDebug('ATEM WAIT');
+        return;
+      }
+      const source = getActiveCameraCutSource();
+      if (!source) {
+        setStatus('error', 'Set an ATEM source number for this camera first');
+        setAutoCutDebug('NO SRC');
+        return;
+      }
+      setAutoCutArmed(!autoCutArmed);
+      if (autoCutArmed) {
+        const camName = state.cameras[state.activeCam]?.name || 'camera';
+        setAutoCutDebug(`ARM ${source}`);
+        const fallbackDelay = Math.max(0, state.autoCutDelayMs || 0);
+        const fallbackText = fallbackDelay > 0
+          ? ` with ${getAutoCutDelaySeconds()}s max fallback if nothing confirms`
+          : '';
+        setStatus('success', `Next cut armed for ${camName} on confirmed stop or VISCA completion${fallbackText}`);
+      } else {
+        setAutoCutDebug('OFF');
+      }
+    });
+  }
+
+  if (elCutLiveBtn) {
+    elCutLiveBtn.addEventListener('click', () => {
+      if (!canManualCut()) return;
+      void cutActiveCameraLive();
+    });
+  }
+
   function updateToolbarVisibility() {
     const btnScanEl = document.getElementById('btn-scan');
     if (btnScanEl) btnScanEl.style.display = state.liveMode ? 'none' : '';
+    if (elAutoCutBtn) elAutoCutBtn.style.display = state.atem.enabled ? '' : 'none';
+    if (elCaptureToggle) {
+      elCaptureToggle.style.display =
+        (!state.liveMode && state.atem.enabled) ? 'flex' : 'none';
+    }
+    updateManualCutButton();
+    updateAutoCutButton();
+    scheduleHeaderDensityUpdate();
+  }
+
+  // Restore capture source preference and wire up toggle buttons
+  (function initCaptureToggle() {
+    const saved = localStorage.getItem('captureSource');
+    if (saved) state.captureSource = saved;
+    elCaptureToggle.querySelectorAll('.csrc-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.src === state.captureSource);
+      btn.addEventListener('click', () => {
+        state.captureSource = btn.dataset.src;
+        localStorage.setItem('captureSource', state.captureSource);
+        elCaptureToggle.querySelectorAll('.csrc-btn').forEach(b =>
+          b.classList.toggle('active', b === btn)
+        );
+        updateCaptureModeVisibility();
+        updateCameraStatusHints();
+      });
+    });
+  })();
+
+  // Define lock button handler FIRST so it's available for live button to use
+  let updateLockIcon;
+  const elLockLiveBtn = document.getElementById('lock-live-btn');
+  if (elLockLiveBtn) {
+    updateLockIcon = function() {
+      if (state.lockLiveMode) {
+        elLockLiveBtn.textContent = '🔒 Locked';
+        elLockLiveBtn.title = 'Live camera movement is blocked';
+        elLockLiveBtn.classList.add('locked');
+      } else {
+        elLockLiveBtn.textContent = '⚠ Unlocked';
+        elLockLiveBtn.title = 'Live camera movement is allowed';
+        elLockLiveBtn.classList.remove('locked');
+      }
+    };
+    updateLockIcon();
+    elLockLiveBtn.addEventListener('click', () => {
+      state.lockLiveMode = !state.lockLiveMode;
+      updateLockIcon();
+      schedSave();
+    });
   }
 
   const elLiveBtn = document.getElementById('live-mode-btn');
+  function updateLiveModeButton() {
+    if (!elLiveBtn) return;
+    elLiveBtn.textContent = state.liveMode ? 'Live' : 'Edit';
+    elLiveBtn.classList.toggle('live', state.liveMode);
+  }
+
   if (elLiveBtn) {
     elLiveBtn.addEventListener('click', () => {
       state.liveMode = !state.liveMode;
-      elLiveBtn.textContent = state.liveMode ? 'Live' : 'Edit';
-      elLiveBtn.classList.toggle('live', state.liveMode);
+      if (state.liveMode) {
+        state.lockLiveMode = true;
+        setStatus('success', 'Live mode activated - camera locked to prevent accidental movement');
+      } else {
+        if (state.unlockOnExitLiveMode) {
+          state.lockLiveMode = false;
+        }
+      }
+      updateLiveModeButton();
+      if (updateLockIcon) updateLockIcon();
       schedSave();
       renderTabs();
       updateToolbarVisibility();
@@ -1700,17 +2768,45 @@
   const elGspPanel = document.getElementById('grid-settings-panel');
   const elGspFab   = document.getElementById('grid-settings-fab');
   const elGspClose = document.getElementById('gsp-close');
+  const gspTabBtns = Array.from(document.querySelectorAll('.gsp-mobile-tab-btn'));
+  const gspMobileSections = Array.from(document.querySelectorAll('.gsp-mobile-section'));
   const elGspStart = document.getElementById('gsp-start');
   const elGspEnd   = document.getElementById('gsp-end');
   const elGspCols  = document.getElementById('gsp-cols');
   const elGspRows  = document.getElementById('gsp-rows');
   const elGspFill  = document.getElementById('gsp-fill');
+  let activeSettingsTab = 'cameras';
+
+  function applySettingsTabVisibility() {
+    const isMobile = window.matchMedia('(max-width: 700px)').matches;
+    gspTabBtns.forEach(btn => {
+      const active = btn.dataset.tab === activeSettingsTab;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    gspMobileSections.forEach(section => {
+      const shouldShow = !isMobile || section.dataset.mobileTab === activeSettingsTab;
+      section.classList.toggle('active', shouldShow);
+    });
+  }
+
+  gspTabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeSettingsTab = btn.dataset.tab || 'cameras';
+      applySettingsTabVisibility();
+    });
+  });
+
+  window.addEventListener('resize', applySettingsTabVisibility);
+  applySettingsTabVisibility();
 
   if (elGspFab && elGspPanel) {
     elGspFab.addEventListener('click', () => {
       const willOpen = !elGspPanel.classList.contains('open');
       elGspPanel.classList.toggle('open');
       if (willOpen) {
+        activeSettingsTab = 'cameras';
+        applySettingsTabVisibility();
         loadCaptureSection();
         updateCameraStatusHints();
       }
@@ -1804,11 +2900,12 @@
   let usbDevices = [];  // populated in boot; reused by renderOutputMapTable
 
   const ATEM_OUTPUT_KEYS = [
-    { key: 'webcam', label: 'USB Webcam' },
-    { key: 'sdi1',   label: 'SDI Out 1' },
-    { key: 'sdi2',   label: 'SDI Out 2' },
-    { key: 'sdi3',   label: 'SDI Out 3' },
-    { key: 'sdi4',   label: 'SDI Out 4' },
+    { key: 'activeCam', label: 'Active Cam' },
+    { key: 'webcam',    label: 'USB Webcam' },
+    { key: 'sdi1',      label: 'SDI Out 1' },
+    { key: 'sdi2',      label: 'SDI Out 2' },
+    { key: 'sdi3',      label: 'SDI Out 3' },
+    { key: 'sdi4',      label: 'SDI Out 4' },
   ];
 
   function getPhysicalOutputLabel(key) {
@@ -1839,6 +2936,12 @@
   function updateCaptureOutputLabel() {
     const el = document.getElementById('capture-output-label');
     if (!el) return;
+    if (state.captureOutput === 'activeCam') {
+      const auxLabel = getPhysicalOutputLabel(state.activeCamAux);
+      el.textContent = `Scan source: active camera routed to ${auxLabel}`;
+      el.style.color = 'var(--label)';
+      return;
+    }
     const outputLabel = getPhysicalOutputLabel(state.captureOutput);
     const src = getOutputSource(state.captureOutput);
     const map = state.atemOutputMap[state.captureOutput] || {};
@@ -1860,7 +2963,7 @@
     const tbody = document.getElementById('output-map-body');
     if (!tbody) return;
     tbody.innerHTML = '';
-    ATEM_OUTPUT_KEYS.forEach(({ key, label }) => {
+    ATEM_OUTPUT_KEYS.filter(({ key }) => key !== 'activeCam').forEach(({ key, label }) => {
       const src = getOutputSource(key);
       const sCls   = sourceClass(key, src);
       const map    = state.atemOutputMap[key] || { webcam: '', streamUrl: '' };
@@ -1990,10 +3093,18 @@
     });
   }
 
+  function updateActiveCamAuxVisibility() {
+    const row = document.getElementById('active-cam-aux-row');
+    if (row) row.style.display = state.captureOutput === 'activeCam' ? '' : 'none';
+  }
+
   function loadCaptureSection() {
     const sel = document.getElementById('f-capture-output');
     if (sel) sel.value = state.captureOutput || 'webcam';
+    const auxSel = document.getElementById('f-active-cam-aux');
+    if (auxSel) auxSel.value = state.activeCamAux || 'sdi1';
     updateCaptureModeVisibility();
+    updateActiveCamAuxVisibility();
     renderOutputMapTable();
     updateCaptureOutputLabel();
   }
@@ -2003,13 +3114,24 @@
     elCaptureOutput.addEventListener('change', () => {
       state.captureOutput = elCaptureOutput.value;
       schedSave();
+      updateActiveCamAuxVisibility();
       updateCaptureOutputLabel();
       renderOutputMapTable();
     });
   }
 
+  const elActiveCamAux = document.getElementById('f-active-cam-aux');
+  if (elActiveCamAux) {
+    elActiveCamAux.addEventListener('change', () => {
+      state.activeCamAux = elActiveCamAux.value;
+      schedSave();
+      updateCaptureOutputLabel();
+    });
+  }
+
   // ── Webcam / stream source ────────────────────────────────────────────────
   const elWebcam      = document.getElementById('f-webcam');
+  const elPreviewVis  = document.getElementById('f-preview-visible');
   const elUsbDevice   = document.getElementById('f-usb-device');
   const elStreamUrl   = document.getElementById('f-stream-url');
   const elPreview     = document.getElementById('webcam-preview');
@@ -2025,7 +3147,17 @@
     sourceMode = mode;
     elVideo.style.display  = mode === 'webcam' ? 'block' : 'none';
     elIframe.style.display = mode === 'url'    ? 'block' : 'none';
-    elPreview.classList.add('visible');
+    if (state.localPreviewVisible) {
+      elPreview.classList.add('visible');
+    }
+  }
+
+  function updatePreviewVisibility() {
+    if (state.localPreviewVisible && sourceMode) {
+      elPreview.classList.add('visible');
+    } else {
+      elPreview.classList.remove('visible');
+    }
   }
 
   async function enumerateWebcams() {
@@ -2069,7 +3201,8 @@
       _setMode('webcam');
     } else {
       elIframe.src = '';
-      elPreview.classList.remove('visible');
+      sourceMode = null;
+      updatePreviewVisibility();
     }
     updateCameraStatusHints();
   }
@@ -2098,12 +3231,24 @@
     updateCameraStatusHints();
   });
 
+  if (elPreviewVis) {
+    elPreviewVis.addEventListener('change', () => {
+      state.localPreviewVisible = elPreviewVis.checked;
+      setLocalPreviewVisible(elPreviewVis.checked);
+      updatePreviewVisibility();
+    });
+  }
+
   // captureFrame priority: USB device (ffmpeg) > stream URL (playwright) > browser webcam
   // source = pre-resolved { webcam, streamUrl } object, or null to resolve from state
   async function captureFrame(cam, preset, source = null) {
-    const resolved = source ?? (state.atem.enabled
-      ? (state.atemOutputMap[state.captureOutput] || {})
-      : { webcam: state.cameras[cam]?.usbDevice || '', streamUrl: state.cameras[cam]?.streamUrl || '' });
+    const resolved = source ?? (
+      state.atem.enabled && state.captureSource !== 'active' && state.captureOutput !== 'activeCam'
+        ? (state.atemOutputMap[state.captureOutput] || {})
+        : state.atem.enabled && state.captureSource !== 'active'
+          ? (state.atemOutputMap[state.activeCamAux] || {})
+          : { webcam: state.cameras[cam]?.usbDevice || '', streamUrl: state.cameras[cam]?.streamUrl || '' }
+    );
 
     const usb = resolved.webcam || '';
     const url = resolved.streamUrl || '';
@@ -2117,6 +3262,7 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setStatus('error', data.error || 'Capture failed'); return false; }
+      if (data.position) state.positions[presetKey(cam, preset)] = data.position;
       return true;
     }
 
@@ -2130,15 +3276,63 @@
     captureCanvas.height = sh;
     captureCtx.drawImage(elVideo, 0, 0, sw, sh);
     const blob = await new Promise(r => captureCanvas.toBlob(r, 'image/jpeg', 0.65));
-    await fetch(`/api/image/${cam}/${preset}`, {
+    const webcamRes = await fetch(`/api/image/${cam}/${preset}`, {
       method:  'POST',
       headers: { 'Content-Type': 'image/jpeg' },
       body:    blob,
     });
+    const webcamData = await webcamRes.json().catch(() => ({}));
+    if (webcamData.position) state.positions[presetKey(cam, preset)] = webcamData.position;
     return true;
   }
 
+  async function capturePresetImage(cam, preset, btn) {
+    btn.disabled = true;
+    const preset_btn = btn.closest('.preset-btn');
+    if (preset_btn) {
+      preset_btn.classList.add('state-busy');
+      preset_btn.classList.remove('state-ok', 'state-fail');
+    }
+
+    try {
+      if (state.atem.enabled && state.captureOutput === 'activeCam') {
+        const routeResult = await routeActiveCam(cam);
+        if (!routeResult.ok) {
+          if (preset_btn) {
+            preset_btn.classList.remove('state-busy');
+            preset_btn.classList.add('state-fail');
+            setTimeout(() => preset_btn.classList.remove('state-fail'), 1500);
+          }
+          setStatus('error', `Could not route camera: ${routeResult.error || routeResult.message}`);
+          return;
+        }
+      }
+      const ok = await captureFrame(cam, preset);
+
+      if (ok) {
+        clearSnapNeeded(cam, preset);
+        bumpImageVersion(cam, preset);
+        refreshPresetBtn(preset, cam);
+        if (preset_btn) {
+          preset_btn.classList.remove('state-busy');
+          preset_btn.classList.add('state-ok');
+          setTimeout(() => preset_btn.classList.remove('state-ok'), 1000);
+        }
+        setStatus('success', `Captured preset ${preset}`);
+      } else {
+        if (preset_btn) {
+          preset_btn.classList.remove('state-busy');
+          preset_btn.classList.add('state-fail');
+          setTimeout(() => preset_btn.classList.remove('state-fail'), 1500);
+        }
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   // ── Preset grid ────────────────────────────────────────────────────────────
+  const elPresetStage = document.getElementById('preset-stage');
   const elGrid = document.getElementById('preset-grid');
   let editMode = false;
   const imageVersions = Object.create(null);
@@ -2152,6 +3346,51 @@
     imageVersions[key] = (imageVersions[key] || 0) + 1;
   }
 
+  // ── Snap-on-drift helpers ──────────────────────────────────────────────────
+  const snapNeeded = Object.create(null);
+  const SNAP_POSITION_THRESHOLD = 10;
+
+  function posDiff(a, b) {
+    // VISCA pan/tilt are 16-bit unsigned; take the shorter arc around the circle
+    const d = Math.abs(a - b);
+    return Math.min(d, 0x10000 - d);
+  }
+
+  function clearSnapNeeded(cam, preset) {
+    const key = presetKey(cam, preset);
+    delete snapNeeded[key];
+    const btn = elGrid.querySelector(`[data-preset="${preset}"]`);
+    if (btn) btn.classList.remove('needs-snap');
+  }
+
+  async function checkPositionAfterRecall(preset, camIdx) {
+    const cam = state.cameras[camIdx];
+    if (!cam?.ip) return;
+    const key = presetKey(camIdx, preset);
+    try {
+      const [savedRes, curRes] = await Promise.all([
+        fetch(`/api/image/${camIdx}/${preset}/position`).catch(() => null),
+        fetch(`/api/position/${camIdx}`).catch(() => null),
+      ]);
+      if (!savedRes?.ok || !curRes?.ok) return;
+      const savedPos = await savedRes.json().catch(() => null);
+      const curPos   = await curRes.json().catch(() => null);
+      if (!savedPos?.ok || savedPos.pan == null || savedPos.tilt == null) return;
+      if (!curPos?.ok  || curPos.pan  == null || curPos.tilt  == null) return;
+      // Guard against camera switch during the async wait
+      if (state.activeCam !== camIdx) return;
+      const changed = posDiff(savedPos.pan, curPos.pan)   > SNAP_POSITION_THRESHOLD
+                   || posDiff(savedPos.tilt, curPos.tilt) > SNAP_POSITION_THRESHOLD;
+      if (changed) {
+        snapNeeded[key] = true;
+        const btn = elGrid.querySelector(`[data-preset="${preset}"]`);
+        if (btn) btn.classList.add('needs-snap');
+      } else {
+        clearSnapNeeded(camIdx, preset);
+      }
+    } catch (_) {}
+  }
+
   function presetNumbers() {
     const nums = [];
     for (let n = state.presetStart; n <= state.presetEnd; n++) nums.push(n);
@@ -2162,6 +3401,7 @@
     elGrid.innerHTML = '';
     presetNumbers().forEach(n => elGrid.appendChild(buildPresetBtn(n)));
     elGrid.style.gridTemplateColumns = `repeat(${state.gridCols}, 1fr)`;
+    updatePresetGridBusState();
   }
 
   function refreshGridForActiveCamera() {
@@ -2171,12 +3411,13 @@
       return;
     }
     nums.forEach(n => refreshPresetBtn(n, state.activeCam));
+    updatePresetGridBusState();
   }
 
   function updateFillGridMetrics() {
     const elMain = document.querySelector('main');
     const elToolbar = document.getElementById('toolbar');
-    if (!state.fillWindow || !elMain || !elToolbar) {
+    if (!state.fillWindow || !elMain || !elToolbar || !elPresetStage) {
       elGrid.style.justifyContent = '';
       elGrid.style.alignContent = '';
       elGrid.style.gridTemplateColumns = `repeat(${state.gridCols}, 1fr)`;
@@ -2188,14 +3429,20 @@
     if (!count) return;
 
     const gridStyles = getComputedStyle(elGrid);
+    const stageStyles = getComputedStyle(elPresetStage);
     const gap = parseFloat(gridStyles.gap || gridStyles.rowGap || '0') || 0;
     const toolbarStyles = getComputedStyle(elToolbar);
     const toolbarMarginTop = parseFloat(toolbarStyles.marginTop || '0') || 0;
+    const stagePadX = (parseFloat(stageStyles.paddingLeft || '0') || 0) + (parseFloat(stageStyles.paddingRight || '0') || 0);
+    const stagePadY = (parseFloat(stageStyles.paddingTop || '0') || 0) + (parseFloat(stageStyles.paddingBottom || '0') || 0);
+    const stageBorderY = (parseFloat(stageStyles.borderTopWidth || '0') || 0) + (parseFloat(stageStyles.borderBottomWidth || '0') || 0);
+    const mainStyles = getComputedStyle(elMain);
+    const mainPadY = (parseFloat(mainStyles.paddingTop || '0') || 0) + (parseFloat(mainStyles.paddingBottom || '0') || 0);
 
-    const availableWidth = Math.max(0, elMain.clientWidth);
+    const availableWidth = Math.max(0, elPresetStage.clientWidth - stagePadX);
     const availableHeight = Math.max(
       0,
-      elMain.clientHeight - elToolbar.offsetHeight - toolbarMarginTop
+      elMain.clientHeight - mainPadY - elToolbar.offsetHeight - toolbarMarginTop - stagePadY - stageBorderY
     );
 
     function fitLayout(cols, rows) {
@@ -2249,18 +3496,45 @@
     elGrid.style.gridTemplateRows = `repeat(${best.rows}, ${best.tileHeight}px)`;
   }
 
+  let headerDensityFrame = 0;
+
+  function updateHeaderDensity() {
+    headerDensityFrame = 0;
+    const body = document.body;
+    if (!body) return;
+
+    if (state.fillWindow) {
+      body.classList.add('header-compact');
+      return;
+    }
+
+    body.classList.remove('header-compact');
+    const root = document.documentElement;
+    if (!root) return;
+
+    const needsCompactHeader = root.scrollHeight > (window.innerHeight + 2);
+    body.classList.toggle('header-compact', needsCompactHeader);
+  }
+
+  function scheduleHeaderDensityUpdate() {
+    if (headerDensityFrame) cancelAnimationFrame(headerDensityFrame);
+    headerDensityFrame = requestAnimationFrame(updateHeaderDensity);
+  }
+
   function applyGridLayout() {
     const elMain = document.querySelector('main');
     if (state.fillWindow) {
       elMain.style.maxWidth = 'none';
-      elMain.style.padding  = '8px';
+      elMain.style.padding  = '6px 8px 8px';
       document.body.classList.add('fill-mode');
     } else {
       elMain.style.maxWidth = '860px';
-      elMain.style.padding  = '20px';
+      elMain.style.padding  = '10px 20px 20px';
       document.body.classList.remove('fill-mode');
     }
+    updateBuildIndicator();
     updateFillGridMetrics();
+    scheduleHeaderDensityUpdate();
   }
 
   function imgUrl(cam, preset) {
@@ -2302,7 +3576,43 @@
     if (ovName && !ovName.querySelector('input')) {
       ovName.textContent = state.labels[presetKey(cam, n)] || '';
     }
+    const pos = state.positions[presetKey(cam, n)];
+    btn.title = pos
+      ? `Pan: ${pos.pan_hex}  Tilt: ${pos.tilt_hex}  Zoom: ${pos.zoom_hex}`
+      : '';
     refreshPresetImage(btn, cam, n);
+  }
+
+  function updatePresetGridBusState() {
+    if (!elPresetStage) return;
+    elPresetStage.classList.remove('bus-live', 'bus-preview', 'bus-selected', 'bus-idle');
+    elPresetStage.classList.add(getCameraBusClass(state.activeCam));
+  }
+
+  function resolveCaptureCamera() {
+    if (state.captureSource === 'preview' && state.atem.enabled) {
+      const idx = state.cameras.findIndex(c => +c.atemInput === +state.previewSource);
+      if (idx >= 0) return idx;
+    }
+    if (state.captureSource === 'program' && state.atem.enabled) {
+      const idx = state.cameras.findIndex(c => +c.atemInput === +state.programSource);
+      if (idx >= 0) return idx;
+    }
+    return state.activeCam;
+  }
+
+  async function capturePreset(n) {
+    const cam = resolveCaptureCamera();
+    const ok = await captureFrame(cam, n);
+    if (ok) {
+      clearSnapNeeded(cam, n);
+      bumpImageVersion(cam, n);
+      if (cam === state.activeCam) {
+        refreshPresetBtn(n, cam);
+      } else {
+        setStatus('success', `Captured preset ${n} (camera ${cam + 1})`);
+      }
+    }
   }
 
   function buildPresetBtn(n) {
@@ -2311,9 +3621,14 @@
 
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className  = 'preset-btn' + (editMode ? ' edit-mode' : '');
+    btn.className  = 'preset-btn' + (editMode ? ' edit-mode' : '') + (snapNeeded[presetKey(cam, n)] ? ' needs-snap' : '');
     btn.dataset.preset = n;
     btn.dataset.displayCam = cam;
+
+    const pos = state.positions[presetKey(cam, n)];
+    if (pos) {
+      btn.title = `Pan: ${pos.pan_hex}  Tilt: ${pos.tilt_hex}  Zoom: ${pos.zoom_hex}`;
+    }
 
     const numEl = document.createElement('div');
     numEl.className   = 'preset-num';
@@ -2350,10 +3665,25 @@
       const activeCam = state.activeCam;
       const res = await fetch(`/api/image/${activeCam}/${n}`, { method: 'DELETE' });
       if (!res.ok) return;
+      delete state.positions[presetKey(activeCam, n)];
+      clearSnapNeeded(activeCam, n);
       bumpImageVersion(activeCam, n);
       refreshPresetBtn(n, activeCam);
     });
     btn.appendChild(clearBtn);
+
+    const captureBtn = document.createElement('button');
+    captureBtn.className = 'preset-capture';
+    captureBtn.type      = 'button';
+    captureBtn.title     = 'Update screenshot';
+    captureBtn.setAttribute('aria-label', 'Update screenshot');
+    captureBtn.textContent = 'Snap';
+    captureBtn.addEventListener('pointerup', (e) => e.stopPropagation());
+    captureBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await capturePreset(n);
+    });
+    btn.appendChild(captureBtn);
 
     let handledPointerUp = false;
     function activatePreset() {
@@ -2415,23 +3745,39 @@
   const btnEdit = document.getElementById('btn-edit');
   btnEdit.addEventListener('click', () => {
     editMode = !editMode;
-    btnEdit.textContent = editMode ? 'Done' : 'Edit Labels';
+    btnEdit.textContent = editMode ? 'Done' : 'Edit Labels / Snap';
     btnEdit.classList.toggle('active', editMode);
     elGrid.querySelectorAll('.preset-btn').forEach(b =>
       b.classList.toggle('edit-mode', editMode)
     );
+    if (editMode) {
+      setStatus('success', 'Edit mode: tap Snap on any preset to refresh its image');
+    }
   });
+
+  async function routeActiveCam(camIdx) {
+    try {
+      const res = await fetch('/api/atem/aux-route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ camIdx, aux: state.activeCamAux }),
+      });
+      return await res.json();
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  }
 
   // ── Recall ─────────────────────────────────────────────────────────────────
   // camIdx defaults to the current active camera; pass explicitly to lock during scan
-  async function doRecall(preset, camIdx = state.activeCam) {
+  async function doRecall(preset, camIdx = state.activeCam, waitMode = 'settle') {
     const cam = state.cameras[camIdx];
     try {
       const res = await fetch('/recall', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
-          ip: cam.ip, port: cam.port, camera: cam.viscaAddr, preset,
+          ip: cam.ip, port: cam.port, camera: cam.viscaAddr, preset, waitMode,
         }),
       });
       return await res.json();
@@ -2441,21 +3787,75 @@
   }
 
   async function recallPreset(n, btn) {
-    const cam = state.cameras[state.activeCam];
+    const recallCamIdx = state.activeCam;
+    const autoCutPlan = getAutoCutPlan(recallCamIdx);
+    const waitMode = autoCutPlan ? 'autocut' : 'confirm';
+    const recallStartedAt = (typeof performance !== 'undefined' && performance.now)
+      ? performance.now()
+      : Date.now();
+    if (state.liveMode && state.lockLiveMode) {
+      const isLiveCamera = cameraMatchesAtemSource(recallCamIdx, state.programSource);
+      if (isLiveCamera) {
+        setStatus('error', 'LIVE camera is locked. Switch cameras or tap Locked to go Unlocked before recalling a preset.');
+        flash(btn, 'fail'); return;
+      }
+    }
+    const cam = state.cameras[recallCamIdx];
     if (!cam.ip) {
       setStatus('error', 'Enter the camera IP address first');
       flash(btn, 'fail'); return;
     }
     flash(btn, 'busy');
     setStatus('busy', `Recalling preset ${n}…`, false);
-    const data = await doRecall(n);
+    const data = await doRecall(n, recallCamIdx, waitMode);
     if (data.success) {
       flash(btn, 'ok', 900);
-      const msg = state.showAtemDebug
+      if (state.showAtemDebug && recallCamIdx === state.activeCam && data.position) {
+        applyDebugPositionData(data.position);
+      }
+      let msg = state.showAtemDebug
         ? `Preset ${n} recalled — ${data.message}`
         : `Preset ${n} recalled`;
+      const autoCutTrigger = !autoCutPlan
+        ? null
+        : data.settled
+          ? 'settled'
+          : data.sawCompletion
+            ? 'completion'
+            : 'timeout';
+      const autoCutReady = !!autoCutPlan && !!autoCutTrigger;
+      if (autoCutPlan && autoCutTrigger === 'completion' && !data.settled) {
+        msg += ' — Auto Cut using VISCA completion fallback';
+      }
+      if (autoCutPlan && autoCutTrigger === 'timeout') {
+        msg += ' — Auto Cut using fallback max timer';
+      }
+      const recallElapsedMs = Math.max(
+        0,
+        ((typeof performance !== 'undefined' && performance.now)
+          ? performance.now()
+          : Date.now()) - recallStartedAt
+      );
       setStatus('success', msg);
+      scheduleAutoCut(n, autoCutPlan, autoCutTrigger || 'settled', recallElapsedMs);
+      if (data.settled) checkPositionAfterRecall(n, recallCamIdx);
     } else {
+      const recallElapsedMs = Math.max(
+        0,
+        ((typeof performance !== 'undefined' && performance.now)
+          ? performance.now()
+          : Date.now()) - recallStartedAt
+      );
+      const canUseFallbackMax = !!autoCutPlan
+        && (state.autoCutDelayMs || 0) > 0
+        && data.waitMode === 'autocut'
+        && /not confirmed/i.test(String(data.message || ''));
+      if (canUseFallbackMax) {
+        flash(btn, 'ok', 900);
+        setStatus('success', `Preset ${n} recalled — Auto Cut using fallback max timer`);
+        scheduleAutoCut(n, autoCutPlan, 'timeout', recallElapsedMs);
+        return;
+      }
       flash(btn, 'fail', 1100);
       const msg = state.showAtemDebug
         ? `Preset ${n} failed: ${data.message}`
@@ -2484,6 +3884,7 @@
   function hideScanBar() {
     elScanBar.classList.remove('visible');
     elScanFill.style.width = '0%';
+    scheduleHeaderDensityUpdate();
   }
 
   btnScan.addEventListener('click', () => {
@@ -2497,14 +3898,30 @@
     const scanCamIdx = state.activeCam;
     const cam = state.cameras[scanCamIdx];
     if (!cam.ip) { setStatus('error', 'Enter the camera IP address first'); return; }
+    if (state.liveMode && state.lockLiveMode && cameraMatchesAtemSource(scanCamIdx, state.programSource)) {
+      setStatus('error', 'LIVE camera is locked. Switch cameras or tap Locked to go Unlocked before scanning presets.');
+      return;
+    }
 
+    if (state.atem.enabled && state.captureOutput === 'activeCam') {
+      setStatus('busy', 'Routing camera…', false);
+      const routeResult = await routeActiveCam(scanCamIdx);
+      if (!routeResult.ok) {
+        setStatus('error', `Could not route camera: ${routeResult.error || routeResult.message}`);
+        return;
+      }
+    }
+
+    const captureKey = (state.atem.enabled && state.captureOutput === 'activeCam')
+      ? state.activeCamAux
+      : state.captureOutput;
     const lockedSource = state.atem.enabled
-      ? { ...(state.atemOutputMap[state.captureOutput] || {}) }
+      ? { ...(state.atemOutputMap[captureKey] || {}) }
       : { webcam: cam.usbDevice || '', streamUrl: cam.streamUrl || '' };
     const hasServerSource = lockedSource.webcam || lockedSource.streamUrl;
     if (!hasServerSource && !videoStream) {
       const hint = state.atem.enabled
-        ? `Configure a USB device or stream URL for ${getPhysicalOutputLabel(state.captureOutput)} in Settings`
+        ? `Configure a USB device or stream URL for ${getPhysicalOutputLabel(captureKey)} in Settings`
         : 'Set a USB device, VDO.ninja URL, or browser webcam for this camera';
       setStatus('error', hint); return;
     }
@@ -2513,8 +3930,10 @@
     btnScan.textContent = 'Cancel';
     btnScan.classList.add('cancel');
     elScanBar.classList.add('visible');
+    scheduleHeaderDensityUpdate();
 
     const captureErrors = [];
+    let recallFailure = null;
     const nums  = presetNumbers();
     const total = nums.length;
 
@@ -2526,18 +3945,25 @@
       elScanLbl.textContent  = `Camera ${scanCamIdx + 1}: recalling preset ${i + 1} of ${total}…`;
       setStatus('busy', `Scanning Camera ${scanCamIdx + 1} preset ${i + 1} of ${total}…`, false);
 
-      const result = await doRecall(p, scanCamIdx);
-      if (!result.success) console.warn(`Recall ${p}:`, result.message);
+      const waitMode = state.scanWaitMode === 'dwell' ? 'dwell' : 'settle';
+      const result = await doRecall(p, scanCamIdx, waitMode);
+      if (!result.success) {
+        console.warn(`Recall ${p}:`, result.message);
+        recallFailure = { preset: p, message: result.message || 'recall failed' };
+        break;
+      }
       if (cancelScan) break;
 
-      const dwell = state.dwellMs;
-      const steps = 20;
-      for (let s = 0; s < steps; s++) {
-        if (cancelScan) break;
-        const pct = Math.round((i + (s + 1) / steps) / total * 100);
-        elScanFill.style.width = pct + '%';
-        elScanLbl.textContent  = `Camera ${scanCamIdx + 1}: waiting on preset ${i + 1} of ${total}`;
-        await sleep(dwell / steps);
+      const dwell = waitMode === 'dwell' ? Math.max(0, state.dwellMs || 0) : 0;
+      if (dwell > 0) {
+        const steps = 20;
+        for (let s = 0; s < steps; s++) {
+          if (cancelScan) break;
+          const pct = Math.round((i + (s + 1) / steps) / total * 100);
+          elScanFill.style.width = pct + '%';
+          elScanLbl.textContent  = `Camera ${scanCamIdx + 1}: manual dwell on preset ${i + 1} of ${total}`;
+          await sleep(dwell / steps);
+        }
       }
       if (cancelScan) break;
 
@@ -2556,7 +3982,9 @@
     btnScan.textContent = 'Scan All Presets';
     btnScan.classList.remove('cancel');
     hideScanBar();
-    if (captureErrors.length) {
+    if (recallFailure) {
+      setStatus('error', `Stopped at preset ${recallFailure.preset}: ${recallFailure.message}`);
+    } else if (captureErrors.length) {
       setStatus('error', `Capture failed for preset(s): ${captureErrors.join(', ')} — check server console`);
     } else {
       setStatus('success', cancelScan ? 'Scan cancelled' : 'Scan complete');
@@ -2567,6 +3995,8 @@
   // ── Boot ───────────────────────────────────────────────────────────────────
   (async function boot() {
     await loadSettings();
+    updateLiveModeButton();
+    if (updateLockIcon) updateLockIcon();
     loadCameraSettings();
     loadGridSettings();
     loadCameraManagement();
@@ -2580,15 +4010,20 @@
       if (r.ok) {
         const s = await r.json();
         atemConnected = !!s.connected;
-        if (s.preview != null && s.preview !== 0) state.previewSource = s.preview;
-        if (s.program != null && s.program !== 0) state.programSource = s.program;
-        if (s.aux1 != null && s.aux1 !== 0) state.aux1Source = s.aux1;
-        if (s.aux2 != null && s.aux2 !== 0) state.aux2Source = s.aux2;
-        if (s.aux3 != null && s.aux3 !== 0) state.aux3Source = s.aux3;
-        if (s.aux4 != null && s.aux4 !== 0) state.aux4Source = s.aux4;
+        applyAtemStateSnapshot(s);
         updateAtemPill();
         renderTabs();
         updateAtemDebug();
+      }
+    } catch (_) {}
+    // Check system capabilities and show warnings
+    try {
+      const sys = await fetch('/api/system').then(r => r.json());
+      const elWarnings = document.getElementById('system-warnings');
+      const elPlaywright = document.getElementById('playwright-warning');
+      if (!sys.playwrightAvailable) {
+        if (elPlaywright) elPlaywright.style.display = 'block';
+        if (elWarnings) elWarnings.style.display = 'block';
       }
     } catch (_) {}
     // USB devices from server — store for use in output-map table
@@ -2613,10 +4048,16 @@
       elWebcam.value = savedDevice;
       startWebcam(savedDevice);
     }
+
+    // restore local preview visibility preference
+    state.localPreviewVisible = getLocalPreviewVisible();
+    if (elPreviewVis) elPreviewVis.checked = state.localPreviewVisible;
+    updatePreviewVisibility();
   })();
 
   window.addEventListener('resize', () => {
     if (state.fillWindow) updateFillGridMetrics();
+    scheduleHeaderDensityUpdate();
   });
 })();
 </script>
