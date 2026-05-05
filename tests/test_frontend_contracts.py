@@ -80,6 +80,10 @@ class TestFrontendContracts(unittest.TestCase):
             self.html,
         )
 
+    def test_image_cache_busting_stays_newer_than_boot_urls(self):
+        self.assertIn("const prev = imageVersions[key] || bootImageVersion;", self.html)
+        self.assertIn("imageVersions[key] = Math.max(Date.now(), prev + 1);", self.html)
+
     def test_snap_on_drift(self):
         # state and threshold
         self.assertIn("const snapNeeded = Object.create(null);", self.html)
@@ -104,6 +108,22 @@ class TestFrontendContracts(unittest.TestCase):
         # changing capture source refreshes settings panel and status hints
         self.assertIn("updateCaptureModeVisibility();", self.html)
         self.assertIn("updateCameraStatusHints();", self.html)
+
+    def test_live_scan_controls_validate_atem_bus_selection(self):
+        self.assertIn("if (btnScanEl) btnScanEl.style.display = '';", self.html)
+        self.assertIn(
+            "elCaptureToggle.style.display = state.atem.enabled ? 'flex' : 'none';",
+            self.html,
+        )
+        self.assertIn("function validateAtemCaptureSelection(camIdx)", self.html)
+        self.assertIn(
+            "${camName} is not on ATEM ${busLabel}. Put it there first or switch scan source.",
+            self.html,
+        )
+        self.assertIn(
+            "ATEM ${busLabel} capture needs a reported output. Use Active Cam routing or an SDI output instead of USB Webcam.",
+            self.html,
+        )
 
     def test_joystick_state_is_normalized_and_visible(self):
         self.assertIn(
