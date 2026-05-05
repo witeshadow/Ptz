@@ -199,6 +199,18 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    #status.multiline {
+      align-items: flex-start;
+      border-radius: 14px;
+      padding-top: 6px;
+      padding-bottom: 6px;
+    }
+    #status.multiline .status-dot { margin-top: 0.25rem; }
+    #status.multiline #status-text {
+      overflow: visible;
+      text-overflow: clip;
+      white-space: normal;
+    }
 
     .status-hint { display: block; font-size: 0.85rem; margin-top: 4px; }
     .status-hint.status-live { color: var(--error); font-weight: 600; }
@@ -2044,6 +2056,8 @@
   let statusTimer    = null;
 
   if (elBuildCommit) elBuildCommit.textContent = BUILD_COMMIT;
+  if (elStatus) elStatus.title = elStatusText.textContent;
+  if (elStatusText) elStatusText.title = elStatusText.textContent;
 
   function updateBuildIndicator() {
     if (!elBuildMode) return;
@@ -2055,8 +2069,11 @@
 
   function setStatus(type, msg, autoClear = true) {
     clearTimeout(statusTimer);
-    elStatus.className = type;
+    const multiline = type === 'error' && msg.length > 32;
+    elStatus.className = [type, multiline ? 'multiline' : ''].filter(Boolean).join(' ');
     elStatusText.textContent = msg;
+    elStatus.title = msg;
+    elStatusText.title = msg;
     if (type === 'error') {
       lastError = msg;
       lastErrorTime = Date.now();
@@ -2070,6 +2087,8 @@
       statusTimer = setTimeout(() => {
         elStatus.className = '';
         elStatusText.textContent = 'Ready';
+        elStatus.title = 'Ready';
+        elStatusText.title = 'Ready';
       }, 4000);
     }
   }
@@ -5081,7 +5100,7 @@
     btnScan.classList.remove('cancel');
     hideScanBar();
     if (recallFailure) {
-      setStatus('error', `Stopped at preset ${recallFailure.preset}: ${recallFailure.message}`);
+      setStatus('error', `Scan stopped at preset ${recallFailure.preset}: ${recallFailure.message}`);
     } else if (captureErrors.length) {
       setStatus('error', `Capture failed for preset(s): ${captureErrors.join(', ')} — check server console`);
     } else {

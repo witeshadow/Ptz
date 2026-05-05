@@ -1650,6 +1650,16 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"success": False, "message": "Camera IP is required"})
             return
         result = recall_visca_preset(ip, port, preset, camera, wait_mode)
+        if not result.get("success"):
+            _logger.warning(
+                "Recall failed ip=%s port=%s cam=%s preset=%s wait=%s: %s",
+                ip,
+                port,
+                camera,
+                preset,
+                wait_mode,
+                result.get("message") or "unknown failure",
+            )
         self._json(200, result)
 
     def _handle_settings_post(self):
