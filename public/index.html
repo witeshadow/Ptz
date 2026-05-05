@@ -2750,6 +2750,7 @@
       nameEl.style.display  = '';
       nameWrap.removeChild(inp);
       initCameraSelector();
+      renderOutputModes();
     }
 
     inp.addEventListener('blur', commit);
@@ -4114,6 +4115,7 @@
           if (value) state.atemSourceLabels[String(src)] = value;
           else delete state.atemSourceLabels[String(src)];
           schedSave();
+          renderOutputModes();
           updateCaptureOutputLabel();
           updateCameraStatusHints();
           renderOutputMapTable();
