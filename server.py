@@ -1300,13 +1300,14 @@ def list_usb_devices() -> list:
     return devices
 
 
-def _ffmpeg_grab(args: list, tmp: str) -> bool:
+def _ffmpeg_grab(args: list, tmp: str, log_fail: bool = True) -> tuple[bool, str]:
     r = subprocess.run(args, capture_output=True, timeout=15)
     stderr = r.stderr.decode("utf-8", errors="replace")
     if r.returncode != 0 or not os.path.exists(tmp) or os.path.getsize(tmp) == 0:
-        print(f"[ffmpeg] exit={r.returncode}\n{stderr[-600:]}")
-        return False
-    return True
+        if log_fail:
+            print(f"[ffmpeg] exit={r.returncode}\n{stderr[-600:]}")
+        return False, stderr
+    return True, stderr
 
 
 def capture_usb_device(index: str) -> bytes:
@@ -1329,12 +1330,14 @@ def capture_usb_device(index: str) -> bytes:
     try:
         if _IS_MACOS:
             print(f"[Capture] macOS device={index}, trying avfoundation…")
-            # Try each device variant without a forced framerate first (lets avfoundation
-            # negotiate the native rate), then retry common fallback framerates.
+            # Prefer the common NTSC camera mode first. Some macOS devices reject ffmpeg's
+            # implicit 29.97 fps choice during auto-negotiation even though 59.94 works.
+            # Keep failed probe attempts quiet unless every option is exhausted.
+            attempt_failures = []
             for device_arg in (index, f"{index}:none"):
                 for framerate_args in (
-                    [],
                     ["-framerate", "59.940180"],
+                    [],
                     ["-framerate", "30"],
                     ["-framerate", "60"],
                 ):
@@ -1355,15 +1358,23 @@ def capture_usb_device(index: str) -> bytes:
                         "7",
                         tmp,
                     ]
-                    if _ffmpeg_grab(args, tmp):
+                    ok, stderr = _ffmpeg_grab(args, tmp, log_fail=False)
+                    if ok:
                         print(
                             f"[Capture] Success with device_arg={device_arg} framerate={framerate_str}"
                         )
                         break
+                    attempt_failures.append((device_arg, framerate_str, stderr))
                 else:
                     continue
                 break
             else:
+                for failed_device_arg, failed_framerate, failed_stderr in attempt_failures:
+                    print(
+                        "[Capture] avfoundation failed "
+                        f"device_arg={failed_device_arg} framerate={failed_framerate}"
+                    )
+                    print(f"[ffmpeg] {failed_stderr[-600:]}")
                 if _HAS_CV2:
                     print(
                         "[Capture] avfoundation exhausted all options, fallback to cv2…"
@@ -1390,7 +1401,8 @@ def capture_usb_device(index: str) -> bytes:
                 "7",
                 tmp,
             ]
-            if not _ffmpeg_grab(args, tmp):
+            ok, _ = _ffmpeg_grab(args, tmp)
+            if not ok:
                 if _HAS_CV2:
                     print("[Capture] v4l2 failed, fallback to cv2…")
                     return _capture_cv2(int(index))

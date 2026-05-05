@@ -1320,16 +1320,16 @@ class TestNormalizeScanWaitMode(unittest.TestCase):
 
 
 class TestCaptureUsbDevice(unittest.TestCase):
-    def test_macos_avfoundation_tries_auto_before_forced_framerates(self):
+    def test_macos_avfoundation_prefers_supported_ntsc_framerate_first(self):
         attempted = []
 
-        def fake_grab(args, tmp):
+        def fake_grab(args, tmp, log_fail=True):
             attempted.append(args)
-            if "-framerate" not in args:
+            if ["-framerate", "59.940180"] == args[4:6]:
                 with open(tmp, "wb") as fh:
                     fh.write(b"jpeg-bytes")
-                return True
-            return False
+                return True, ""
+            return False, "unsupported"
 
         with (
             patch.object(server, "_IS_MACOS", True),
@@ -1340,7 +1340,7 @@ class TestCaptureUsbDevice(unittest.TestCase):
 
         self.assertEqual(data, b"jpeg-bytes")
         self.assertGreaterEqual(len(attempted), 1)
-        self.assertNotIn("-framerate", attempted[0])
+        self.assertEqual(attempted[0][4:6], ["-framerate", "59.940180"])
 
 
 # ── _probe_recall_command_succeeded ──────────────────────────────────────────
