@@ -2113,6 +2113,11 @@
     if (cam) return cam.name;
     const customLabel = getAtemSourceCustomLabel(sourceVal);
     if (customLabel) return customLabel;
+    const atemInternalSources = {
+      10010: 'Program (ME 1)',
+      9001: 'MultiView',
+    };
+    if (atemInternalSources[sourceVal]) return atemInternalSources[sourceVal];
     if (sourceVal >= 10000) return 'ATEM internal';
     return `Input ${sourceVal}`;
   }
