@@ -127,5 +127,99 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("state.joystick = normalizeJoystickSettings({", self.html)
 
 
+class TestDpadWarningDeduplication(unittest.TestCase):
+    """Tests for the D-pad invalid button index warning deduplication logic.
+
+    The PR adds `lastDpadValid` to gate console.warn so it fires only once
+    when transitioning from valid to invalid, preventing console spam.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.html = INDEX_HTML.read_text(encoding="utf-8")
+
+    # ── Variable initialisation ───────────────────────────────────────────────
+
+    def test_last_dpad_valid_initialized_to_true(self):
+        """lastDpadValid must start as true so the first invalid call warns."""
+        self.assertIn("let lastDpadValid = true;", self.html)
+
+    # ── Guard on console.warn ─────────────────────────────────────────────────
+
+    def test_warn_gated_by_last_dpad_valid(self):
+        """console.warn for invalid indices must be wrapped in if (lastDpadValid)."""
+        self.assertIn("if (lastDpadValid) {", self.html)
+
+    def test_warn_message_still_present(self):
+        """The warning text itself must still exist (just guarded, not removed)."""
+        self.assertIn(
+            "console.warn('[D-PAD] Invalid button indices for profile:'",
+            self.html,
+        )
+
+    def test_warn_not_called_unconditionally(self):
+        """The old unconditional warn pattern must no longer exist."""
+        # Before the fix the warn appeared directly without the if-guard.
+        # We verify the bare call (not preceded by the if block) is gone.
+        self.assertNotIn(
+            "      console.warn('[D-PAD] Invalid button indices for profile:'",
+            self.html,
+        )
+
+    # ── State transitions ─────────────────────────────────────────────────────
+
+    def test_last_dpad_valid_set_false_on_invalid(self):
+        """lastDpadValid must be set to false on the invalid path."""
+        self.assertIn("lastDpadValid = false;", self.html)
+
+    def test_last_dpad_valid_set_true_on_valid(self):
+        """lastDpadValid must be reset to true when indices are valid."""
+        self.assertIn("lastDpadValid = true;", self.html)
+
+    # ── Regression: side-effects on invalid path must still occur ────────────
+
+    def test_dpad_state_reset_on_invalid(self):
+        """dpadState must still be cleared to all-false when indices are invalid."""
+        self.assertIn(
+            "dpadState = { up: false, down: false, left: false, right: false };",
+            self.html,
+        )
+
+    def test_gamepad_pan_tilt_zeroed_on_invalid(self):
+        """gamepadState.pan and .tilt must still be zeroed on the invalid path."""
+        self.assertIn("gamepadState.pan = 0;", self.html)
+        self.assertIn("gamepadState.tilt = 0;", self.html)
+
+    def test_last_dpad_state_synced_on_invalid(self):
+        """lastDpadState must be synced from dpadState on the invalid path."""
+        self.assertIn("lastDpadState = { ...dpadState };", self.html)
+
+    # ── Structural ordering: false must precede true reset ────────────────────
+
+    def test_false_assignment_precedes_true_reset_in_source(self):
+        """lastDpadValid = false must appear before lastDpadValid = true in source
+        to confirm the state-machine ordering is correct."""
+        pos_false = self.html.index("lastDpadValid = false;")
+        pos_true = self.html.index("lastDpadValid = true;")
+        self.assertLess(pos_false, pos_true)
+
+    # ── Boundary / negative cases ─────────────────────────────────────────────
+
+    def test_last_dpad_valid_declared_before_update_function(self):
+        """lastDpadValid must be declared before updateDpadInput is defined."""
+        pos_var = self.html.index("let lastDpadValid = true;")
+        pos_fn = self.html.index("function updateDpadInput(")
+        self.assertLess(pos_var, pos_fn)
+
+    def test_guard_is_inside_invalid_branch(self):
+        """The if (lastDpadValid) guard must appear after the validIndices check,
+        confirming it is inside the invalid branch and not at function top level."""
+        pos_valid_check = self.html.index(
+            "const validIndices = [dpadMap.up, dpadMap.down, dpadMap.left, dpadMap.right]"
+        )
+        pos_guard = self.html.index("if (lastDpadValid) {")
+        self.assertLess(pos_valid_check, pos_guard)
+
+
 if __name__ == "__main__":
     unittest.main()
