@@ -1221,6 +1221,42 @@
     }
     #output-map-table select:focus,
     #output-map-table input[type=text]:focus { border-color: var(--accent); }
+
+    /* ── ATEM output modes display ──────────────────────────── */
+    #atem-output-modes {
+      border-left: 3px solid var(--accent);
+    }
+    .output-mode-item {
+      padding: 8px;
+      background: var(--surf2);
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      font-size: .8rem;
+    }
+    .output-mode-label {
+      color: var(--muted);
+      font-size: .7rem;
+      text-transform: uppercase;
+      font-weight: 600;
+      letter-spacing: .04em;
+      margin-bottom: 4px;
+    }
+    .output-mode-source {
+      color: var(--text);
+      font-weight: 500;
+    }
+    .output-mode-source.live {
+      color: var(--error);
+      font-weight: 600;
+    }
+    .output-mode-source.preview {
+      color: var(--success);
+    }
+    .output-mode-source.none {
+      color: var(--muted);
+      font-style: italic;
+    }
+
     @media (max-width: 700px) {
       #output-map-table thead { display: none; }
       #output-map-table tbody tr { display: block; margin-bottom: 8px; padding: 8px; background: var(--surf2); border-radius: 6px; border-top: none; }
@@ -1514,6 +1550,13 @@
       <p class="capture-section-note">
         Map each physical ATEM output to the Mac capture device or URL that carries it. PTZ scans use the output selected below, including the ATEM virtual webcam if it appears as a USB device.
       </p>
+      <!-- ATEM Output Mode Status -->
+      <div id="atem-output-modes" style="margin-bottom:16px; padding:10px; background:var(--surf2); border-radius:6px;">
+        <div style="font-size:.75rem; color:var(--muted); text-transform:uppercase; font-weight:600; letter-spacing:.06em; margin-bottom:8px;">Current Output Modes</div>
+        <div id="output-modes-grid" aria-live="polite" aria-atomic="true" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:8px;">
+          <!-- rendered by JS -->
+        </div>
+      </div>
       <div style="display:flex; align-items:flex-end; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
         <div class="field" style="flex-shrink:0;">
           <label for="f-capture-output">PTZ scan uses:</label>
@@ -2064,12 +2107,36 @@
     return (state.atemSourceLabels[String(sourceVal)] || '').trim();
   }
 
+  const ATEM_INTERNAL_SOURCES = {
+    0: 'Black',
+    1000: 'Color Bars',
+    2001: 'Color 1',
+    2002: 'Color 2',
+    3010: 'Media 1',
+    3011: 'Media 1 Key',
+    3020: 'Media 2',
+    3021: 'Media 2 Key',
+    7001: 'Clean Feed 1',
+    7002: 'Clean Feed 2',
+    9001: 'MultiView',
+    10010: 'Program (ME 1)',
+    10011: 'Preview (ME 1)',
+  };
+
+  function isInternalAtemSource(sourceVal) {
+    if (sourceVal == null) return false;
+    return sourceVal in ATEM_INTERNAL_SOURCES || sourceVal >= 10000;
+  }
+
   function formatAtemSourcePrimary(sourceVal) {
-    if (!sourceVal) return 'No source detected';
+    if (sourceVal == null) return 'No source detected';
     const cam = findCameraByAtemSource(sourceVal);
     if (cam) return cam.name;
     const customLabel = getAtemSourceCustomLabel(sourceVal);
-    return customLabel || `Input ${sourceVal}`;
+    if (customLabel) return customLabel;
+    if (ATEM_INTERNAL_SOURCES[sourceVal] !== undefined) return ATEM_INTERNAL_SOURCES[sourceVal];
+    if (sourceVal >= 10000) return 'ATEM internal';
+    return `Input ${sourceVal}`;
   }
 
   function formatAtemSourceSecondary(sourceVal) {
@@ -2158,6 +2225,51 @@
     updatePresetGridBusState();
     updateManualCutButton();
     updateAutoCutButton();
+  }
+
+  function renderOutputModes() {
+    const grid = document.getElementById('output-modes-grid');
+    if (!grid) return;
+
+    const outputs = [
+      { key: 'preview', label: 'Preview' },
+      { key: 'program', label: 'Program' },
+      { key: 'aux1', label: 'Aux 1' },
+      { key: 'aux2', label: 'Aux 2' },
+      { key: 'aux3', label: 'Aux 3' },
+      { key: 'aux4', label: 'Aux 4' },
+    ];
+
+    grid.innerHTML = '';
+    outputs.forEach(({ key, label }) => {
+      const source = state[`${key}Source`];
+      const sourceLabel = formatAtemSourcePrimary(source);
+      const sourceNum = source != null ? source : '—';
+
+      let className = 'output-mode-source';
+      if (source == null) {
+        className += ' none';
+      } else if (key === 'program') {
+        className += ' live';
+      } else if (key === 'preview') {
+        className += ' preview';
+      }
+
+      const item = document.createElement('div');
+      item.className = 'output-mode-item';
+
+      const labelEl = document.createElement('div');
+      labelEl.className = 'output-mode-label';
+      labelEl.textContent = label;
+
+      const sourceEl = document.createElement('div');
+      sourceEl.className = className;
+      sourceEl.textContent = sourceLabel + (source != null && !isInternalAtemSource(source) ? ` (${sourceNum})` : '');
+
+      item.appendChild(labelEl);
+      item.appendChild(sourceEl);
+      grid.appendChild(item);
+    });
   }
 
   function applyAtemStateSnapshot(snapshot = {}) {
@@ -2638,6 +2750,7 @@
       nameEl.style.display  = '';
       nameWrap.removeChild(inp);
       initCameraSelector();
+      renderOutputModes();
     }
 
     inp.addEventListener('blur', commit);
@@ -3093,6 +3206,7 @@
         if (ev.type === 'atem') {
           atemConnected = !!ev.connected;
           applyAtemStateSnapshot(ev);
+          renderOutputModes();
           updateAtemPill();
           updateCameraStatusHints();
           renderTabs();
@@ -3102,6 +3216,7 @@
         } else if (ev.type === 'preview') {
           atemConnected = true;
           state.previewSource = ev.source;
+          renderOutputModes();
           updateAtemPill();
           updateCameraStatusHints();
           renderTabs();
@@ -3116,6 +3231,7 @@
         } else if (ev.type === 'program') {
           atemConnected = true;
           state.programSource = ev.source;
+          renderOutputModes();
           updateAtemPill();
           updateCameraStatusHints();
           renderTabs();
@@ -3129,8 +3245,12 @@
           }
         } else if (ev.type === 'aux') {
           atemConnected = true;
-          const auxKey = `aux${ev.index + 1}Source`;
-          if (auxKey in state) state[auxKey] = ev.source;
+          const auxIndex = Number(ev.index);
+          if (Number.isInteger(auxIndex) && auxIndex >= 0 && auxIndex <= 3) {
+            const auxKey = `aux${auxIndex + 1}Source`;
+            state[auxKey] = ev.source || 0;
+          }
+          renderOutputModes();
           updateCaptureOutputLabel();
           renderOutputMapTable();
         }
@@ -3995,6 +4115,7 @@
           if (value) state.atemSourceLabels[String(src)] = value;
           else delete state.atemSourceLabels[String(src)];
           schedSave();
+          renderOutputModes();
           updateCaptureOutputLabel();
           updateCameraStatusHints();
           renderOutputMapTable();
@@ -4993,6 +5114,7 @@
         const s = await r.json();
         atemConnected = !!s.connected;
         applyAtemStateSnapshot(s);
+        renderOutputModes();
         updateAtemPill();
         renderTabs();
         updateAtemDebug();
