@@ -2114,8 +2114,19 @@
     const customLabel = getAtemSourceCustomLabel(sourceVal);
     if (customLabel) return customLabel;
     const atemInternalSources = {
-      10010: 'Program (ME 1)',
+      0: 'Black',
+      1000: 'Color Bars',
+      2001: 'Color 1',
+      2002: 'Color 2',
+      3010: 'Media 1',
+      3011: 'Media 1 Key',
+      3020: 'Media 2',
+      3021: 'Media 2 Key',
+      7001: 'Clean Feed 1',
+      7002: 'Clean Feed 2',
       9001: 'MultiView',
+      10010: 'Program (ME 1)',
+      10011: 'Preview (ME 1)',
     };
     if (atemInternalSources[sourceVal]) return atemInternalSources[sourceVal];
     if (sourceVal >= 10000) return 'ATEM internal';
