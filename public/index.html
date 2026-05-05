@@ -1553,7 +1553,7 @@
       <!-- ATEM Output Mode Status -->
       <div id="atem-output-modes" style="margin-bottom:16px; padding:10px; background:var(--surf2); border-radius:6px;">
         <div style="font-size:.75rem; color:var(--muted); text-transform:uppercase; font-weight:600; letter-spacing:.06em; margin-bottom:8px;">Current Output Modes</div>
-        <div id="output-modes-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:8px;">
+        <div id="output-modes-grid" aria-live="polite" aria-atomic="true" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:8px;">
           <!-- rendered by JS -->
         </div>
       </div>
@@ -3228,8 +3228,11 @@
           }
         } else if (ev.type === 'aux') {
           atemConnected = true;
-          const auxKey = `aux${ev.index + 1}Source`;
-          if (auxKey in state) state[auxKey] = ev.source;
+          const auxIndex = Number(ev.index);
+          if (Number.isInteger(auxIndex) && auxIndex >= 1 && auxIndex <= 4) {
+            const auxKey = `aux${auxIndex}Source`;
+            state[auxKey] = ev.source || 0;
+          }
           renderOutputModes();
           updateCaptureOutputLabel();
           renderOutputMapTable();
