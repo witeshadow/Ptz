@@ -146,6 +146,82 @@ class TestFrontendContracts(unittest.TestCase):
         )
         self.assertIn("state.joystick = normalizeJoystickSettings({", self.html)
 
+    def test_dpad_invalid_warn_is_deduplicated(self):
+        # Deduplication guard variable is initialized to true (valid by default).
+        self.assertIn("let lastDpadValid = true;", self.html)
+
+        # The warn is wrapped in a conditional so it fires only on the first
+        # invalid frame, not on every subsequent polling cycle.
+        self.assertIn("if (lastDpadValid) {", self.html)
+        self.assertIn(
+            "console.warn('[D-PAD] Invalid button indices for profile:'",
+            self.html,
+        )
+
+        # Guard is set to false immediately after the conditional warn so that
+        # repeated invalid frames are suppressed.
+        self.assertIn("lastDpadValid = false;", self.html)
+
+        # Guard is reset to true when indices become valid again, so a
+        # subsequent invalid→invalid transition will warn once more.
+        self.assertIn("lastDpadValid = true;", self.html)
+
+    def test_dpad_warn_not_called_unconditionally(self):
+        # The warn must only appear inside the `if (lastDpadValid)` guard, never
+        # at the surrounding indentation level (which would mean it fires every
+        # polling frame regardless of state).
+        #
+        # The guarded block looks like (4-space indent inside the if(!validIndices)
+        # branch, 6-space inside the if(lastDpadValid) block):
+        #
+        #   if (lastDpadValid) {
+        #     console.warn('[D-PAD] ...
+        #
+        # Use a newline-anchored substring so that the indentation comparison is
+        # against the beginning of the physical line rather than an arbitrary
+        # mid-line slice.
+        guarded_warn = (
+            "if (lastDpadValid) {\n"
+            "        console.warn('[D-PAD] Invalid button indices for profile:'"
+        )
+        # A warn that starts a line with fewer spaces than the guarded form
+        # would indicate the call escaped the guard.  The actual indented line
+        # starts with 8 spaces; a 6-space-anchored line prefix cannot be a
+        # substring of that because the character after the 6 spaces would be
+        # a space, not 'c'.
+        unguarded_line = "\n      console.warn('[D-PAD] Invalid button indices for profile:'"
+        self.assertIn(guarded_warn, self.html)
+        self.assertNotIn(unguarded_line, self.html)
+
+    def test_dpad_valid_reset_is_outside_invalid_branch(self):
+        # `lastDpadValid = true` must appear *after* the invalid-indices block
+        # so that recovery from invalid back to valid is correctly tracked.
+        #
+        # str.index("lastDpadValid = true;") would match the *initializer*
+        # `let lastDpadValid = true;` which comes first.  Instead we search for
+        # `lastDpadValid = false;` first, then locate `lastDpadValid = true;`
+        # *starting from that position* to confirm the reset-to-true comes later.
+        idx_false = self.html.index("lastDpadValid = false;")
+        idx_true_after_false = self.html.find("lastDpadValid = true;", idx_false)
+        self.assertGreater(
+            idx_true_after_false,
+            idx_false,
+            "lastDpadValid = true must appear after lastDpadValid = false in source",
+        )
+
+    def test_dpad_invalid_branch_resets_state(self):
+        # On invalid indices the D-pad state, last-state, and gamepad pan/tilt
+        # must all be zeroed/cleared so that no stale movement is emitted.
+        # These lines were pre-existing but the PR preserves them; assert they
+        # remain consistent with the new guard logic.
+        self.assertIn(
+            "dpadState = { up: false, down: false, left: false, right: false };",
+            self.html,
+        )
+        self.assertIn("lastDpadState = { ...dpadState };", self.html)
+        self.assertIn("gamepadState.pan = 0;", self.html)
+        self.assertIn("gamepadState.tilt = 0;", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()
