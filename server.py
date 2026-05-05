@@ -1330,13 +1330,13 @@ def capture_usb_device(index: str) -> bytes:
         if _IS_MACOS:
             print(f"[Capture] macOS device={index}, trying avfoundation…")
             # Try each device variant without a forced framerate first (lets avfoundation
-            # negotiate the native rate), then retry with supported framerates.
+            # negotiate the native rate), then retry common fallback framerates.
             for device_arg in (index, f"{index}:none"):
                 for framerate_args in (
-                    ["-framerate", "60"],
+                    [],
                     ["-framerate", "59.940180"],
                     ["-framerate", "30"],
-                    [],
+                    ["-framerate", "60"],
                 ):
                     framerate_str = (
                         framerate_args[1] if len(framerate_args) > 1 else "auto"

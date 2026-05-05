@@ -1,0 +1,18 @@
+{
+    "sourceFile": ".vscode/settings.json",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 0,
+            "patches": [
+                {
+                    "date": 1777841409826,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                }
+            ],
+            "date": 1777841409826,
+            "name": "Commit-0",
+            "content": "{\n    \"python.testing.pytestArgs\": [\n        \"tests\"\n    ]\n}"
+        }
+    ]
+}

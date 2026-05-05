@@ -1316,6 +1316,33 @@ class TestNormalizeScanWaitMode(unittest.TestCase):
         self.assertEqual(server._normalize_scan_wait_mode("unknown"), "settle")
 
 
+# ── capture_usb_device ────────────────────────────────────────────────────────
+
+
+class TestCaptureUsbDevice(unittest.TestCase):
+    def test_macos_avfoundation_tries_auto_before_forced_framerates(self):
+        attempted = []
+
+        def fake_grab(args, tmp):
+            attempted.append(args)
+            if "-framerate" not in args:
+                with open(tmp, "wb") as fh:
+                    fh.write(b"jpeg-bytes")
+                return True
+            return False
+
+        with (
+            patch.object(server, "_IS_MACOS", True),
+            patch.object(server, "_HAS_CV2", False),
+            patch("server._ffmpeg_grab", side_effect=fake_grab),
+        ):
+            data = server.capture_usb_device("0")
+
+        self.assertEqual(data, b"jpeg-bytes")
+        self.assertGreaterEqual(len(attempted), 1)
+        self.assertNotIn("-framerate", attempted[0])
+
+
 # ── _probe_recall_command_succeeded ──────────────────────────────────────────
 
 
