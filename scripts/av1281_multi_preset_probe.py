@@ -44,7 +44,9 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Comma-separated preset list and/or ranges, for example: 1,3,5-9",
     )
-    parser.add_argument("--ip", help="Camera IP address. Falls back to data/settings.json if omitted.")
+    parser.add_argument(
+        "--ip", help="Camera IP address. Falls back to data/settings.json if omitted."
+    )
     parser.add_argument(
         "--port",
         type=int,

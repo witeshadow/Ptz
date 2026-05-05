@@ -1962,6 +1962,15 @@ class Handler(BaseHTTPRequestHandler):
             self._json(502, {"ok": False, "error": result})
 
     def _get_image_position(self, cam: int, preset: int):
+        """
+        Send the stored VISCA absolute position for a given camera preset as a JSON HTTP response.
+
+        If a position exists for the requested camera and preset, responds with HTTP 200 and a JSON body containing "ok": True plus the stored position fields. If no position is found, responds with HTTP 404 and a JSON body containing "ok": False and an "error" message.
+
+        Parameters:
+            cam (int): Camera index.
+            preset (int): Preset number.
+        """
         positions = load_settings().get("positions", {})
         pos = positions.get(f"{cam}:{preset}")
         if pos is None:
@@ -1970,18 +1979,66 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, {"ok": True, **pos})
 
     def _post_image(self, cam: int, preset: int):
-        _ensure_dirs()
+        """
+        Handle an uploaded JPEG for a camera preset, record the camera's VISCA absolute position, persist the image file, and update settings.
+
+        Attempts to record the current VISCA absolute position for the given camera and preset; if position recording fails, responds with HTTP 400 and does not save the image or modify settings. On successful position recording, writes the uploaded bytes to data/images/<cam>_<preset>.jpg, calls write_settings(settings) to persist the updated positions, and responds with HTTP 200 including the recorded position. If saving the file or persisting settings fails, removes any partially written file (best-effort) and responds with HTTP 500 describing the failure.
+
+        Parameters:
+            cam (int): Zero-based camera index for which the preset image is being uploaded.
+            preset (int): Preset number for the camera.
+        """
         data = self._read_body()
-        fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
-        with open(fpath, "wb") as f:
-            f.write(data)
         settings = load_settings()
         position = _try_record_position(settings, cam, preset)
-        if position is not None:
+        if position is None:
+            self._json(
+                400,
+                {
+                    "ok": False,
+                    "error": "could not record camera position — cannot save preset image without position data",
+                },
+            )
+            return
+        _ensure_dirs()
+        fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
+        try:
+            with open(fpath, "wb") as f:
+                f.write(data)
             write_settings(settings)
+        except Exception as e:
+            try:
+                if os.path.exists(fpath):
+                    os.remove(fpath)
+            except Exception:
+                pass
+            self._json(
+                500,
+                {
+                    "ok": False,
+                    "error": f"failed to persist preset image: {e}",
+                },
+            )
+            return
         self._json(200, {"ok": True, "position": position})
 
     def _capture_image(self, cam: int, preset: int):
+        """
+        Capture an image for a camera preset from either a USB device or a stream URL, record the camera's current VISCA absolute position, persist the image file, and respond to the client with the recorded position.
+
+        Parameters:
+            cam (int): Zero-based camera index to capture for.
+            preset (int): Preset slot number to save the image under.
+
+        Behavior and responses:
+            - On success: sends HTTP 200 with {"ok": True, "position": <position_dict>} where <position_dict> is the recorded VISCA position.
+            - If no capture source is provided and none is configured for the camera: sends HTTP 400 with an error.
+            - If the URL is a vdo.ninja host (WebRTC) the request is rejected with HTTP 400 and an explanatory error.
+            - If Playwright is required but not available or not initialized: sends HTTP 503 with an error.
+            - If recording the camera position fails: sends HTTP 400 and does not save the image or update settings.
+            - If persisting the JPEG or updating settings fails: attempts to remove any written file and sends HTTP 500 with an error.
+            - Any other unexpected exception results in HTTP 500 with the exception string.
+        """
         try:
             req = json.loads(self._read_body())
         except Exception:
@@ -2060,14 +2117,39 @@ class Handler(BaseHTTPRequestHandler):
                     },
                 )
                 return
-            _ensure_dirs()
-            fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
-            with open(fpath, "wb") as f:
-                f.write(jpeg)
             settings = load_settings()
             position = _try_record_position(settings, cam, preset)
-            if position is not None:
+            if position is None:
+                self._json(
+                    400,
+                    {
+                        "ok": False,
+                        "error": "could not record camera position — cannot save preset image without position data",
+                    },
+                )
+                return
+            _ensure_dirs()
+            fpath = os.path.join(IMAGES_DIR, f"{cam}_{preset}.jpg")
+            try:
+                with open(fpath, "wb") as f:
+                    f.write(jpeg)
+                    f.flush()
+                    os.fsync(f.fileno())
                 write_settings(settings)
+            except Exception as persist_error:
+                try:
+                    if os.path.exists(fpath):
+                        os.remove(fpath)
+                except Exception:
+                    pass
+                self._json(
+                    500,
+                    {
+                        "ok": False,
+                        "error": f"failed to persist captured image: {persist_error}",
+                    },
+                )
+                return
             self._json(200, {"ok": True, "position": position})
         except Exception as e:
             self._json(500, {"ok": False, "error": str(e)})

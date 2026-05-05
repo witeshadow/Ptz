@@ -1560,6 +1560,13 @@
         <span>Enable Joystick</span>
       </label>
       <div class="field">
+        <label for="f-joystick-model">Device Profile</label>
+        <select id="f-joystick-model">
+          <option value="logitech-extreme-3d">Logitech Extreme 3D (Analog Sticks)</option>
+          <option value="8bitdo-zero2">8BitDo Zero 2 (D-Pad)</option>
+        </select>
+      </div>
+      <div class="field">
         <label for="f-joystick-deadzone">Deadzone</label>
         <input id="f-joystick-deadzone" type="range" min="0" max="1" step="0.05" />
         <span id="f-joystick-deadzone-value">0.20</span>
@@ -1581,6 +1588,36 @@
       </div>
       <div id="joystick-status" style="color:var(--muted); font-size:0.85rem; margin-top:12px;">
         Status: <span id="joystick-status-text">Not connected</span>
+      </div>
+      <div style="margin-top:12px; padding:8px; background:var(--surf2); border-radius:4px; font-size:0.8rem; line-height:1.5;">
+        <strong>Gamepad Setup:</strong><br/>
+        1. Connect your gamepad<br/>
+        2. Check "Show Debug Info" below<br/>
+        3. Look at "Gamepad:" line for button count<br/>
+        4. Press d-pad to verify buttons (should show [12, 13, 14, 15] for 8BitDo)<br/>
+        5. If wrong, switch gamepad to DirectInput/D-Input mode<br/>
+        <br/>
+        <strong>8BitDo Zero 2 Modes:</strong><br/>
+        • <strong>D-Input</strong> ✓ (16 buttons) - Use "8BitDo Zero 2 (D-Pad)" profile<br/>
+        • X-Input (10 buttons) - Switch to D-Input mode on controller<br/>
+        • Switch mode (17 buttons) - Switch to D-Input mode on controller
+      </div>
+      <label class="atem-toggle-wrap" style="margin-top:12px;">
+        <input id="f-joystick-debug" type="checkbox" />
+        <span>Show Debug Info</span>
+      </label>
+      <div id="joystick-debug" style="color:var(--muted); font-size:0.8rem; margin-top:12px; line-height:1.4; font-family:monospace; display:none; padding:8px; background:var(--surf2); border-radius:4px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="flex:1;">Pan: <span id="dbg-joystick-pan">—</span> Tilt: <span id="dbg-joystick-tilt">—</span></div>
+          <div id="gamepad-input-indicator" style="width:12px; height:12px; border-radius:50%; background:var(--muted); transition:all 0.1s;"></div>
+        </div>
+        <div>Zoom: <span id="dbg-joystick-zoom">—</span></div>
+        <div style="margin-top:6px; color:var(--subtext); font-size:0.75rem;">Raw axes:</div>
+        <div>Ax0: <span id="dbg-joystick-ax0">—</span> Ax1: <span id="dbg-joystick-ax1">—</span> Ax2: <span id="dbg-joystick-ax2">—</span></div>
+        <div style="margin-top:6px; color:var(--subtext); font-size:0.75rem;">Gamepad:</div>
+        <div id="dbg-joystick-info" style="white-space:pre-line;">—</div>
+        <div style="margin-top:6px; color:var(--subtext); font-size:0.75rem;">Pressed buttons:</div>
+        <div id="dbg-joystick-buttons" style="word-wrap:break-word;">—</div>
       </div>
     </div>
   </div>
@@ -1637,6 +1674,85 @@
     { name: 'Camera 4', ip: '', port: 52381, viscaAddr: 1, atemInput: 4, streamUrl: '', usbDevice: '', enabled: false },
   ];
 
+  const JOYSTICK_PROFILES = {
+    'logitech-extreme-3d': {
+      name: 'Logitech Extreme 3D',
+      deadzone: 0.2,
+      sensitivity: { pan: 1.0, tilt: 1.0, zoom: 0.5 },
+      axisMap: { pan: 0, tilt: 1, zoom: 2 },
+      buttonMap: { preset1: 0, preset2: 1, preset3: 2, preset4: 3 },
+      useDpad: false,
+    },
+    '8bitdo-zero2': {
+      name: '8BitDo Zero 2',
+      deadzone: 0.15,
+      sensitivity: { pan: 1.0, tilt: 1.0, zoom: 0.5 },
+      axisMap: { zoom: 2 },
+      buttonMap: { preset1: 4, preset2: 5, preset3: 6, preset4: 7 },
+      useDpad: true,
+      dpadMap: { up: 12, down: 13, left: 14, right: 15 },
+    },
+  };
+
+  function normalizeJoystickSettings(value) {
+    const joystick = value && typeof value === 'object' ? value : {};
+    const model = joystick.model || 'logitech-extreme-3d';
+    const profile = JOYSTICK_PROFILES[model] || JOYSTICK_PROFILES['logitech-extreme-3d'];
+
+    const defaults = {
+      enabled: false,
+      model: model,
+      deadzone: profile.deadzone,
+      sensitivity: { ...profile.sensitivity },
+      axisMap: { ...profile.axisMap },
+      buttonMap: { ...profile.buttonMap },
+    };
+
+    return {
+      ...defaults,
+      ...joystick,
+      sensitivity: { ...defaults.sensitivity, ...(joystick.sensitivity || {}) },
+      axisMap: { ...defaults.axisMap, ...(joystick.axisMap || {}) },
+      buttonMap: { ...defaults.buttonMap, ...(joystick.buttonMap || {}) },
+    };
+  }
+
+  function detectGamepadMode() {
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const gamepad = [...gamepads].find(Boolean);
+    if (!gamepad) return null;
+
+    const id = gamepad.id.toLowerCase();
+    const btnCount = gamepad.buttons.length;
+    const axCount = gamepad.axes.length;
+
+    let detected = {
+      id: gamepad.id,
+      buttonCount: btnCount,
+      axisCount: axCount,
+      suggestion: null,
+      reason: '',
+    };
+
+    if (id.includes('8bitdo') || id.includes('8bit do')) {
+      if (btnCount === 16 && axCount >= 2) {
+        detected.suggestion = '8bitdo-zero2';
+        detected.reason = 'DirectInput mode (D-Pad recommended)';
+      } else if (btnCount === 10) {
+        detected.reason = 'XInput mode detected — switch the controller to D-Input';
+      } else if (btnCount === 17) {
+        detected.reason = 'Switch mode detected — switch the controller to D-Input';
+      } else {
+        detected.reason = `Unknown mode: ${btnCount} buttons, ${axCount} axes`;
+      }
+    } else if (id.includes('logitech') && id.includes('extreme 3d')) {
+      detected.suggestion = 'logitech-extreme-3d';
+      detected.reason = 'Analog stick mode';
+    }
+
+    return detected;
+  }
+
   let state = {
     activeCam: 0,
     cameras: DEF_CAMERAS.map(c => ({ ...c })),
@@ -1645,6 +1761,7 @@
     scanWaitMode: 'settle',
     atem: { ip: '', enabled: false },
     showAtemDebug: false,
+    showJoystickDebug: false,
     liveMode: true,
     lockLiveMode: false,
     unlockOnExitLiveMode: true,
@@ -1799,25 +1916,6 @@
     return ['sdi1', 'sdi2', 'sdi3', 'sdi4'].includes(value) ? value : 'sdi1';
   }
 
-  function normalizeJoystickSettings(value) {
-    const defaults = {
-      enabled: false,
-      model: 'logitech-extreme-3d',
-      deadzone: 0.2,
-      sensitivity: { pan: 1.0, tilt: 1.0, zoom: 0.5 },
-      axisMap: { pan: 0, tilt: 1, zoom: 2 },
-      buttonMap: { preset1: 0, preset2: 1, preset3: 2, preset4: 3 },
-    };
-    const joystick = value && typeof value === 'object' ? value : {};
-    return {
-      ...defaults,
-      ...joystick,
-      sensitivity: { ...defaults.sensitivity, ...(joystick.sensitivity || {}) },
-      axisMap: { ...defaults.axisMap, ...(joystick.axisMap || {}) },
-      buttonMap: { ...defaults.buttonMap, ...(joystick.buttonMap || {}) },
-    };
-  }
-
   // ── Server persistence ────────────────────────────────────────────────────
   let saveTimer = null;
 
@@ -1846,6 +1944,7 @@
         if (s.lockLiveMode  != null) state.lockLiveMode  = !!s.lockLiveMode;
         if (s.unlockOnExitLiveMode != null) state.unlockOnExitLiveMode = !!s.unlockOnExitLiveMode;
         if (s.showAtemDebug != null) state.showAtemDebug = !!s.showAtemDebug;
+        if (s.showJoystickDebug != null) state.showJoystickDebug = !!s.showJoystickDebug;
         if (s.atemFollows)           state.atemFollows   = s.atemFollows;
         if (s.autoCutDelayMs != null) state.autoCutDelayMs = Math.max(0, +s.autoCutDelayMs || 0);
         if (s.atemOutputMap) state.atemOutputMap = normalizeAtemOutputMap(s.atemOutputMap);
@@ -2178,6 +2277,75 @@
       })
       .join(' ');
     scheduleDebugPositionPolling();
+  }
+
+  function updateJoystickDebug() {
+    if (!state.showJoystickDebug) {
+      elJoystickDebug.style.display = 'none';
+      return;
+    }
+    elJoystickDebug.style.display = 'block';
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const gamepad = [...gamepads].find(Boolean);
+    if (gamepad) {
+      const cfg = state.joystick || {};
+      const axisMap = cfg.axisMap || { pan: 0, tilt: 1, zoom: 2 };
+      const rawPan = gamepad.axes[axisMap.pan] || 0;
+      const rawTilt = gamepad.axes[axisMap.tilt] || 0;
+      const rawZoom = gamepad.axes[axisMap.zoom] || 0;
+      elDbgJoystickPan.textContent = gamepadState.pan.toFixed(3);
+      elDbgJoystickTilt.textContent = gamepadState.tilt.toFixed(3);
+      elDbgJoystickZoom.textContent = gamepadState.zoom.toFixed(3);
+      elDbgJoystickAx0.textContent = rawPan.toFixed(3);
+      elDbgJoystickAx1.textContent = rawTilt.toFixed(3);
+      elDbgJoystickAx2.textContent = rawZoom.toFixed(3);
+
+      const detection = detectGamepadMode();
+      let infoText = `${gamepad.id} (${gamepad.buttons.length} btns, ${gamepad.axes.length} axes)`;
+      if (detection && detection.suggestion && detection.suggestion !== cfg.model) {
+        infoText += `\n⚠ Try mode: ${detection.suggestion} - ${detection.reason}`;
+      } else if (detection && detection.reason) {
+        infoText += `\n${detection.reason}`;
+      }
+      elDbgJoystickInfo.textContent = infoText;
+
+      const pressedButtons = gamepad.buttons
+        .map((btn, idx) => btn.pressed ? idx : null)
+        .filter(idx => idx !== null);
+      const elDbgButtons = document.getElementById('dbg-joystick-buttons');
+      if (elDbgButtons) {
+        elDbgButtons.textContent = pressedButtons.length > 0 ? `[${pressedButtons.join(', ')}]` : 'None';
+      }
+
+      const elIndicator = document.getElementById('gamepad-input-indicator');
+      if (elIndicator) {
+        const hasInput = gamepadState.pan !== 0 || gamepadState.tilt !== 0 || gamepadState.zoom !== 0;
+        if (hasInput) {
+          elIndicator.style.background = 'var(--accent)';
+          elIndicator.style.boxShadow = '0 0 8px var(--accent)';
+        } else {
+          elIndicator.style.background = 'var(--muted)';
+          elIndicator.style.boxShadow = 'none';
+        }
+      }
+    } else {
+      elDbgJoystickPan.textContent = '—';
+      elDbgJoystickTilt.textContent = '—';
+      elDbgJoystickZoom.textContent = '—';
+      elDbgJoystickAx0.textContent = '—';
+      elDbgJoystickAx1.textContent = '—';
+      elDbgJoystickAx2.textContent = '—';
+      elDbgJoystickInfo.textContent = 'Not connected';
+      const elDbgButtons = document.getElementById('dbg-joystick-buttons');
+      if (elDbgButtons) {
+        elDbgButtons.textContent = '—';
+      }
+      const elIndicator = document.getElementById('gamepad-input-indicator');
+      if (elIndicator) {
+        elIndicator.style.background = 'var(--muted)';
+        elIndicator.style.boxShadow = 'none';
+      }
+    }
   }
 
   // ── Camera tabs ────────────────────────────────────────────────────────────
@@ -2692,6 +2860,7 @@
         return false;
       }
       lastVirtualPtz = next;
+      checkRecalledPresetForDrift();
       return true;
     } catch (err) {
       setStatus('error', `PTZ move failed: ${err.message || err}`);
@@ -2823,11 +2992,15 @@
     const deadzone = cfg.deadzone || 0.2;
     const sensitivity = cfg.sensitivity || { pan: 1.0, tilt: 1.0, zoom: 0.5 };
     const axisMap = cfg.axisMap || { pan: 0, tilt: 1, zoom: 2 };
-
-    // Read axes with deadzone
     const applyDeadzone = (v) => Math.abs(v) < deadzone ? 0 : v;
-    gamepadState.pan = applyDeadzone(gamepad.axes[axisMap.pan] || 0) * (sensitivity.pan || 1.0);
-    gamepadState.tilt = applyDeadzone(gamepad.axes[axisMap.tilt] || 0) * (sensitivity.tilt || 1.0);
+
+    if (cfg.useDpad) {
+      updateDpadInput(gamepad, cfg);
+    } else {
+      gamepadState.pan = applyDeadzone(gamepad.axes[axisMap.pan] || 0) * (sensitivity.pan || 1.0);
+      gamepadState.tilt = applyDeadzone(gamepad.axes[axisMap.tilt] || 0) * (sensitivity.tilt || 1.0);
+    }
+
     gamepadState.zoom = applyDeadzone(gamepad.axes[axisMap.zoom] || 0) * (sensitivity.zoom || 0.5);
 
     // Handle button presses for preset recall
@@ -2843,6 +3016,7 @@
     }
 
     applyGamepadInput();
+    updateJoystickDebug();
 
     if (gamepadAnimationFrame) {
       cancelAnimationFrame(gamepadAnimationFrame);
@@ -2873,6 +3047,19 @@
 
   function applyGamepadInput() {
     if (!gamepadConnected) return;
+    const cmd = { pan: gamepadState.pan, tilt: -gamepadState.tilt, zoom: gamepadState.zoom };
+    const isDuplicate = cmd.pan === lastVirtualPtz.pan && cmd.tilt === lastVirtualPtz.tilt && cmd.zoom === lastVirtualPtz.zoom;
+    if (state.showJoystickDebug) {
+      if (cmd.pan === 0 && cmd.tilt === 0 && cmd.zoom === 0) {
+        if (!isDuplicate) {
+          console.debug('[GAMEPAD] Sending STOP command');
+        } else {
+          console.debug('[GAMEPAD] STOP already sent, deduplicating');
+        }
+      } else {
+        console.debug('[GAMEPAD] Sending command:', cmd, isDuplicate ? '(duplicate, skipped)' : '(sent)');
+      }
+    }
     sendPtzDriveCommand(gamepadState.pan, -gamepadState.tilt, gamepadState.zoom);
   }
 
@@ -2881,6 +3068,7 @@
     gamepadConnected = true;
     console.debug('[PTZ] Gamepad connected:', e.gamepad.id);
     updateJoystickStatus();
+    updateJoystickDebug();
     if (state.joystick && state.joystick.enabled) {
       updateGamepadState();
     }
@@ -2893,6 +3081,7 @@
     sendPtzDriveCommand(0, 0, 0);
     console.debug('[PTZ] Gamepad disconnected');
     updateJoystickStatus();
+    updateJoystickDebug();
   });
 
   // ── SSE ────────────────────────────────────────────────────────────────────
@@ -2963,6 +3152,54 @@
   let gamepadState = { pan: 0, tilt: 0, zoom: 0 };
   let gamepadButtonStates = {};
   let gamepadAnimationFrame = null;
+  let dpadState = { up: false, down: false, left: false, right: false };
+
+  let lastDpadState = { up: false, down: false, left: false, right: false };
+  let lastDpadValid = true;
+
+  function updateDpadInput(gamepad, cfg) {
+    if (!cfg.useDpad) {
+      gamepadState.pan = 0;
+      gamepadState.tilt = 0;
+      dpadState = { up: false, down: false, left: false, right: false };
+      return;
+    }
+    const dpadMap = JOYSTICK_PROFILES[cfg.model]?.dpadMap || {};
+
+    // Validate button indices exist
+    const validIndices = [dpadMap.up, dpadMap.down, dpadMap.left, dpadMap.right]
+      .every(idx => idx !== undefined && idx < gamepad.buttons.length);
+    if (!validIndices) {
+      if (lastDpadValid) {
+        console.warn('[D-PAD] Invalid button indices for profile:', cfg.model, dpadMap, `gamepad has ${gamepad.buttons.length} buttons`);
+      }
+      lastDpadValid = false;
+      dpadState = { up: false, down: false, left: false, right: false };
+      lastDpadState = { ...dpadState };
+      gamepadState.pan = 0;
+      gamepadState.tilt = 0;
+      return;
+    }
+    lastDpadValid = true;
+
+    const newState = {
+      up: gamepad.buttons[dpadMap.up]?.pressed || false,
+      down: gamepad.buttons[dpadMap.down]?.pressed || false,
+      left: gamepad.buttons[dpadMap.left]?.pressed || false,
+      right: gamepad.buttons[dpadMap.right]?.pressed || false,
+    };
+    const changed = ['up', 'down', 'left', 'right'].some(key => newState[key] !== lastDpadState[key]);
+    if (state.showJoystickDebug && changed) {
+      console.debug('[D-PAD] State changed:', newState);
+    }
+    dpadState = newState;
+    lastDpadState = newState;
+
+    const deadzone = cfg.deadzone || 0.15;
+    const sensitivity = cfg.sensitivity || { pan: 1.0, tilt: 1.0, zoom: 0.5 };
+    gamepadState.pan = ((newState.right ? 1 : 0) - (newState.left ? 1 : 0)) * (sensitivity.pan || 1.0);
+    gamepadState.tilt = ((newState.down ? 1 : 0) - (newState.up ? 1 : 0)) * (sensitivity.tilt || 1.0);
+  }
 
   function getAutoCutDelaySeconds() {
     return ((state.autoCutDelayMs || 0) / 1000).toFixed(1).replace(/\.0$/, '');
@@ -3287,11 +3524,21 @@
 
   // Joystick settings elements
   const elJoystickEnabled = document.getElementById('f-joystick-enabled');
+  const elJoystickModel = document.getElementById('f-joystick-model');
   const elJoystickDeadzone = document.getElementById('f-joystick-deadzone');
   const elJoystickPanSens = document.getElementById('f-joystick-pan-sens');
   const elJoystickTiltSens = document.getElementById('f-joystick-tilt-sens');
   const elJoystickZoomSens = document.getElementById('f-joystick-zoom-sens');
   const elJoystickStatus = document.getElementById('joystick-status-text');
+  const elJoystickDebug = document.getElementById('joystick-debug');
+  const elJoystickDebugCheckbox = document.getElementById('f-joystick-debug');
+  const elDbgJoystickPan = document.getElementById('dbg-joystick-pan');
+  const elDbgJoystickTilt = document.getElementById('dbg-joystick-tilt');
+  const elDbgJoystickZoom = document.getElementById('dbg-joystick-zoom');
+  const elDbgJoystickAx0 = document.getElementById('dbg-joystick-ax0');
+  const elDbgJoystickAx1 = document.getElementById('dbg-joystick-ax1');
+  const elDbgJoystickAx2 = document.getElementById('dbg-joystick-ax2');
+  const elDbgJoystickInfo = document.getElementById('dbg-joystick-info');
 
   let activeSettingsTab = 'cameras';
 
@@ -3343,6 +3590,14 @@
     });
   }
 
+  if (elJoystickDebugCheckbox) {
+    elJoystickDebugCheckbox.addEventListener('change', () => {
+      state.showJoystickDebug = elJoystickDebugCheckbox.checked;
+      schedSave();
+      updateJoystickDebug();
+    });
+  }
+
   function loadGridSettings() {
     const range = getDevicePresetRange();
     elGspStart.value  = range.start !== undefined && range.start !== null ? range.start : 0;
@@ -3351,6 +3606,7 @@
     elGspRows.value   = state.gridRows !== undefined && state.gridRows !== null ? state.gridRows : 3;
     elGspFill.checked = !!state.fillWindow;
     if (elGspAtemDebug) elGspAtemDebug.checked = !!state.showAtemDebug;
+    if (elJoystickDebugCheckbox) elJoystickDebugCheckbox.checked = !!state.showJoystickDebug;
     applyGridLayout();
   }
 
@@ -3376,6 +3632,7 @@
   function loadJoystickSettings() {
     const js = state.joystick = normalizeJoystickSettings(state.joystick);
     if (elJoystickEnabled) elJoystickEnabled.checked = !!js.enabled;
+    if (elJoystickModel) elJoystickModel.value = js.model || 'logitech-extreme-3d';
     if (elJoystickDeadzone) {
       elJoystickDeadzone.value = (js.deadzone || 0.2).toFixed(2);
       document.getElementById('f-joystick-deadzone-value').textContent = (js.deadzone || 0.2).toFixed(2);
@@ -3401,6 +3658,7 @@
     state.joystick = normalizeJoystickSettings({
       ...prev,
       enabled: elJoystickEnabled?.checked || false,
+      model: elJoystickModel?.value || 'logitech-extreme-3d',
       deadzone: parseFloat(elJoystickDeadzone?.value || 0.2),
       sensitivity: {
         ...prev.sensitivity,
@@ -3447,7 +3705,7 @@
   }
 
   if (elJoystickEnabled) {
-    [elJoystickEnabled, elJoystickDeadzone, elJoystickPanSens, elJoystickTiltSens, elJoystickZoomSens].forEach(el => {
+    [elJoystickEnabled, elJoystickModel, elJoystickDeadzone, elJoystickPanSens, elJoystickTiltSens, elJoystickZoomSens].forEach(el => {
       if (el) {
         el.addEventListener('change', saveJoystickSettings);
         el.addEventListener('input', () => {
@@ -3978,6 +4236,9 @@
     if (btn) btn.classList.remove('needs-snap');
   }
 
+  let lastRecalledPreset = null;
+  let lastRecalledCam = null;
+
   async function checkPositionAfterRecall(preset, camIdx) {
     const cam = state.cameras[camIdx];
     if (!(cam && cam.ip)) return;
@@ -4000,10 +4261,16 @@
         snapNeeded[key] = true;
         const btn = elGrid.querySelector(`[data-preset="${preset}"]`);
         if (btn) btn.classList.add('needs-snap');
+        setStatus('warning', `Preset ${preset} position has drifted — tap Snap to update`);
       } else {
         clearSnapNeeded(camIdx, preset);
       }
     } catch (_) {}
+  }
+
+  async function checkRecalledPresetForDrift(camIdx = state.activeCam) {
+    if (lastRecalledPreset === null || lastRecalledCam !== camIdx) return;
+    checkPositionAfterRecall(lastRecalledPreset, camIdx);
   }
 
   function presetNumbers() {
@@ -4028,6 +4295,8 @@
     }
     nums.forEach(n => refreshPresetBtn(n, state.activeCam));
     updatePresetGridBusState();
+    lastRecalledPreset = null;
+    lastRecalledCam = null;
   }
 
   function updateFillGridMetrics() {
@@ -4187,6 +4456,10 @@
     const btn = elGrid.querySelector(`[data-preset="${n}"]`);
     if (!btn) return;
 
+    // Skip updates for cameras that are no longer active to prevent stale captures
+    // from updating buttons when the user has switched to a different camera
+    if (cam != state.activeCam && btn.dataset.displayCam && btn.dataset.displayCam != cam) return;
+
     btn.dataset.displayCam = cam;
     const ovName = btn.querySelector('.ov-name');
     if (ovName && !ovName.querySelector('input')) {
@@ -4218,16 +4491,12 @@
   }
 
   async function capturePreset(n) {
-    const cam = resolveCaptureCamera();
+    const cam = state.activeCam;
     const ok = await captureFrame(cam, n);
     if (ok) {
       clearSnapNeeded(cam, n);
       bumpImageVersion(cam, n);
-      if (cam === state.activeCam) {
-        refreshPresetBtn(n, cam);
-      } else {
-        setStatus('success', `Captured preset ${n} (camera ${cam + 1})`);
-      }
+      refreshPresetBtn(n, cam);
     }
   }
 
@@ -4457,6 +4726,8 @@
       );
       setStatus('success', msg);
       scheduleAutoCut(n, autoCutPlan, autoCutTrigger || 'settled', recallElapsedMs);
+      lastRecalledPreset = n;
+      lastRecalledCam = recallCamIdx;
       if (data.settled) checkPositionAfterRecall(n, recallCamIdx);
     } else {
       const recallElapsedMs = Math.max(
