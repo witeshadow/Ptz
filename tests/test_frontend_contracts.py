@@ -55,6 +55,17 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("Active Cam", self.html)
         self.assertIn("Route to:", self.html)
 
+    def test_lock_and_label_snap_copy_are_explicit_about_safety(self):
+        self.assertIn("Does not block camera movement.", self.html)
+        self.assertIn(
+            "Blocks PTZ moves, preset recalls, and scans when the selected camera is live on ATEM program.",
+            self.html,
+        )
+        self.assertIn(
+            "Label / Snap mode: rename labels and refresh images. It does not block preset recall or scan movement; Locked does.",
+            self.html,
+        )
+
     def test_positions_state_and_capture_integration(self):
         # positions initialized in state
         self.assertIn("positions: {},", self.html)

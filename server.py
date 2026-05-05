@@ -1369,7 +1369,11 @@ def capture_usb_device(index: str) -> bytes:
                     continue
                 break
             else:
-                for failed_device_arg, failed_framerate, failed_stderr in attempt_failures:
+                for (
+                    failed_device_arg,
+                    failed_framerate,
+                    failed_stderr,
+                ) in attempt_failures:
                     print(
                         "[Capture] avfoundation failed "
                         f"device_arg={failed_device_arg} framerate={failed_framerate}"
@@ -1522,6 +1526,19 @@ def _live_movement_block_reason(settings: dict, cam_idx: int, cfg: dict) -> str 
     return None
 
 
+def _find_configured_camera_for_visca_target(
+    settings: dict, ip: str, port: int, camera_address: int
+) -> tuple[int | None, dict | None]:
+    cameras = settings.get("cameras", [])
+    for idx, cfg in enumerate(cameras):
+        cfg_ip = str(cfg.get("ip", "")).strip()
+        cfg_port = int(cfg.get("port", 52381) or 52381)
+        cfg_addr = int(cfg.get("viscaAddr", 1) or 1)
+        if cfg_ip == ip and cfg_port == port and cfg_addr == camera_address:
+            return idx, cfg
+    return None, None
+
+
 def _require_camera(
     settings: dict, cam_idx: int
 ) -> tuple[bool, dict | None, dict | None]:
@@ -1661,6 +1678,20 @@ class Handler(BaseHTTPRequestHandler):
         if not ip:
             self._json(400, {"success": False, "message": "Camera IP is required"})
             return
+        settings = load_settings()
+        cam_idx, cfg = _find_configured_camera_for_visca_target(
+            settings, ip, port, camera
+        )
+        if cfg is not None:
+            block_reason = _live_movement_block_reason(settings, cam_idx, cfg)
+            if block_reason:
+                if block_reason.startswith("LIVE camera is locked."):
+                    block_reason = (
+                        "LIVE camera is locked. Switch cameras or unlock Live mode "
+                        "before recalling a preset."
+                    )
+                self._json(409, {"success": False, "message": block_reason})
+                return
         result = recall_visca_preset(ip, port, preset, camera, wait_mode)
         if not result.get("success"):
             _logger.warning(

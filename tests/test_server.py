@@ -909,6 +909,33 @@ class TestHTTPRoutes(unittest.TestCase):
             "Motion did not settle in time",
         )
 
+    def test_recall_live_lock_returns_409_when_target_camera_is_on_program(self):
+        settings = dict(server.DEFAULT_SETTINGS)
+        settings["liveMode"] = True
+        settings["lockLiveMode"] = True
+        settings["atem"] = {"ip": "10.0.0.50", "enabled": True}
+        settings["cameras"] = [
+            dict(
+                server.DEFAULT_SETTINGS["cameras"][0],
+                ip="10.0.0.1",
+                port=52381,
+                viscaAddr=1,
+                atemInput=5,
+            )
+        ]
+        server.write_settings(settings)
+        payload = json.dumps(
+            {"ip": "10.0.0.1", "port": 52381, "camera": 1, "preset": 4}
+        ).encode()
+
+        with patch("server._get_atem", return_value={"connected": True, "program": 5}):
+            status, body = self.srv.post("/recall", payload)
+
+        self.assertEqual(status, 409)
+        data = json.loads(body)
+        self.assertFalse(data["success"])
+        self.assertIn("before recalling a preset", data["message"])
+
     def test_recall_dwell_mode_passed_through(self):
         payload = json.dumps(
             {
