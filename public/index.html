@@ -3155,6 +3155,7 @@
   let dpadState = { up: false, down: false, left: false, right: false };
 
   let lastDpadState = { up: false, down: false, left: false, right: false };
+  let lastDpadValid = true;
 
   function updateDpadInput(gamepad, cfg) {
     if (!cfg.useDpad) {
@@ -3169,13 +3170,17 @@
     const validIndices = [dpadMap.up, dpadMap.down, dpadMap.left, dpadMap.right]
       .every(idx => idx !== undefined && idx < gamepad.buttons.length);
     if (!validIndices) {
-      console.warn('[D-PAD] Invalid button indices for profile:', cfg.model, dpadMap, `gamepad has ${gamepad.buttons.length} buttons`);
+      if (lastDpadValid) {
+        console.warn('[D-PAD] Invalid button indices for profile:', cfg.model, dpadMap, `gamepad has ${gamepad.buttons.length} buttons`);
+      }
+      lastDpadValid = false;
       dpadState = { up: false, down: false, left: false, right: false };
       lastDpadState = { ...dpadState };
       gamepadState.pan = 0;
       gamepadState.tilt = 0;
       return;
     }
+    lastDpadValid = true;
 
     const newState = {
       up: gamepad.buttons[dpadMap.up]?.pressed || false,
