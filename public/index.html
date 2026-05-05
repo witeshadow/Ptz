@@ -2112,7 +2112,9 @@
     const cam = findCameraByAtemSource(sourceVal);
     if (cam) return cam.name;
     const customLabel = getAtemSourceCustomLabel(sourceVal);
-    return customLabel || `Input ${sourceVal}`;
+    if (customLabel) return customLabel;
+    if (sourceVal >= 10000) return 'ATEM internal';
+    return `Input ${sourceVal}`;
   }
 
   function formatAtemSourceSecondary(sourceVal) {
@@ -2221,6 +2223,7 @@
       const source = state[`${key}Source`];
       const sourceLabel = formatAtemSourcePrimary(source);
       const sourceNum = source && source !== 0 ? source : '—';
+      const isInternalSource = source >= 10000;
 
       let className = 'output-mode-source';
       if (!source || source === 0) {
@@ -2240,7 +2243,7 @@
 
       const sourceEl = document.createElement('div');
       sourceEl.className = className;
-      sourceEl.textContent = sourceLabel + (source && source !== 0 ? ` (${sourceNum})` : '');
+      sourceEl.textContent = sourceLabel + (source && source !== 0 && !isInternalSource ? ` (${sourceNum})` : '');
 
       item.appendChild(labelEl);
       item.appendChild(sourceEl);
