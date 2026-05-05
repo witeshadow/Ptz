@@ -1534,6 +1534,23 @@ def _require_camera(
 
 # ── HTTP handler ───────────────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
+    @staticmethod
+    def _looks_like_tls_client_hello(raw_requestline: bytes) -> bool:
+        """
+        Detect a TLS ClientHello sent to the plain HTTP port.
+
+        Browsers and network intermediaries occasionally probe the local app with
+        HTTPS before retrying over HTTP. Those bytes are not a real HTTP request,
+        so quietly closing the connection avoids scary console noise without
+        hiding legitimate malformed HTTP traffic.
+        """
+        return (
+            len(raw_requestline) >= 3
+            and raw_requestline[0] == 0x16
+            and raw_requestline[1] == 0x03
+            and raw_requestline[2] <= 0x04
+        )
+
     def log_message(self, format, *args):  # noqa: A002
         """
         Log an HTTP request message to standard output prefixed with the client's address.
@@ -1547,6 +1564,44 @@ class Handler(BaseHTTPRequestHandler):
                 "<client-address> — <formatted message>"
         """
         print(f"  {self.address_string()} — {format % args}")
+
+    def handle_one_request(self):
+        """
+        Process a single HTTP request and silently drop TLS handshakes.
+
+        BaseHTTPRequestHandler logs noisy 400 errors when HTTPS bytes hit this
+        HTTP-only server. For that specific case we close the connection early,
+        but preserve the stdlib behavior for legitimate HTTP parsing failures.
+        """
+        try:
+            self.raw_requestline = self.rfile.readline(65537)
+            if len(self.raw_requestline) > 65536:
+                self.requestline = ""
+                self.request_version = ""
+                self.command = ""
+                self.send_error(414)
+                return
+            if not self.raw_requestline:
+                self.close_connection = True
+                return
+            if self._looks_like_tls_client_hello(self.raw_requestline):
+                self.requestline = ""
+                self.request_version = ""
+                self.command = ""
+                self.close_connection = True
+                return
+            if not self.parse_request():
+                return
+            method_name = "do_" + self.command
+            if not hasattr(self, method_name):
+                self.send_error(501, f"Unsupported method ({self.command!r})")
+                return
+            method = getattr(self, method_name)
+            method()
+            self.wfile.flush()
+        except TimeoutError as exc:
+            self.log_error("Request timed out: %r", exc)
+            self.close_connection = True
 
     # ── routing ────────────────────────────────────────────────────────────────
     def do_GET(self):

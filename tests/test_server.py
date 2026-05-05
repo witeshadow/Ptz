@@ -746,6 +746,12 @@ class _LiveServer:
         c.close()
         return r.status, body
 
+    def raw(self, payload: bytes, recv_bytes: int = 4096) -> bytes:
+        with socket.create_connection(("127.0.0.1", self.port), timeout=1) as conn:
+            conn.sendall(payload)
+            conn.shutdown(socket.SHUT_WR)
+            return conn.recv(recv_bytes)
+
 
 class TestHTTPRoutes(unittest.TestCase):
     @classmethod
@@ -807,6 +813,21 @@ class TestHTTPRoutes(unittest.TestCase):
         status, body = self.srv.post("/settings", b"not json")
         self.assertEqual(status, 400)
         self.assertFalse(json.loads(body)["ok"])
+
+    def test_tls_client_hello_is_dropped_quietly(self):
+        tls_client_hello = bytes.fromhex("1603010200010001fc0303")
+        with patch("builtins.print") as mock_print:
+            response = self.srv.raw(tls_client_hello)
+        self.assertEqual(response, b"")
+        mock_print.assert_not_called()
+
+        status, _ = self.srv.get("/")
+        self.assertEqual(status, 200)
+
+    def test_plain_malformed_request_still_returns_400(self):
+        response = self.srv.raw(b"GARBAGE\r\n\r\n")
+        self.assertIn(b"Error code: 400", response)
+        self.assertIn(b"Bad request syntax ('GARBAGE')", response)
 
     # ── ATEM ───────────────────────────────────────────────────────────────────
 
