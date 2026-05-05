@@ -3410,11 +3410,10 @@
 
   function updateToolbarVisibility() {
     const btnScanEl = document.getElementById('btn-scan');
-    if (btnScanEl) btnScanEl.style.display = state.liveMode ? 'none' : '';
+    if (btnScanEl) btnScanEl.style.display = '';
     if (elAutoCutBtn) elAutoCutBtn.style.display = state.atem.enabled ? '' : 'none';
     if (elCaptureToggle) {
-      elCaptureToggle.style.display =
-        (!state.liveMode && state.atem.enabled) ? 'flex' : 'none';
+      elCaptureToggle.style.display = state.atem.enabled ? 'flex' : 'none';
     }
     updateManualCutButton();
     updateAutoCutButton();
@@ -3827,6 +3826,88 @@
     }
   }
 
+  function getRequestedCaptureBus() {
+    if (!state.atem.enabled) return null;
+    if (state.captureSource === 'preview') return 'preview';
+    if (state.captureSource === 'program') return 'program';
+    return null;
+  }
+
+  function getRequestedCaptureSource(bus = getRequestedCaptureBus()) {
+    if (bus === 'preview') return Number(state.previewSource || 0);
+    if (bus === 'program') return Number(state.programSource || 0);
+    return 0;
+  }
+
+  function validateAtemCaptureSelection(camIdx) {
+    const bus = getRequestedCaptureBus();
+    if (!bus) return { ok: true };
+
+    const expectedSource = getRequestedCaptureSource(bus);
+    const busLabel = bus === 'preview' ? 'preview' : 'program';
+    const cam = state.cameras[camIdx];
+    const camName = (cam && cam.name) || `Camera ${camIdx + 1}`;
+
+    if (!expectedSource) {
+      return {
+        ok: false,
+        error: `ATEM ${busLabel} is not confirmed yet. Wait for ATEM status or switch scan source.`,
+      };
+    }
+
+    if (!cameraMatchesAtemSource(camIdx, expectedSource)) {
+      return {
+        ok: false,
+        error: `${camName} is not on ATEM ${busLabel}. Put it there first or switch scan source.`,
+      };
+    }
+
+    if (state.captureOutput === 'activeCam') {
+      return { ok: true };
+    }
+
+    if (state.captureOutput === 'webcam') {
+      return {
+        ok: false,
+        error: `ATEM ${busLabel} capture needs a reported output. Use Active Cam routing or an SDI output instead of USB Webcam.`,
+      };
+    }
+
+    const actualSource = Number(getOutputSource(state.captureOutput) || 0);
+    if (!actualSource) {
+      return {
+        ok: false,
+        error: `${getPhysicalOutputLabel(state.captureOutput)} has no ATEM source detected. Route ${busLabel} there or switch scan output.`,
+      };
+    }
+
+    if (actualSource !== expectedSource) {
+      return {
+        ok: false,
+        error: `${getPhysicalOutputLabel(state.captureOutput)} is carrying ${formatAtemSourceSummary(actualSource)}, not ATEM ${busLabel} (${formatAtemSourceSummary(expectedSource)}).`,
+      };
+    }
+
+    return { ok: true };
+  }
+
+  async function preparePresetCapture(camIdx) {
+    const validation = validateAtemCaptureSelection(camIdx);
+    if (!validation.ok) return validation;
+
+    if (state.atem.enabled && state.captureOutput === 'activeCam') {
+      const routeResult = await routeActiveCam(camIdx);
+      if (!routeResult.ok) {
+        return {
+          ok: false,
+          error: `Could not route camera: ${routeResult.error || routeResult.message}`,
+        };
+      }
+    }
+
+    return { ok: true };
+  }
+
   function renderOutputMapTable() {
     const tbody = document.getElementById('output-map-body');
     if (!tbody) return;
@@ -4163,17 +4244,15 @@
     }
 
     try {
-      if (state.atem.enabled && state.captureOutput === 'activeCam') {
-        const routeResult = await routeActiveCam(cam);
-        if (!routeResult.ok) {
-          if (preset_btn) {
-            preset_btn.classList.remove('state-busy');
-            preset_btn.classList.add('state-fail');
-            setTimeout(() => preset_btn.classList.remove('state-fail'), 1500);
-          }
-          setStatus('error', `Could not route camera: ${routeResult.error || routeResult.message}`);
-          return;
+      const captureReady = await preparePresetCapture(cam);
+      if (!captureReady.ok) {
+        if (preset_btn) {
+          preset_btn.classList.remove('state-busy');
+          preset_btn.classList.add('state-fail');
+          setTimeout(() => preset_btn.classList.remove('state-fail'), 1500);
         }
+        setStatus('error', captureReady.error);
+        return;
       }
       const ok = await captureFrame(cam, preset);
 
@@ -4211,7 +4290,10 @@
 
   function bumpImageVersion(cam, preset) {
     const key = presetKey(cam, preset);
-    imageVersions[key] = (imageVersions[key] || 0) + 1;
+    const prev = imageVersions[key] || bootImageVersion;
+    // Image responses are immutable, so every refresh needs a cache-busting
+    // token newer than both the boot-time URL and any prior capture/delete.
+    imageVersions[key] = Math.max(Date.now(), prev + 1);
   }
 
   // ── Snap-on-drift helpers ──────────────────────────────────────────────────
@@ -4487,6 +4569,11 @@
 
   async function capturePreset(n) {
     const cam = state.activeCam;
+    const captureReady = await preparePresetCapture(cam);
+    if (!captureReady.ok) {
+      setStatus('error', captureReady.error);
+      return;
+    }
     const ok = await captureFrame(cam, n);
     if (ok) {
       clearSnapNeeded(cam, n);
@@ -4561,7 +4648,7 @@
     captureBtn.addEventListener('pointerup', (e) => e.stopPropagation());
     captureBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      await capturePreset(n);
+      await capturePresetImage(cam, n, captureBtn);
     });
     btn.appendChild(captureBtn);
 
@@ -4790,11 +4877,11 @@
 
     if (state.atem.enabled && state.captureOutput === 'activeCam') {
       setStatus('busy', 'Routing camera…', false);
-      const routeResult = await routeActiveCam(scanCamIdx);
-      if (!routeResult.ok) {
-        setStatus('error', `Could not route camera: ${routeResult.error || routeResult.message}`);
-        return;
-      }
+    }
+    const captureReady = await preparePresetCapture(scanCamIdx);
+    if (!captureReady.ok) {
+      setStatus('error', captureReady.error);
+      return;
     }
 
     const captureKey = (state.atem.enabled && state.captureOutput === 'activeCam')
