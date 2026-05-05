@@ -1589,18 +1589,35 @@
       <div id="joystick-status" style="color:var(--muted); font-size:0.85rem; margin-top:12px;">
         Status: <span id="joystick-status-text">Not connected</span>
       </div>
+      <div style="margin-top:12px; padding:8px; background:var(--surf2); border-radius:4px; font-size:0.8rem; line-height:1.5;">
+        <strong>Gamepad Setup:</strong><br/>
+        1. Connect your gamepad<br/>
+        2. Check "Show Debug Info" below<br/>
+        3. Look at "Gamepad:" line for button count<br/>
+        4. Press d-pad to verify buttons (should show [12, 13, 14, 15] for 8BitDo)<br/>
+        5. If wrong, switch gamepad to DirectInput/D-Input mode<br/>
+        <br/>
+        <strong>8BitDo Zero 2 Modes:</strong><br/>
+        • <strong>D-Input</strong> ✓ (16 buttons) - Use "8BitDo Zero 2 (D-Pad)" profile<br/>
+        • X-Input (10 buttons) - Switch to D-Input mode on controller<br/>
+        • Switch mode (17 buttons) - Switch to D-Input mode on controller
+      </div>
       <label class="atem-toggle-wrap" style="margin-top:12px;">
         <input id="f-joystick-debug" type="checkbox" />
         <span>Show Debug Info</span>
       </label>
       <div id="joystick-debug" style="color:var(--muted); font-size:0.8rem; margin-top:12px; line-height:1.4; font-family:monospace; display:none; padding:8px; background:var(--surf2); border-radius:4px;">
-        <div>Pan: <span id="dbg-joystick-pan">—</span></div>
-        <div>Tilt: <span id="dbg-joystick-tilt">—</span></div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="flex:1;">Pan: <span id="dbg-joystick-pan">—</span> Tilt: <span id="dbg-joystick-tilt">—</span></div>
+          <div id="gamepad-input-indicator" style="width:12px; height:12px; border-radius:50%; background:var(--muted); transition:all 0.1s;"></div>
+        </div>
         <div>Zoom: <span id="dbg-joystick-zoom">—</span></div>
         <div style="margin-top:6px; color:var(--subtext); font-size:0.75rem;">Raw axes:</div>
         <div>Ax0: <span id="dbg-joystick-ax0">—</span> Ax1: <span id="dbg-joystick-ax1">—</span> Ax2: <span id="dbg-joystick-ax2">—</span></div>
         <div style="margin-top:6px; color:var(--subtext); font-size:0.75rem;">Gamepad:</div>
-        <div id="dbg-joystick-info">—</div>
+        <div id="dbg-joystick-info" style="white-space:pre-line;">—</div>
+        <div style="margin-top:6px; color:var(--subtext); font-size:0.75rem;">Pressed buttons:</div>
+        <div id="dbg-joystick-buttons" style="word-wrap:break-word;">—</div>
       </div>
     </div>
   </div>
@@ -1698,6 +1715,42 @@
       axisMap: { ...defaults.axisMap, ...(joystick.axisMap || {}) },
       buttonMap: { ...defaults.buttonMap, ...(joystick.buttonMap || {}) },
     };
+  }
+
+  function detectGamepadMode() {
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const gamepad = [...gamepads].find(Boolean);
+    if (!gamepad) return null;
+
+    const id = gamepad.id.toLowerCase();
+    const btnCount = gamepad.buttons.length;
+    const axCount = gamepad.axes.length;
+
+    let detected = {
+      id: gamepad.id,
+      buttonCount: btnCount,
+      axisCount: axCount,
+      suggestion: null,
+      reason: '',
+    };
+
+    if (id.includes('8bitdo') || id.includes('8bit do')) {
+      if (btnCount === 16 && axCount >= 2) {
+        detected.suggestion = '8bitdo-zero2';
+        detected.reason = 'DirectInput mode (D-Pad recommended)';
+      } else if (btnCount === 10) {
+        detected.reason = 'XInput mode detected — switch the controller to D-Input';
+      } else if (btnCount === 17) {
+        detected.reason = 'Switch mode detected — switch the controller to D-Input';
+      } else {
+        detected.reason = `Unknown mode: ${btnCount} buttons, ${axCount} axes`;
+      }
+    } else if (id.includes('logitech') && id.includes('extreme 3d')) {
+      detected.suggestion = 'logitech-extreme-3d';
+      detected.reason = 'Analog stick mode';
+    }
+
+    return detected;
   }
 
   let state = {
@@ -2246,7 +2299,35 @@
       elDbgJoystickAx0.textContent = rawPan.toFixed(3);
       elDbgJoystickAx1.textContent = rawTilt.toFixed(3);
       elDbgJoystickAx2.textContent = rawZoom.toFixed(3);
-      elDbgJoystickInfo.textContent = `${gamepad.id} (${gamepad.buttons.length} btns, ${gamepad.axes.length} axes)`;
+
+      const detection = detectGamepadMode();
+      let infoText = `${gamepad.id} (${gamepad.buttons.length} btns, ${gamepad.axes.length} axes)`;
+      if (detection && detection.suggestion && detection.suggestion !== cfg.model) {
+        infoText += `\n⚠ Try mode: ${detection.suggestion} - ${detection.reason}`;
+      } else if (detection && detection.reason) {
+        infoText += `\n${detection.reason}`;
+      }
+      elDbgJoystickInfo.textContent = infoText;
+
+      const pressedButtons = gamepad.buttons
+        .map((btn, idx) => btn.pressed ? idx : null)
+        .filter(idx => idx !== null);
+      const elDbgButtons = document.getElementById('dbg-joystick-buttons');
+      if (elDbgButtons) {
+        elDbgButtons.textContent = pressedButtons.length > 0 ? `[${pressedButtons.join(', ')}]` : 'None';
+      }
+
+      const elIndicator = document.getElementById('gamepad-input-indicator');
+      if (elIndicator) {
+        const hasInput = gamepadState.pan !== 0 || gamepadState.tilt !== 0 || gamepadState.zoom !== 0;
+        if (hasInput) {
+          elIndicator.style.background = 'var(--accent)';
+          elIndicator.style.boxShadow = '0 0 8px var(--accent)';
+        } else {
+          elIndicator.style.background = 'var(--muted)';
+          elIndicator.style.boxShadow = 'none';
+        }
+      }
     } else {
       elDbgJoystickPan.textContent = '—';
       elDbgJoystickTilt.textContent = '—';
@@ -2255,6 +2336,15 @@
       elDbgJoystickAx1.textContent = '—';
       elDbgJoystickAx2.textContent = '—';
       elDbgJoystickInfo.textContent = 'Not connected';
+      const elDbgButtons = document.getElementById('dbg-joystick-buttons');
+      if (elDbgButtons) {
+        elDbgButtons.textContent = '—';
+      }
+      const elIndicator = document.getElementById('gamepad-input-indicator');
+      if (elIndicator) {
+        elIndicator.style.background = 'var(--muted)';
+        elIndicator.style.boxShadow = 'none';
+      }
     }
   }
 
@@ -2957,9 +3047,18 @@
 
   function applyGamepadInput() {
     if (!gamepadConnected) return;
-    // Debug: Log when commands are sent
-    if (gamepadState.pan === 0 && gamepadState.tilt === 0 && gamepadState.zoom === 0) {
-      console.debug('[GAMEPAD] Sending STOP command: pan=0, tilt=0, zoom=0');
+    const cmd = { pan: gamepadState.pan, tilt: -gamepadState.tilt, zoom: gamepadState.zoom };
+    const isDuplicate = cmd.pan === lastVirtualPtz.pan && cmd.tilt === lastVirtualPtz.tilt && cmd.zoom === lastVirtualPtz.zoom;
+    if (state.showJoystickDebug) {
+      if (cmd.pan === 0 && cmd.tilt === 0 && cmd.zoom === 0) {
+        if (!isDuplicate) {
+          console.debug('[GAMEPAD] Sending STOP command');
+        } else {
+          console.debug('[GAMEPAD] STOP already sent, deduplicating');
+        }
+      } else {
+        console.debug('[GAMEPAD] Sending command:', cmd, isDuplicate ? '(duplicate, skipped)' : '(sent)');
+      }
     }
     sendPtzDriveCommand(gamepadState.pan, -gamepadState.tilt, gamepadState.zoom);
   }
@@ -3055,21 +3154,41 @@
   let gamepadAnimationFrame = null;
   let dpadState = { up: false, down: false, left: false, right: false };
 
+  let lastDpadState = { up: false, down: false, left: false, right: false };
+
   function updateDpadInput(gamepad, cfg) {
-    if (!cfg.useDpad) return;
+    if (!cfg.useDpad) {
+      gamepadState.pan = 0;
+      gamepadState.tilt = 0;
+      dpadState = { up: false, down: false, left: false, right: false };
+      return;
+    }
     const dpadMap = JOYSTICK_PROFILES[cfg.model]?.dpadMap || {};
+
+    // Validate button indices exist
+    const validIndices = [dpadMap.up, dpadMap.down, dpadMap.left, dpadMap.right]
+      .every(idx => idx !== undefined && idx < gamepad.buttons.length);
+    if (!validIndices) {
+      console.warn('[D-PAD] Invalid button indices for profile:', cfg.model, dpadMap, `gamepad has ${gamepad.buttons.length} buttons`);
+      dpadState = { up: false, down: false, left: false, right: false };
+      lastDpadState = { ...dpadState };
+      gamepadState.pan = 0;
+      gamepadState.tilt = 0;
+      return;
+    }
+
     const newState = {
       up: gamepad.buttons[dpadMap.up]?.pressed || false,
       down: gamepad.buttons[dpadMap.down]?.pressed || false,
       left: gamepad.buttons[dpadMap.left]?.pressed || false,
       right: gamepad.buttons[dpadMap.right]?.pressed || false,
     };
-    dpadState = newState;
-
-    // Debug: Log d-pad button states
-    if (newState.up || newState.down || newState.left || newState.right) {
-      console.debug('[D-PAD]', { up: newState.up, down: newState.down, left: newState.left, right: newState.right, dpadMap });
+    const changed = ['up', 'down', 'left', 'right'].some(key => newState[key] !== lastDpadState[key]);
+    if (state.showJoystickDebug && changed) {
+      console.debug('[D-PAD] State changed:', newState);
     }
+    dpadState = newState;
+    lastDpadState = newState;
 
     const deadzone = cfg.deadzone || 0.15;
     const sensitivity = cfg.sensitivity || { pan: 1.0, tilt: 1.0, zoom: 0.5 };
