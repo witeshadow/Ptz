@@ -120,6 +120,12 @@ class TestFrontendContracts(unittest.TestCase):
             "${camName} is not on ATEM ${busLabel}. Put it there first or switch scan source.",
             self.html,
         )
+
+    def test_status_pill_wraps_long_errors_and_preserves_full_copy(self):
+        self.assertIn("#status.multiline #status-text {", self.html)
+        self.assertIn("const multiline = type === 'error' && msg.length > 32;", self.html)
+        self.assertIn("elStatus.title = msg;", self.html)
+        self.assertIn("Scan stopped at preset ${recallFailure.preset}", self.html)
         self.assertIn(
             "ATEM ${busLabel} capture needs a reported output. Use Active Cam routing or an SDI output instead of USB Webcam.",
             self.html,

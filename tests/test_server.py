@@ -879,16 +879,19 @@ class TestHTTPRoutes(unittest.TestCase):
         payload = json.dumps(
             {"ip": "10.0.0.1", "port": 52381, "camera": 2, "preset": 6}
         ).encode()
-        with patch(
-            "server.recall_visca_preset",
-            return_value={
-                "success": False,
-                "message": "Motion did not settle in time",
-                "settled": False,
-                "sawCompletion": False,
-                "position": None,
-            },
-        ) as mock_recall:
+        with (
+            patch(
+                "server.recall_visca_preset",
+                return_value={
+                    "success": False,
+                    "message": "Motion did not settle in time",
+                    "settled": False,
+                    "sawCompletion": False,
+                    "position": None,
+                },
+            ) as mock_recall,
+            patch.object(server._logger, "warning") as mock_warning,
+        ):
             status, body = self.srv.post("/recall", payload)
 
         self.assertEqual(status, 200)
@@ -896,6 +899,15 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertFalse(data["success"])
         self.assertIn("settle", data["message"])
         mock_recall.assert_called_once_with("10.0.0.1", 52381, 6, 2, "settle")
+        mock_warning.assert_called_once_with(
+            "Recall failed ip=%s port=%s cam=%s preset=%s wait=%s: %s",
+            "10.0.0.1",
+            52381,
+            2,
+            6,
+            "settle",
+            "Motion did not settle in time",
+        )
 
     def test_recall_dwell_mode_passed_through(self):
         payload = json.dumps(
