@@ -128,6 +128,15 @@ class TestFrontendContracts(unittest.TestCase):
 
     def test_dpad_invalid_warn_is_deduplicated(self):
         # Deduplication guard variable is initialized to true (valid by default).
+        """
+        Asserts the rendered frontend contains a deduplicated warning flow for invalid D-pad button indices.
+        
+        Verifies four concrete behaviors in the HTML/JS:
+        - A guard variable `lastDpadValid` is initialized to `true`.
+        - The `console.warn('[D-PAD] Invalid button indices for profile:' ...)` call is executed only inside an `if (lastDpadValid) {` conditional.
+        - The guard is set to `false` immediately after the guarded warning (`lastDpadValid = false;`) to suppress repeated warnings.
+        - The guard is reset to `true` (`lastDpadValid = true;`) when indices become valid again so warnings can recur after recovery.
+        """
         self.assertIn("let lastDpadValid = true;", self.html)
 
         # The warn is wrapped in a conditional so it fires only on the first
@@ -160,6 +169,14 @@ class TestFrontendContracts(unittest.TestCase):
         # Use a newline-anchored substring so that the indentation comparison is
         # against the beginning of the physical line rather than an arbitrary
         # mid-line slice.
+        """
+        Ensure the D-PAD invalid-index warning appears only inside the guarded `if (lastDpadValid)` block.
+        
+        Searches the rendered HTML for a newline-anchored substring that matches the guarded indentation form of:
+          if (lastDpadValid) {
+              console.warn('[D-PAD] Invalid button indices for profile:'
+        and asserts that a differently-indented (ungarded) warning line is not present.
+        """
         guarded_warn = (
             "if (lastDpadValid) {\n"
             "        console.warn('[D-PAD] Invalid button indices for profile:'"
@@ -181,6 +198,11 @@ class TestFrontendContracts(unittest.TestCase):
         # `let lastDpadValid = true;` which comes first.  Instead we search for
         # `lastDpadValid = false;` first, then locate `lastDpadValid = true;`
         # *starting from that position* to confirm the reset-to-true comes later.
+        """
+        Verify the source resets the D-pad validity flag after the invalid-indices branch.
+        
+        Asserts that the first occurrence of "lastDpadValid = true;" in the rendered HTML appears after "lastDpadValid = false;", ensuring the code transitions from the invalid state back to valid only after the invalid branch executes.
+        """
         idx_false = self.html.index("lastDpadValid = false;")
         idx_true_after_false = self.html.find("lastDpadValid = true;", idx_false)
         self.assertGreater(
@@ -194,6 +216,11 @@ class TestFrontendContracts(unittest.TestCase):
         # must all be zeroed/cleared so that no stale movement is emitted.
         # These lines were pre-existing but the PR preserves them; assert they
         # remain consistent with the new guard logic.
+        """
+        Ensure that when D-pad indices are invalid, the code clears D-pad and gamepad movement state.
+        
+        Asserts the rendered HTML/JS contains statements that reset `dpadState` to all false, copy `lastDpadState` from `dpadState`, and set `gamepadState.pan` and `gamepadState.tilt` to 0.
+        """
         self.assertIn(
             "dpadState = { up: false, down: false, left: false, right: false };",
             self.html,
