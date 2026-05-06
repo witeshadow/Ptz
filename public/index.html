@@ -2741,7 +2741,7 @@
     state.activeCam = idx;
     state.editingPresetId = null;
     currentCameraZoom = { value: 0, timestamp: 0 };
-    if (gamepadConnected) {
+    if (gamepadConnected && state.joystick?.enabled) {
       startZoomPolling();
     }
     schedSave();
@@ -3293,11 +3293,12 @@
   window.addEventListener('gamepadconnected', (e) => {
     gamepadConnected = true;
     console.debug('[PTZ] Gamepad connected:', e.gamepad.id);
-    updateJoystickStatus();
-    updateJoystickDebug();
     if (state.joystick && state.joystick.enabled) {
+      startZoomPolling();
       updateGamepadState();
     }
+    updateJoystickStatus();
+    updateJoystickDebug();
   });
 
   window.addEventListener('gamepaddisconnected', (e) => {
@@ -3938,6 +3939,7 @@
         gamepadAnimationFrame = null;
       }
       gamepadState = { pan: 0, tilt: 0, zoom: 0 };
+      stopZoomPolling();
       sendPtzDriveCommand(0, 0, 0);
     } else if (!wasEnabled && state.joystick.enabled) {
       const connectedGamepads = typeof navigator !== 'undefined' && navigator.getGamepads
@@ -3945,6 +3947,7 @@
         : [];
       if (connectedGamepads.length > 0) {
         gamepadConnected = true;
+        startZoomPolling();
         if (!gamepadAnimationFrame) {
           updateGamepadState();
         }
