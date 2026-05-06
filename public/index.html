@@ -1639,8 +1639,8 @@
       </div>
       <div style="margin-top:12px;">
         <label for="f-joystick-zoom-comp">Zoom Speed Compensation</label>
-        <span style="display:block; font-size:0.8rem; color:var(--subtext); margin-bottom:6px;">Pan/tilt sensitivity scales inversely with zoom level</span>
-        <select id="f-joystick-zoom-comp" style="width:100%; padding:6px; border:1px solid var(--border); background:var(--surf1); color:var(--text); border-radius:4px; font-size:0.9rem;">
+        <span style="display:block; font-size:0.8rem; color:var(--muted); margin-bottom:6px;">Pan/tilt sensitivity scales inversely with zoom level</span>
+        <select id="f-joystick-zoom-comp" style="width:100%; padding:6px; border:1px solid var(--border); background:var(--surf2); color:var(--text); border-radius:4px; font-size:0.9rem;">
           <option value="linear">Linear (default)</option>
           <option value="quadratic">Quadratic</option>
         </select>
@@ -3137,30 +3137,42 @@
 
   // ── Gamepad/Joystick API ───────────────────────────────────────────────────
   function pollCameraZoom() {
+    const session = zoomPollSession;
+    if (zoomPollInFlight) return;
     const camIdx = state.activeCam;
     const cam = state.cameras[camIdx];
     if (!cam || !cam.ip) {
       currentCameraZoom.value = 0;
+      currentCameraZoom.timestamp = 0;
       return;
     }
+    zoomPollInFlight = true;
     fetch(`/api/position/${camIdx}`)
       .then(res => res.ok ? res.json() : null)
       .catch(() => null)
       .then(data => {
+        if (session !== zoomPollSession) return;
         if (data && data.ok && typeof data.zoom !== 'undefined') {
           currentCameraZoom.value = parseInt(data.zoom, 10) || 0;
           currentCameraZoom.timestamp = Date.now();
+        } else {
+          currentCameraZoom = { value: 0, timestamp: 0 };
         }
+      })
+      .finally(() => {
+        if (session === zoomPollSession) zoomPollInFlight = false;
       });
   }
 
   function startZoomPolling() {
+    zoomPollSession += 1;
     if (zoomPollTimer) clearInterval(zoomPollTimer);
     pollCameraZoom();
     zoomPollTimer = setInterval(pollCameraZoom, ZOOM_POLL_INTERVAL_MS);
   }
 
   function stopZoomPolling() {
+    zoomPollSession += 1;
     if (zoomPollTimer) {
       clearInterval(zoomPollTimer);
       zoomPollTimer = null;
@@ -3188,8 +3200,10 @@
     if (!gamepadConnected) {
       gamepadConnected = true;
       console.debug('[PTZ] Gamepad connected:', gamepad.id);
-      startZoomPolling();
       updateJoystickStatus();
+    }
+    if (!zoomPollTimer && state.joystick?.enabled) {
+      startZoomPolling();
     }
 
     const cfg = state.joystick;
@@ -3394,6 +3408,8 @@
 
   let currentCameraZoom = { value: 0, timestamp: 0 };
   let zoomPollTimer = null;
+  let zoomPollSession = 0;
+  let zoomPollInFlight = false;
   const ZOOM_POLL_INTERVAL_MS = 500;
 
   function updateDpadInput(gamepad, cfg) {
