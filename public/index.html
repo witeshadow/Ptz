@@ -3160,12 +3160,13 @@
         }
       })
       .finally(() => {
-        if (session === zoomPollSession) zoomPollInFlight = false;
+        zoomPollInFlight = false;
       });
   }
 
   function startZoomPolling() {
     zoomPollSession += 1;
+    zoomPollInFlight = false;
     if (zoomPollTimer) clearInterval(zoomPollTimer);
     pollCameraZoom();
     zoomPollTimer = setInterval(pollCameraZoom, ZOOM_POLL_INTERVAL_MS);
@@ -3173,6 +3174,7 @@
 
   function stopZoomPolling() {
     zoomPollSession += 1;
+    zoomPollInFlight = false;
     if (zoomPollTimer) {
       clearInterval(zoomPollTimer);
       zoomPollTimer = null;
