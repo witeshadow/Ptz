@@ -4471,7 +4471,7 @@
       scheduleAutoCut(n, autoCutPlan, autoCutTrigger || 'settled', recallElapsedMs);
       lastRecalledPreset = n;
       lastRecalledCam = recallCamIdx;
-      if (data.settled) checkPositionAfterRecall(n, recallCamIdx);
+      checkPositionAfterRecall(n, recallCamIdx);
     } else {
       const recallElapsedMs = Math.max(
         0,
