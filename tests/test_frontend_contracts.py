@@ -19,9 +19,9 @@ class TestFrontendContracts(unittest.TestCase):
 
     def test_delete_image_is_hidden(self):
         # Clear button is hidden in the new per-preset edit design
-        self.assertIn(
-            ".preset-clear {\n      display: none;",
+        self.assertRegex(
             self.html,
+            r"\.preset-clear\s*\{[^}]*display:\s*none;",
         )
 
     def test_atem_pill_supports_off_wait_and_connected_states(self):
