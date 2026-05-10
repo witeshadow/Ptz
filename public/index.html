@@ -2994,15 +2994,14 @@
     if (elVirtualJoystickContainer) {
       elVirtualJoystickContainer.style.display = show ? 'block' : 'none';
     }
-    if (elVirtualJoystickBtn) {
-      elVirtualJoystickBtn.style.display = !show ? 'block' : 'none';
-    }
+    updateJoystickButtonVisibility();
   }
 
   if (elVirtualJoystickBtn) {
     elVirtualJoystickBtn.addEventListener('click', () => {
       showVirtualJoystick(true);
       localStorage.setItem('ptz-virtual-joystick', 'true');
+      updateJoystickButtonVisibility();
     });
   }
 
@@ -3079,9 +3078,20 @@
     });
   }
 
+  // ── Virtual joystick button visibility ─────────────────────────────────────
+  const isTouchDevice = window.matchMedia('(hover: none)').matches;
+
+  function updateJoystickButtonVisibility() {
+    if (!elVirtualJoystickBtn) return;
+    const settingsPanelOpen = elGspPanel && elGspPanel.classList.contains('open');
+    const joystickEnabled = localStorage.getItem('ptz-virtual-joystick') !== 'false';
+    const shouldShow = isTouchDevice && !virtualJoystickActive && !settingsPanelOpen && joystickEnabled;
+    elVirtualJoystickBtn.style.display = shouldShow ? 'block' : 'none';
+  }
+
   // Show virtual joystick button on touch devices
-  if (window.matchMedia('(hover: none)').matches) {
-    if (elVirtualJoystickBtn && localStorage.getItem('ptz-virtual-joystick') !== 'false') {
+  if (isTouchDevice && localStorage.getItem('ptz-virtual-joystick') !== 'false') {
+    if (elVirtualJoystickBtn) {
       elVirtualJoystickBtn.style.display = 'block';
     }
   }
@@ -3696,6 +3706,7 @@
     elGspFab.addEventListener('click', () => {
       const willOpen = !elGspPanel.classList.contains('open');
       elGspPanel.classList.toggle('open');
+      updateJoystickButtonVisibility();
       if (willOpen) {
         activeSettingsTab = 'cameras';
         applySettingsTabVisibility();
@@ -3705,7 +3716,10 @@
     });
   }
   if (elGspClose && elGspPanel) {
-    elGspClose.addEventListener('click', () => elGspPanel.classList.remove('open'));
+    elGspClose.addEventListener('click', () => {
+      elGspPanel.classList.remove('open');
+      updateJoystickButtonVisibility();
+    });
   }
 
   const elGspAtemDebug = document.getElementById('gsp-atem-debug');
