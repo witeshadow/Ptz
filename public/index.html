@@ -4780,14 +4780,41 @@
     editBtn.className = 'preset-edit';
     editBtn.type = 'button';
     editBtn.title = 'Edit label for this preset';
-    editBtn.setAttribute('aria-label', 'Edit label');
+    editBtn.setAttribute('aria-label', `Edit preset ${n}`);
+    editBtn.setAttribute('aria-pressed', isEditing ? 'true' : 'false');
     editBtn.textContent = 'Edit';
     editBtn.addEventListener('pointerup', (e) => e.stopPropagation());
     editBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       const key = presetKey(cam, n);
-      state.editingPresetId = (state.editingPresetId === key) ? null : key;
-      renderGrid();
+      const wasEditing = state.editingPresetId === key;
+      const prevKey = state.editingPresetId;
+      state.editingPresetId = wasEditing ? null : key;
+
+      // Update only affected tiles instead of rebuilding entire grid
+      if (prevKey) {
+        const prevTile = elGrid.querySelector(`[data-preset="${prevKey.split(':')[1]}"]`);
+        if (prevTile && prevTile.dataset.displayCam === prevKey.split(':')[0]) {
+          prevTile.classList.remove('editing-this');
+          const prevEditBtn = prevTile.querySelector('.preset-edit');
+          if (prevEditBtn) {
+            prevEditBtn.setAttribute('aria-pressed', 'false');
+          }
+        }
+      }
+
+      if (state.editingPresetId) {
+        const newTile = elGrid.querySelector(`[data-preset="${n}"]`);
+        if (newTile && newTile.dataset.displayCam === cam) {
+          newTile.classList.add('editing-this');
+          const newEditBtn = newTile.querySelector('.preset-edit');
+          if (newEditBtn) {
+            newEditBtn.setAttribute('aria-pressed', 'true');
+          }
+        }
+      }
+
+      editBtn.focus();
     });
     btn.appendChild(editBtn);
 
