@@ -1350,7 +1350,7 @@
 </main>
 
 <footer>
-  <span>Tap a preset to recall it &nbsp;&middot;&nbsp; Tap Edit to rename a preset or Snap to refresh its image &nbsp;&middot;&nbsp; Double-click a camera tab to rename it</span>
+  <span>Tap a preset to recall it &nbsp;&middot;&nbsp; Tap Edit, then tap that preset to rename it, or tap Snap to refresh its image &nbsp;&middot;&nbsp; Double-click a camera tab to rename it</span>
   <div id="build-indicator" aria-live="polite">
     <span class="build-commit">build <span id="build-commit">5efe1f2</span></span>
     <span class="build-mode" id="build-mode">normal</span>
@@ -4823,6 +4823,7 @@
     });
 
     btn.addEventListener('keydown', (e) => {
+      if (e.target !== btn) return;
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         activatePreset();
