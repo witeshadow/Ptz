@@ -2730,7 +2730,9 @@
     loadCameraSettings();
     updateCameraSelectUi();
     renderTabs();
-    refreshGridForActiveCamera();
+    renderGrid();
+    lastRecalledPreset = null;
+    lastRecalledCam = null;
     applyGridLayout();
     updateAtemDebug();
     updateToolbarVisibility();
@@ -4720,8 +4722,9 @@
     const presetId = presetKey(cam, n);
     const isEditing = state.editingPresetId === presetId;
 
-    const btn = document.createElement('button');
-    btn.type = 'button';
+    const btn = document.createElement('div');
+    btn.role = 'button';
+    btn.tabIndex = 0;
     btn.className  = 'preset-btn' + (isEditing ? ' editing-this' : '') + (snapNeeded[presetId] ? ' needs-snap' : '');
     btn.dataset.preset = n;
     btn.dataset.displayCam = cam;
@@ -4817,6 +4820,13 @@
     btn.addEventListener('click', (e) => {
       if (handledPointerUp && e.detail !== 0) return;
       activatePreset();
+    });
+
+    btn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        activatePreset();
+      }
     });
 
     refreshPresetImage(btn, cam, n);
