@@ -639,8 +639,8 @@
     .preset-btn[data-aspect-supported="true"]::before {
       display: none;
     }
-    .preset-btn:not(.edit-mode):not(.state-busy):hover { border-color: var(--accent); }
-    .preset-btn:not(.edit-mode):not(.state-busy):active { transform: scale(.97); }
+    .preset-btn:not(.editing-this):not(.state-busy):hover { border-color: var(--accent); }
+    .preset-btn:not(.editing-this):not(.state-busy):active { transform: scale(.97); }
 
     .preset-num {
       position: absolute;
@@ -650,7 +650,7 @@
       transition: color .15s;
       pointer-events: none;
     }
-    .preset-btn:not(.edit-mode):not(.state-busy):hover .preset-num { color: var(--accent); }
+    .preset-btn:not(.editing-this):not(.state-busy):hover .preset-num { color: var(--accent); }
     .preset-btn.has-image .preset-num { display: none; }
 
     .preset-snapshot {
@@ -4779,6 +4779,7 @@
     editBtn.title = 'Edit label for this preset';
     editBtn.setAttribute('aria-label', 'Edit label');
     editBtn.textContent = 'Edit';
+    editBtn.addEventListener('pointerup', (e) => e.stopPropagation());
     editBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       const key = presetKey(cam, n);
