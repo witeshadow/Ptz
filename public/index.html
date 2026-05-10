@@ -685,35 +685,46 @@
       text-shadow: 0 1px 3px rgba(0,0,0,.9);
     }
 
-    .preset-capture {
+    .preset-edit {
       position: absolute; top: 6px; left: 6px;
+      min-width: 40px; height: 24px;
+      padding: 0 7px;
+      background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.25);
+      border-radius: 999px; color: #fff; font-size: .65rem; line-height: 1;
+      font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+      cursor: pointer; display: inline-flex;
+      align-items: center; justify-content: center;
+      transition: background .15s, border-color .15s;
+      z-index: 2;
+    }
+    .preset-edit:hover { background: var(--accent); border-color: var(--accent); }
+    .preset-btn.editing-this .preset-edit {
+      background: rgba(217, 119, 6, 0.7);
+      border-color: #fbbf24;
+      color: #fbbf24;
+    }
+    .preset-btn.editing-this .preset-edit:hover {
+      background: #d97706;
+      border-color: #fbbf24;
+    }
+
+    .preset-capture {
+      position: absolute; top: 6px; right: 6px;
       min-width: 44px; height: 24px;
       padding: 0 8px;
       background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.25);
       border-radius: 999px; color: #fff; font-size: .65rem; line-height: 1;
       font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
-      cursor: pointer; display: none;
+      cursor: pointer; display: inline-flex;
       align-items: center; justify-content: center;
       transition: background .15s;
       z-index: 2;
     }
-    .preset-btn.edit-mode .preset-capture { display: inline-flex; opacity: 0.92; }
-    .preset-btn.edit-mode:hover .preset-capture { opacity: 1; }
     .preset-capture:hover { background: var(--accent); border-color: var(--accent); }
 
     .preset-clear {
-      position: absolute; top: 5px; right: 5px;
-      width: 20px; height: 20px;
-      background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.25);
-      border-radius: 50%; color: #fff; font-size: .75rem; line-height: 1;
-      cursor: pointer; display: none;
-      align-items: center; justify-content: center;
-      transition: background .15s;
-      z-index: 2;
+      display: none;
     }
-    .preset-btn.edit-mode.has-image .preset-clear { display: flex; opacity: 0.55; }
-    .preset-btn.edit-mode.has-image:hover .preset-clear { opacity: 1; }
-    .preset-clear:hover { background: var(--error); border-color: var(--error); }
 
     .name-input {
       font-size: .7rem; background: var(--surf2);
@@ -726,13 +737,12 @@
     .preset-btn.state-ok    { border-color: var(--success); }
     .preset-btn.state-fail  { border-color: var(--error); }
 
-    .preset-btn.edit-mode { cursor: default; }
-    .preset-btn.edit-mode:hover { border-color: var(--border); }
-    .preset-btn.edit-mode:hover .preset-num { color: var(--border); }
+    .preset-btn.editing-this { cursor: default; }
+    .preset-btn.editing-this:hover { border-color: var(--border); }
+    .preset-btn.editing-this:hover .preset-num { color: var(--border); }
 
     @keyframes snap-pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
     .preset-btn.needs-snap .preset-capture {
-      display: flex;
       background: rgba(234,179,8,.85);
       border-color: rgba(234,179,8,.85);
       animation: snap-pulse 1.5s ease-in-out infinite;
@@ -795,11 +805,6 @@
       transition: border-color .2s, color .2s;
     }
     .btn-ghost:hover, .btn-ghost.active { border-color: var(--accent); color: var(--accent); }
-    #btn-edit.active {
-      border-color: #d97706;
-      color: #fbbf24;
-      background: rgba(217, 119, 6, 0.14);
-    }
     #btn-auto-cut.active {
       border-color: var(--success);
       color: var(--success);
@@ -1319,7 +1324,6 @@
   </div>
   <div id="toolbar">
     <button class="btn-primary" id="btn-scan">Scan All Presets</button>
-    <button class="btn-ghost"    id="btn-edit">Edit Labels / Snap</button>
     <div id="capture-source-toggle" style="display:none">
       <button class="btn-ghost csrc-btn" data-src="active"   title="Capture from active camera">ACT</button>
       <button class="btn-ghost csrc-btn" data-src="preview"  title="Capture from ATEM preview">PVW</button>
@@ -1345,7 +1349,7 @@
 </main>
 
 <footer>
-  <span>Tap a preset to recall it &nbsp;&middot;&nbsp; Turn on Edit Labels / Snap to rename presets or refresh images &nbsp;&middot;&nbsp; Double-click a camera tab to rename it</span>
+  <span>Tap a preset to recall it &nbsp;&middot;&nbsp; Tap Edit to rename a preset or Snap to refresh its image &nbsp;&middot;&nbsp; Double-click a camera tab to rename it</span>
   <div id="build-indicator" aria-live="polite">
     <span class="build-commit">build <span id="build-commit">5efe1f2</span></span>
     <span class="build-mode" id="build-mode">normal</span>
@@ -1798,6 +1802,7 @@
 
   let state = {
     activeCam: 0,
+    editingPresetId: null,
     cameras: DEF_CAMERAS.map(c => ({ ...c })),
     labels: {},
     dwellMs: 3000,
@@ -2719,6 +2724,7 @@
     clearPendingAutoCut();
     saveCameraSettings();
     state.activeCam = idx;
+    state.editingPresetId = null;
     schedSave();
     loadCameraSettings();
     updateCameraSelectUi();
@@ -4407,7 +4413,6 @@
   // ── Preset grid ────────────────────────────────────────────────────────────
   const elPresetStage = document.getElementById('preset-stage');
   const elGrid = document.getElementById('preset-grid');
-  let editMode = false;
   const imageVersions = Object.create(null);
 
   function presetKey(cam, preset) {
@@ -4711,10 +4716,12 @@
   function buildPresetBtn(n) {
     const cam = state.activeCam;
     const lbl = state.labels[presetKey(cam, n)] || '';
+    const presetId = presetKey(cam, n);
+    const isEditing = state.editingPresetId === presetId;
 
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className  = 'preset-btn' + (editMode ? ' edit-mode' : '') + (snapNeeded[presetKey(cam, n)] ? ' needs-snap' : '');
+    btn.className  = 'preset-btn' + (isEditing ? ' editing-this' : '') + (snapNeeded[presetId] ? ' needs-snap' : '');
     btn.dataset.preset = n;
     btn.dataset.displayCam = cam;
 
@@ -4765,6 +4772,20 @@
     });
     btn.appendChild(clearBtn);
 
+    const editBtn = document.createElement('button');
+    editBtn.className = 'preset-edit';
+    editBtn.type = 'button';
+    editBtn.title = 'Edit label for this preset';
+    editBtn.setAttribute('aria-label', 'Edit label');
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const key = presetKey(cam, n);
+      state.editingPresetId = (state.editingPresetId === key) ? null : key;
+      renderPresets();
+    });
+    btn.appendChild(editBtn);
+
     const captureBtn = document.createElement('button');
     captureBtn.className = 'preset-capture';
     captureBtn.type      = 'button';
@@ -4780,7 +4801,7 @@
 
     let handledPointerUp = false;
     function activatePreset() {
-      if (editMode) openLabelEditor(n, ovName);
+      if (state.editingPresetId === presetId) openLabelEditor(n, ovName);
       else recallPreset(n, btn);
     }
 
@@ -4803,7 +4824,6 @@
 
   // ── Label editor ───────────────────────────────────────────────────────────
   function openLabelEditor(n, nameEl) {
-    if (!editMode) return;
     if (nameEl.querySelector('input')) return;
     const lk   = presetKey(state.activeCam, n);
     const prev = state.labels[lk] || '';
@@ -4834,19 +4854,6 @@
     });
   }
 
-  // ── Edit mode toggle ───────────────────────────────────────────────────────
-  const btnEdit = document.getElementById('btn-edit');
-  btnEdit.addEventListener('click', () => {
-    editMode = !editMode;
-    btnEdit.textContent = editMode ? 'Done' : 'Edit Labels / Snap';
-    btnEdit.classList.toggle('active', editMode);
-    elGrid.querySelectorAll('.preset-btn').forEach(b =>
-      b.classList.toggle('edit-mode', editMode)
-    );
-    if (editMode) {
-      setStatus('success', 'Edit mode: tap Snap on any preset to refresh its image');
-    }
-  });
 
   async function routeActiveCam(camIdx) {
     try {
