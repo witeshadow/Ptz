@@ -3121,6 +3121,25 @@
       virtualJoystickTouchId = null;
       resetJoystick();
     });
+
+    // Mouse support for desktop testing
+    elVirtualJoystick.addEventListener('mousedown', (e) => {
+      if (virtualJoystickTouchId !== null) return;
+      virtualJoystickTouchId = -1; // Use -1 for mouse
+      updateJoystickPosition(e.clientX, e.clientY);
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (virtualJoystickTouchId !== -1) return;
+      updateJoystickPosition(e.clientX, e.clientY);
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (virtualJoystickTouchId === -1) {
+        virtualJoystickTouchId = null;
+        resetJoystick();
+      }
+    });
   }
 
   // ── Virtual joystick button visibility ─────────────────────────────────────
