@@ -3124,14 +3124,19 @@
 
     // Mouse support for desktop testing
     elVirtualJoystick.addEventListener('mousedown', (e) => {
-      if (virtualJoystickTouchId !== null) return;
+      if (virtualJoystickTouchId !== null) return; // Ignore if touch active
       virtualJoystickTouchId = -1; // Use -1 for mouse
       updateJoystickPosition(e.clientX, e.clientY);
     });
 
     document.addEventListener('mousemove', (e) => {
-      if (virtualJoystickTouchId !== -1) return;
-      updateJoystickPosition(e.clientX, e.clientY);
+      if (virtualJoystickTouchId === null || virtualJoystickTouchId === -1) {
+        // Call updateJoystickPosition only if mouse active (-1) or nothing active (null)
+        if (virtualJoystickTouchId === -1) {
+          updateJoystickPosition(e.clientX, e.clientY);
+        }
+      }
+      // Ignore mousemove if touch is active (virtualJoystickTouchId > 0)
     });
 
     document.addEventListener('mouseup', () => {
