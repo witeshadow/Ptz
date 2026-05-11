@@ -3077,14 +3077,21 @@
     }
 
     async function resetJoystick() {
+      if (virtualJoystickTouchId === null) return; // Already resetting or never started
+      const savedId = virtualJoystickTouchId;
+      virtualJoystickTouchId = -999; // Lock: prevent touchmove/mousemove from sending commands
+
       elJoystickCenter.style.transform = 'translate(-50%, -50%)';
-      console.debug('[PTZ] Sending STOP command');
-      // Send STOP multiple times to match physical joystick behavior (continuous polling)
+      console.debug('[PTZ] Sending STOP command (locked input)');
+
+      // Send STOP multiple times to match physical joystick behavior
       for (let i = 0; i < 3; i++) {
         const res = await sendPtzDriveCommand(0, 0, 0);
         console.debug(`[PTZ] STOP #${i+1}:`, res ? 'sent' : 'failed');
-        if (i < 2) await new Promise(resolve => setTimeout(resolve, 20)); // 20ms between retries
+        if (i < 2) await new Promise(resolve => setTimeout(resolve, 20));
       }
+
+      virtualJoystickTouchId = null; // Unlock input
       console.debug('[PTZ] Virtual joystick reset to center');
     }
 
