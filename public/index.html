@@ -3096,22 +3096,9 @@
       try {
         elJoystickCenter.style.transform = 'translate(-50%, -50%)';
 
-        // Send opposing direction briefly (braking) to counteract momentum
-        const brakePan = lastJoystickDirection.pan !== 0 ? -lastJoystickDirection.pan * 0.05 : 0;
-        const brakeTilt = lastJoystickDirection.tilt !== 0 ? -lastJoystickDirection.tilt * 0.05 : 0;
-        if (brakePan !== 0 || brakeTilt !== 0) {
-          console.log('[JOYSTICK] Sending brake:', { pan: brakePan, tilt: brakeTilt });
-          await sendPtzDriveCommand(brakePan, brakeTilt, 0);
-          await new Promise(resolve => setTimeout(resolve, 50)); // Brake for 50ms
-        }
-
-        console.log('[JOYSTICK] Sending STOP command (locked input)');
-        // Send STOP multiple times
-        for (let i = 0; i < 3; i++) {
-          const res = await sendPtzDriveCommand(0, 0, 0);
-          console.log(`[JOYSTICK] STOP #${i+1}:`, res ? 'sent' : 'failed');
-          if (i < 2) await new Promise(resolve => setTimeout(resolve, 20));
-        }
+        // Send STOP command
+        await sendPtzDriveCommand(0, 0, 0);
+        console.log('[JOYSTICK] STOP sent');
 
         // Start keep-alive timer to continuously send STOP while joystick is released
         // This matches the gamepad behavior which continuously polls/sends updates
@@ -3126,7 +3113,6 @@
       } finally {
         virtualJoystickTouchId = null;
         joystickResetting = false; // Always unlock, even on error
-        lastJoystickDirection = { pan: 0, tilt: 0 }; // Reset direction tracker
         console.log('[JOYSTICK] Reset complete, flag cleared');
       }
     }
