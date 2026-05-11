@@ -3106,6 +3106,7 @@
           sendPtzDriveCommand(0, 0, 0);
         }, 50); // Send STOP every 50ms to keep camera halted
         console.log('[JOYSTICK] Keep-alive timer started (50ms interval)');
+        startKeepAliveTimeout(); // Auto-clear after 2s
       } catch (err) {
         console.error('[JOYSTICK] Error during reset:', err);
       } finally {
@@ -3121,6 +3122,16 @@
         joystickKeepAliveTimer = null;
         console.log('[JOYSTICK] Keep-alive timer cleared');
       }
+    }
+
+    // Auto-clear keep-alive after 2s (camera should be settled by then)
+    function startKeepAliveTimeout() {
+      setTimeout(() => {
+        if (joystickKeepAliveTimer && virtualJoystickTouchId === null) {
+          console.log('[JOYSTICK] Keep-alive auto-timeout (camera settled)');
+          clearJoystickKeepAlive();
+        }
+      }, 2000);
     }
 
     elVirtualJoystick.addEventListener('touchstart', (e) => {
