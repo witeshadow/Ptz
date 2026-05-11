@@ -1722,6 +1722,10 @@ class Handler(BaseHTTPRequestHandler):
             0 if tilt_dir == 0x03 else max(1, min(0x10, int(round(tilt_mag * 0x10))))
         )
 
+        _logger.debug(
+            f"[PTZ] VISCA pan-tilt drive: pan_speed={pan_speed} pan_dir={pan_dir:02x} "
+            f"tilt_speed={tilt_speed} tilt_dir={tilt_dir:02x} (input: pan={pan:.2f} tilt={tilt:.2f})"
+        )
         pt_ok, pt_message = send_visca_pan_tilt_drive(
             ip,
             port,

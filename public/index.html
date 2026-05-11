@@ -2984,7 +2984,8 @@
       setStatus('error', 'Enter the camera IP address first');
       return false;
     }
-    if (next.pan === lastVirtualPtz.pan && next.tilt === lastVirtualPtz.tilt && next.zoom === lastVirtualPtz.zoom) {
+    const isStopCommand = next.pan === 0 && next.tilt === 0 && next.zoom === 0;
+    if (!isStopCommand && next.pan === lastVirtualPtz.pan && next.tilt === lastVirtualPtz.tilt && next.zoom === lastVirtualPtz.zoom) {
       return true;
     }
 
