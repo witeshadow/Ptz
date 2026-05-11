@@ -2963,6 +2963,7 @@
   let joystickResetting = false;
   let joystickKeepAliveTimer = null;
   let lastVirtualPtz = { pan: 0, tilt: 0, zoom: 0 };
+  let lastJoystickDirection = { pan: 0, tilt: 0 }; // Track direction for braking
 
   function quantizePtzAxis(value) {
     const n = Math.max(-1, Math.min(1, Number(value) || 0));
@@ -3076,6 +3077,10 @@
       pan = Math.round(pan * 10) / 10;
       tilt = Math.round(tilt * 10) / 10;
 
+      // Track direction for braking on release
+      if (pan !== 0) lastJoystickDirection.pan = pan > 0 ? 1 : -1;
+      if (tilt !== 0) lastJoystickDirection.tilt = tilt > 0 ? 1 : -1;
+
       sendPtzDriveCommand(pan, tilt, 0);
       console.debug('[PTZ] Virtual joystick:', { pan: pan.toFixed(2), tilt: tilt.toFixed(2), rawDistance: distance.toFixed(2) });
     }
@@ -3090,9 +3095,18 @@
 
       try {
         elJoystickCenter.style.transform = 'translate(-50%, -50%)';
-        console.log('[JOYSTICK] Sending STOP command (locked input)');
 
-        // Send STOP multiple times to match physical joystick behavior
+        // Send opposing direction briefly (braking) to counteract momentum
+        const brakePan = lastJoystickDirection.pan !== 0 ? -lastJoystickDirection.pan * 0.2 : 0;
+        const brakeTilt = lastJoystickDirection.tilt !== 0 ? -lastJoystickDirection.tilt * 0.2 : 0;
+        if (brakePan !== 0 || brakeTilt !== 0) {
+          console.log('[JOYSTICK] Sending brake:', { pan: brakePan, tilt: brakeTilt });
+          await sendPtzDriveCommand(brakePan, brakeTilt, 0);
+          await new Promise(resolve => setTimeout(resolve, 100)); // Brake for 100ms
+        }
+
+        console.log('[JOYSTICK] Sending STOP command (locked input)');
+        // Send STOP multiple times
         for (let i = 0; i < 3; i++) {
           const res = await sendPtzDriveCommand(0, 0, 0);
           console.log(`[JOYSTICK] STOP #${i+1}:`, res ? 'sent' : 'failed');
@@ -3112,6 +3126,7 @@
       } finally {
         virtualJoystickTouchId = null;
         joystickResetting = false; // Always unlock, even on error
+        lastJoystickDirection = { pan: 0, tilt: 0 }; // Reset direction tracker
         console.log('[JOYSTICK] Reset complete, flag cleared');
       }
     }
