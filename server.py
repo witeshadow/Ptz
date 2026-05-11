@@ -1713,10 +1713,10 @@ class Handler(BaseHTTPRequestHandler):
         pan_dir = 0x03 if pan_mag < deadzone else (0x01 if pan < 0 else 0x02)
         tilt_dir = 0x03 if tilt_mag < deadzone else (0x01 if tilt > 0 else 0x02)
         pan_speed = (
-            1 if pan_dir == 0x03 else max(1, min(0x10, int(round(pan_mag * 0x10))))
+            0 if pan_dir == 0x03 else max(1, min(0x10, int(round(pan_mag * 0x10))))
         )
         tilt_speed = (
-            1 if tilt_dir == 0x03 else max(1, min(0x10, int(round(tilt_mag * 0x10))))
+            0 if tilt_dir == 0x03 else max(1, min(0x10, int(round(tilt_mag * 0x10))))
         )
 
         pt_ok, pt_message = send_visca_pan_tilt_drive(
