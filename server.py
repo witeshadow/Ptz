@@ -138,6 +138,7 @@ DEFAULT_SETTINGS = {
             "preset3": 2,
             "preset4": 3,
         },
+        "zoomCompensationCurve": "linear",
     },
     "virtualJoystick": {
         "enabled": True,

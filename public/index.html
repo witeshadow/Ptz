@@ -1637,6 +1637,14 @@
         <input id="f-joystick-zoom-sens" type="range" min="0.1" max="2" step="0.1" value="0.5" />
         <span id="f-joystick-zoom-value">0.5x</span>
       </div>
+      <div style="margin-top:12px;">
+        <label for="f-joystick-zoom-comp">Zoom Speed Compensation</label>
+        <span style="display:block; font-size:0.8rem; color:var(--muted); margin-bottom:6px;">Pan/tilt sensitivity scales inversely with zoom level</span>
+        <select id="f-joystick-zoom-comp" style="width:100%; padding:6px; border:1px solid var(--border); background:var(--surf2); color:var(--text); border-radius:4px; font-size:0.9rem;">
+          <option value="linear">Linear (default)</option>
+          <option value="quadratic">Quadratic</option>
+        </select>
+      </div>
       <div id="joystick-status" style="color:var(--muted); font-size:0.85rem; margin-top:12px;">
         Status: <span id="joystick-status-text">Not connected</span>
       </div>
@@ -1757,6 +1765,7 @@
       sensitivity: { ...profile.sensitivity },
       axisMap: { ...profile.axisMap },
       buttonMap: { ...profile.buttonMap },
+      zoomCompensationCurve: "linear",
     };
 
     return {
@@ -2731,6 +2740,10 @@
     saveCameraSettings();
     state.activeCam = idx;
     state.editingPresetId = null;
+    currentCameraZoom = { value: 0, timestamp: 0 };
+    if (gamepadConnected && state.joystick?.enabled) {
+      startZoomPolling();
+    }
     schedSave();
     loadCameraSettings();
     updateCameraSelectUi();
@@ -3123,6 +3136,52 @@
   }
 
   // ── Gamepad/Joystick API ───────────────────────────────────────────────────
+  function pollCameraZoom() {
+    const session = zoomPollSession;
+    if (zoomPollInFlight) return;
+    const camIdx = state.activeCam;
+    const cam = state.cameras[camIdx];
+    if (!cam || !cam.ip) {
+      currentCameraZoom.value = 0;
+      currentCameraZoom.timestamp = 0;
+      return;
+    }
+    zoomPollInFlight = true;
+    fetch(`/api/position/${camIdx}`)
+      .then(res => res.ok ? res.json() : null)
+      .catch(() => null)
+      .then(data => {
+        if (session !== zoomPollSession) return;
+        if (data && data.ok && typeof data.zoom !== 'undefined') {
+          currentCameraZoom.value = parseInt(data.zoom, 10) || 0;
+          currentCameraZoom.timestamp = Date.now();
+        } else {
+          currentCameraZoom = { value: 0, timestamp: 0 };
+        }
+      })
+      .finally(() => {
+        zoomPollInFlight = false;
+      });
+  }
+
+  function startZoomPolling() {
+    zoomPollSession += 1;
+    zoomPollInFlight = false;
+    if (zoomPollTimer) clearInterval(zoomPollTimer);
+    pollCameraZoom();
+    zoomPollTimer = setInterval(pollCameraZoom, ZOOM_POLL_INTERVAL_MS);
+  }
+
+  function stopZoomPolling() {
+    zoomPollSession += 1;
+    zoomPollInFlight = false;
+    if (zoomPollTimer) {
+      clearInterval(zoomPollTimer);
+      zoomPollTimer = null;
+    }
+    currentCameraZoom = { value: 0, timestamp: 0 };
+  }
+
   function updateGamepadState() {
     if (!state.joystick || !state.joystick.enabled) return;
 
@@ -3132,6 +3191,7 @@
       if (gamepadConnected) {
         gamepadConnected = false;
         gamepadState = { pan: 0, tilt: 0, zoom: 0 };
+        stopZoomPolling();
         sendPtzDriveCommand(0, 0, 0);
         console.debug('[PTZ] Gamepad disconnected');
         updateJoystickStatus();
@@ -3143,6 +3203,9 @@
       gamepadConnected = true;
       console.debug('[PTZ] Gamepad connected:', gamepad.id);
       updateJoystickStatus();
+    }
+    if (!zoomPollTimer && state.joystick?.enabled) {
+      startZoomPolling();
     }
 
     const cfg = state.joystick;
@@ -3202,9 +3265,31 @@
     }
   }
 
+  function calculateZoomCompensation(zoomValue, curve) {
+    if (!zoomValue) return 1.0;
+    const maxZoom = 32767;
+    const ratio = Math.max(0, Math.min(1, zoomValue / maxZoom));
+    if (curve === 'quadratic') {
+      return 1 / (1 + (ratio * ratio) * 9);
+    }
+    return 1 / (1 + ratio * 9);
+  }
+
   function applyGamepadInput() {
     if (!gamepadConnected) return;
-    const cmd = { pan: gamepadState.pan, tilt: -gamepadState.tilt, zoom: gamepadState.zoom };
+    let pan = gamepadState.pan;
+    let tilt = gamepadState.tilt;
+    const zoom = gamepadState.zoom;
+
+    const cfg = state.joystick || {};
+    if (cfg.enabled && pan !== 0 || tilt !== 0) {
+      const curve = cfg.zoomCompensationCurve || 'linear';
+      const compensation = calculateZoomCompensation(currentCameraZoom.value, curve);
+      pan *= compensation;
+      tilt *= compensation;
+    }
+
+    const cmd = { pan: pan, tilt: -tilt, zoom: zoom };
     const isDuplicate = cmd.pan === lastVirtualPtz.pan && cmd.tilt === lastVirtualPtz.tilt && cmd.zoom === lastVirtualPtz.zoom;
     if (state.showJoystickDebug) {
       if (cmd.pan === 0 && cmd.tilt === 0 && cmd.zoom === 0) {
@@ -3217,24 +3302,26 @@
         console.debug('[GAMEPAD] Sending command:', cmd, isDuplicate ? '(duplicate, skipped)' : '(sent)');
       }
     }
-    sendPtzDriveCommand(gamepadState.pan, -gamepadState.tilt, gamepadState.zoom);
+    sendPtzDriveCommand(pan, -tilt, zoom);
   }
 
   // Initialize gamepad support
   window.addEventListener('gamepadconnected', (e) => {
     gamepadConnected = true;
     console.debug('[PTZ] Gamepad connected:', e.gamepad.id);
-    updateJoystickStatus();
-    updateJoystickDebug();
     if (state.joystick && state.joystick.enabled) {
+      startZoomPolling();
       updateGamepadState();
     }
+    updateJoystickStatus();
+    updateJoystickDebug();
   });
 
   window.addEventListener('gamepaddisconnected', (e) => {
     gamepadConnected = false;
     gamepadState = { pan: 0, tilt: 0, zoom: 0 };
     gamepadButtonStates = {};
+    stopZoomPolling();
     sendPtzDriveCommand(0, 0, 0);
     console.debug('[PTZ] Gamepad disconnected');
     updateJoystickStatus();
@@ -3320,6 +3407,12 @@
 
   let lastDpadState = { up: false, down: false, left: false, right: false };
   let lastDpadValid = true;
+
+  let currentCameraZoom = { value: 0, timestamp: 0 };
+  let zoomPollTimer = null;
+  let zoomPollSession = 0;
+  let zoomPollInFlight = false;
+  const ZOOM_POLL_INTERVAL_MS = 500;
 
   function updateDpadInput(gamepad, cfg) {
     if (!cfg.useDpad) {
@@ -3693,6 +3786,7 @@
   const elJoystickPanSens = document.getElementById('f-joystick-pan-sens');
   const elJoystickTiltSens = document.getElementById('f-joystick-tilt-sens');
   const elJoystickZoomSens = document.getElementById('f-joystick-zoom-sens');
+  const elJoystickZoomComp = document.getElementById('f-joystick-zoom-comp');
   const elJoystickStatus = document.getElementById('joystick-status-text');
   const elJoystickDebug = document.getElementById('joystick-debug');
   const elJoystickDebugCheckbox = document.getElementById('f-joystick-debug');
@@ -3827,6 +3921,9 @@
       elJoystickZoomSens.value = (js.sensitivity?.zoom || 0.5).toFixed(1);
       document.getElementById('f-joystick-zoom-value').textContent = (js.sensitivity?.zoom || 0.5).toFixed(1) + 'x';
     }
+    if (elJoystickZoomComp) {
+      elJoystickZoomComp.value = js.zoomCompensationCurve || 'linear';
+    }
     updateVirtualJoystickVisibility();
     updateJoystickStatus();
   }
@@ -3845,6 +3942,7 @@
         tilt: parseFloat(elJoystickTiltSens?.value || 1.0),
         zoom: parseFloat(elJoystickZoomSens?.value || 0.5),
       },
+      zoomCompensationCurve: elJoystickZoomComp?.value || 'linear',
     });
 
     state.virtualJoystick = {
@@ -3859,6 +3957,7 @@
         gamepadAnimationFrame = null;
       }
       gamepadState = { pan: 0, tilt: 0, zoom: 0 };
+      stopZoomPolling();
       sendPtzDriveCommand(0, 0, 0);
     } else if (!wasEnabled && state.joystick.enabled) {
       const connectedGamepads = typeof navigator !== 'undefined' && navigator.getGamepads
@@ -3866,6 +3965,7 @@
         : [];
       if (connectedGamepads.length > 0) {
         gamepadConnected = true;
+        startZoomPolling();
         if (!gamepadAnimationFrame) {
           updateGamepadState();
         }
@@ -3895,7 +3995,7 @@
   }
 
   if (elJoystickEnabled) {
-    [elJoystickEnabled, elJoystickModel, elJoystickDeadzone, elJoystickPanSens, elJoystickTiltSens, elJoystickZoomSens].forEach(el => {
+    [elJoystickEnabled, elJoystickModel, elJoystickDeadzone, elJoystickPanSens, elJoystickTiltSens, elJoystickZoomSens, elJoystickZoomComp].forEach(el => {
       if (el) {
         el.addEventListener('change', saveJoystickSettings);
         el.addEventListener('input', () => {
