@@ -141,11 +141,11 @@ DEFAULT_SETTINGS = {
     },
     "virtualJoystick": {
         "enabled": True,
-        "deadzone": 0.20,
+        "deadzone": 0.35,
         "sensitivity": {
-            "pan": 1.0,
-            "tilt": 1.0,
-            "zoom": 0.5,
+            "pan": 0.6,
+            "tilt": 0.6,
+            "zoom": 0.3,
         },
     },
 }
@@ -1706,16 +1706,16 @@ class Handler(BaseHTTPRequestHandler):
 
         port = int(cfg.get("port", 52381) or 52381)
         visca_addr = int(cfg.get("viscaAddr", 1) or 1)
-        deadzone = 0.12
+        deadzone = 0.20
         pan_mag = abs(pan)
         tilt_mag = abs(tilt)
         pan_dir = 0x03 if pan_mag < deadzone else (0x01 if pan < 0 else 0x02)
         tilt_dir = 0x03 if tilt_mag < deadzone else (0x01 if tilt > 0 else 0x02)
         pan_speed = (
-            1 if pan_dir == 0x03 else max(1, min(0x18, int(round(pan_mag * 0x18))))
+            1 if pan_dir == 0x03 else max(1, min(0x10, int(round(pan_mag * 0x10))))
         )
         tilt_speed = (
-            1 if tilt_dir == 0x03 else max(1, min(0x18, int(round(tilt_mag * 0x18))))
+            1 if tilt_dir == 0x03 else max(1, min(0x10, int(round(tilt_mag * 0x10))))
         )
 
         pt_ok, pt_message = send_visca_pan_tilt_drive(

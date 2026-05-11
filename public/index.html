@@ -1843,7 +1843,7 @@
     activeCamAux: 'sdi1',
     positions: {},
     joystick: normalizeJoystickSettings(),
-    virtualJoystick: { enabled: true, deadzone: 0.20, sensitivity: { pan: 1.0, tilt: 1.0, zoom: 0.5 } },
+    virtualJoystick: { enabled: true, deadzone: 0.35, sensitivity: { pan: 0.6, tilt: 0.6, zoom: 0.3 } },
     // Runtime ATEM AUX sources (not persisted, updated via SSE)
     aux1Source: 0,
     aux2Source: 0,
@@ -3845,8 +3845,8 @@
 
     state.virtualJoystick = {
       enabled: elVirtualJoystickEnabledCheckbox?.checked !== false,
-      deadzone: 0.20,
-      sensitivity: { pan: 1.0, tilt: 1.0, zoom: 0.5 },
+      deadzone: 0.35,
+      sensitivity: { pan: 0.6, tilt: 0.6, zoom: 0.3 },
     };
 
     if (wasEnabled && !state.joystick.enabled) {
