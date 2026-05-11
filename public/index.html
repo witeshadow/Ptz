@@ -198,6 +198,18 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    #status.multiline {
+      align-items: flex-start;
+      border-radius: 14px;
+      padding-top: 6px;
+      padding-bottom: 6px;
+    }
+    #status.multiline .status-dot { margin-top: 0.25rem; }
+    #status.multiline #status-text {
+      overflow: visible;
+      text-overflow: clip;
+      white-space: normal;
+    }
 
     .status-hint { display: block; font-size: 0.85rem; margin-top: 4px; }
     .status-hint.status-live { color: var(--error); font-weight: 600; }
@@ -1310,8 +1322,8 @@
     <div id="cam-tabs"><!-- rendered by JS --></div>
     <div class="header-actions">
       <button id="cut-live-btn" style="display:none" title="Cut active camera to ATEM program">Cut</button>
-      <button type="button" id="live-mode-btn" class="live" title="Toggle Live/Edit mode">Live</button>
-      <button type="button" id="lock-live-btn" title="Lock camera to prevent preset movement"></button>
+      <button type="button" id="live-mode-btn" class="live" title="Toggle Live/Edit view. Use Locked to block movement of the camera on ATEM program.">Live</button>
+      <button type="button" id="lock-live-btn" title="Blocks PTZ moves, preset recalls, and scans when the selected camera is live on ATEM program."></button>
       <button type="button" class="btn-ghost" id="btn-auto-cut" style="display:none">Auto Cut</button>
       <button type="button" id="fullscreen-btn" title="Toggle fullscreen">&#x26F6;</button>
     </div>
@@ -2064,6 +2076,8 @@
   let statusTimer    = null;
 
   if (elBuildCommit) elBuildCommit.textContent = BUILD_COMMIT;
+  if (elStatus) elStatus.title = elStatusText.textContent;
+  if (elStatusText) elStatusText.title = elStatusText.textContent;
 
   function updateBuildIndicator() {
     if (!elBuildMode) return;
@@ -2075,8 +2089,11 @@
 
   function setStatus(type, msg, autoClear = true) {
     clearTimeout(statusTimer);
-    elStatus.className = type;
+    const multiline = type === 'error' && msg.length > 32;
+    elStatus.className = [type, multiline ? 'multiline' : ''].filter(Boolean).join(' ');
     elStatusText.textContent = msg;
+    elStatus.title = msg;
+    elStatusText.title = msg;
     if (type === 'error') {
       lastError = msg;
       lastErrorTime = Date.now();
@@ -2090,6 +2107,8 @@
       statusTimer = setTimeout(() => {
         elStatus.className = '';
         elStatusText.textContent = 'Ready';
+        elStatus.title = 'Ready';
+        elStatusText.title = 'Ready';
       }, 4000);
     }
   }
@@ -3707,11 +3726,11 @@
     updateLockIcon = function() {
       if (state.lockLiveMode) {
         elLockLiveBtn.textContent = '🔒 Locked';
-        elLockLiveBtn.title = 'Live camera movement is blocked';
+        elLockLiveBtn.title = 'Blocks PTZ moves, preset recalls, and scans when the selected camera is live on ATEM program.';
         elLockLiveBtn.classList.add('locked');
       } else {
         elLockLiveBtn.textContent = '⚠ Unlocked';
-        elLockLiveBtn.title = 'Live camera movement is allowed';
+        elLockLiveBtn.title = 'Allows PTZ moves, preset recalls, and scans even if the selected camera is live on ATEM program.';
         elLockLiveBtn.classList.remove('locked');
       }
     };
@@ -3719,6 +3738,12 @@
     elLockLiveBtn.addEventListener('click', () => {
       state.lockLiveMode = !state.lockLiveMode;
       updateLockIcon();
+      setStatus(
+        'success',
+        state.lockLiveMode
+          ? 'Locked: PTZ moves, preset recalls, and scans are blocked when the selected camera is live on ATEM program.'
+          : 'Unlocked: PTZ moves, preset recalls, and scans are allowed even if that camera is live on ATEM program.'
+      );
       schedSave();
     });
   }
@@ -3728,6 +3753,9 @@
     if (!elLiveBtn) return;
     elLiveBtn.textContent = state.liveMode ? 'Live' : 'Edit';
     elLiveBtn.classList.toggle('live', state.liveMode);
+    elLiveBtn.title = state.liveMode
+      ? 'Live view active. Use Locked to block movement of the camera on ATEM program.'
+      : 'Edit view active. This does not block camera movement; Locked does.';
   }
 
   if (elLiveBtn) {
@@ -3735,11 +3763,12 @@
       state.liveMode = !state.liveMode;
       if (state.liveMode) {
         state.lockLiveMode = true;
-        setStatus('success', 'Live mode activated - camera locked to prevent accidental movement');
+        setStatus('success', 'Live view active. Locked protects the camera on ATEM program from PTZ moves, preset recalls, and scans.');
       } else {
         if (state.unlockOnExitLiveMode) {
           state.lockLiveMode = false;
         }
+        setStatus('success', 'Edit view active. Label / Snap mode controls images and labels only; Locked controls movement safety.');
       }
       updateLiveModeButton();
       if (updateLockIcon) updateLockIcon();
@@ -5056,7 +5085,6 @@
     });
   }
 
-
   async function routeActiveCam(camIdx) {
     try {
       const res = await fetch('/api/atem/aux-route', {
@@ -5292,7 +5320,7 @@
     btnScan.classList.remove('cancel');
     hideScanBar();
     if (recallFailure) {
-      setStatus('error', `Stopped at preset ${recallFailure.preset}: ${recallFailure.message}`);
+      setStatus('error', `Scan stopped at preset ${recallFailure.preset}: ${recallFailure.message}`);
     } else if (captureErrors.length) {
       setStatus('error', `Capture failed for preset(s): ${captureErrors.join(', ')} — check server console`);
     } else {

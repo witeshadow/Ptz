@@ -51,6 +51,20 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("Active Cam", self.html)
         self.assertIn("Route to:", self.html)
 
+    def test_lock_and_label_snap_copy_are_explicit_about_safety(self):
+        self.assertIn(
+            "Edit view active. This does not block camera movement; Locked does.",
+            self.html,
+        )
+        self.assertIn(
+            "Blocks PTZ moves, preset recalls, and scans when the selected camera is live on ATEM program.",
+            self.html,
+        )
+        self.assertIn(
+            "Edit view active. Label / Snap mode controls images and labels only; Locked controls movement safety.",
+            self.html,
+        )
+
     def test_positions_state_and_capture_integration(self):
         # positions initialized in state
         self.assertIn("positions: {},", self.html)
@@ -116,6 +130,12 @@ class TestFrontendContracts(unittest.TestCase):
             "${camName} is not on ATEM ${busLabel}. Put it there first or switch scan source.",
             self.html,
         )
+
+    def test_status_pill_wraps_long_errors_and_preserves_full_copy(self):
+        self.assertIn("#status.multiline #status-text {", self.html)
+        self.assertIn("const multiline = type === 'error' && msg.length > 32;", self.html)
+        self.assertIn("elStatus.title = msg;", self.html)
+        self.assertIn("Scan stopped at preset ${recallFailure.preset}", self.html)
         self.assertIn(
             "ATEM ${busLabel} capture needs a reported output. Use Active Cam routing or an SDI output instead of USB Webcam.",
             self.html,

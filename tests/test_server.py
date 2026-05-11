@@ -879,16 +879,19 @@ class TestHTTPRoutes(unittest.TestCase):
         payload = json.dumps(
             {"ip": "10.0.0.1", "port": 52381, "camera": 2, "preset": 6}
         ).encode()
-        with patch(
-            "server.recall_visca_preset",
-            return_value={
-                "success": False,
-                "message": "Motion did not settle in time",
-                "settled": False,
-                "sawCompletion": False,
-                "position": None,
-            },
-        ) as mock_recall:
+        with (
+            patch(
+                "server.recall_visca_preset",
+                return_value={
+                    "success": False,
+                    "message": "Motion did not settle in time",
+                    "settled": False,
+                    "sawCompletion": False,
+                    "position": None,
+                },
+            ) as mock_recall,
+            patch.object(server._logger, "warning") as mock_warning,
+        ):
             status, body = self.srv.post("/recall", payload)
 
         self.assertEqual(status, 200)
@@ -896,6 +899,42 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertFalse(data["success"])
         self.assertIn("settle", data["message"])
         mock_recall.assert_called_once_with("10.0.0.1", 52381, 6, 2, "settle")
+        mock_warning.assert_called_once_with(
+            "Recall failed ip=%s port=%s cam=%s preset=%s wait=%s: %s",
+            "10.0.0.1",
+            52381,
+            2,
+            6,
+            "settle",
+            "Motion did not settle in time",
+        )
+
+    def test_recall_live_lock_returns_409_when_target_camera_is_on_program(self):
+        settings = dict(server.DEFAULT_SETTINGS)
+        settings["liveMode"] = True
+        settings["lockLiveMode"] = True
+        settings["atem"] = {"ip": "10.0.0.50", "enabled": True}
+        settings["cameras"] = [
+            dict(
+                server.DEFAULT_SETTINGS["cameras"][0],
+                ip="10.0.0.1",
+                port=52381,
+                viscaAddr=1,
+                atemInput=5,
+            )
+        ]
+        server.write_settings(settings)
+        payload = json.dumps(
+            {"ip": "10.0.0.1", "port": 52381, "camera": 1, "preset": 4}
+        ).encode()
+
+        with patch("server._get_atem", return_value={"connected": True, "program": 5}):
+            status, body = self.srv.post("/recall", payload)
+
+        self.assertEqual(status, 409)
+        data = json.loads(body)
+        self.assertFalse(data["success"])
+        self.assertIn("before recalling a preset", data["message"])
 
     def test_recall_dwell_mode_passed_through(self):
         payload = json.dumps(
@@ -1302,6 +1341,33 @@ class TestNormalizeScanWaitMode(unittest.TestCase):
 
     def test_rejects_unknown_falls_back_to_settle(self):
         self.assertEqual(server._normalize_scan_wait_mode("unknown"), "settle")
+
+
+# ── capture_usb_device ────────────────────────────────────────────────────────
+
+
+class TestCaptureUsbDevice(unittest.TestCase):
+    def test_macos_avfoundation_prefers_supported_ntsc_framerate_first(self):
+        attempted = []
+
+        def fake_grab(args, tmp, log_fail=True):
+            attempted.append(args)
+            if ["-framerate", "59.940180"] == args[4:6]:
+                with open(tmp, "wb") as fh:
+                    fh.write(b"jpeg-bytes")
+                return True, ""
+            return False, "unsupported"
+
+        with (
+            patch.object(server, "_IS_MACOS", True),
+            patch.object(server, "_HAS_CV2", False),
+            patch("server._ffmpeg_grab", side_effect=fake_grab),
+        ):
+            data = server.capture_usb_device("0")
+
+        self.assertEqual(data, b"jpeg-bytes")
+        self.assertGreaterEqual(len(attempted), 1)
+        self.assertEqual(attempted[0][4:6], ["-framerate", "59.940180"])
 
 
 # ── _probe_recall_command_succeeded ──────────────────────────────────────────

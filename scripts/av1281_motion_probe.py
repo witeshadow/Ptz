@@ -203,6 +203,7 @@ def send_inquiry(
 ):
     send_command(sock, ip, port, payload, transport, seq_counter)
     deadline = time.monotonic() + timeout_s
+    raw_replies: list[str] = []
 
     while time.monotonic() < deadline:
         remaining = deadline - time.monotonic()
@@ -216,13 +217,17 @@ def send_inquiry(
         reply = classify_visca_payload(response_payload)
         if reply is None:
             continue
+        raw_replies.append(response_payload.hex())
         if reply.kind == "error":
             raise RuntimeError(f"VISCA error reply: {response_payload.hex()}")
         parsed = parser(response_payload)
         if parsed is not None:
             return parsed
 
-    raise TimeoutError(f"No parsable VISCA inquiry response for {payload.hex()}")
+    seen_suffix = f"; saw {' | '.join(raw_replies)}" if raw_replies else ""
+    raise TimeoutError(
+        f"No parsable VISCA inquiry response to {payload.hex()}{seen_suffix}"
+    )
 
 
 def query_motion_sample(
