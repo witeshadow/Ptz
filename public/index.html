@@ -2960,6 +2960,7 @@
 
   let virtualJoystickActive = false;
   let virtualJoystickTouchId = null;
+  let joystickResetting = false;
   let lastVirtualPtz = { pan: 0, tilt: 0, zoom: 0 };
 
   function quantizePtzAxis(value) {
@@ -3077,9 +3078,8 @@
     }
 
     async function resetJoystick() {
-      if (virtualJoystickTouchId === null) return; // Already resetting or never started
-      const savedId = virtualJoystickTouchId;
-      virtualJoystickTouchId = -999; // Lock: prevent touchmove/mousemove from sending commands
+      if (virtualJoystickTouchId === null || joystickResetting) return; // Already resetting
+      joystickResetting = true; // Lock input processing
 
       elJoystickCenter.style.transform = 'translate(-50%, -50%)';
       console.debug('[PTZ] Sending STOP command (locked input)');
@@ -3091,7 +3091,8 @@
         if (i < 2) await new Promise(resolve => setTimeout(resolve, 20));
       }
 
-      virtualJoystickTouchId = null; // Unlock input
+      virtualJoystickTouchId = null;
+      joystickResetting = false; // Unlock input
       console.debug('[PTZ] Virtual joystick reset to center');
     }
 
@@ -3105,6 +3106,7 @@
     }, { passive: false });
 
     document.addEventListener('touchmove', (e) => {
+      if (joystickResetting) return; // Ignore input during reset
       if (virtualJoystickTouchId === null) return;
 
       for (let i = 0; i < e.touches.length; i++) {
@@ -3139,6 +3141,7 @@
     });
 
     document.addEventListener('mousemove', (e) => {
+      if (joystickResetting) return; // Ignore input during reset
       if (virtualJoystickTouchId === null || virtualJoystickTouchId === -1) {
         // Call updateJoystickPosition only if mouse active (-1) or nothing active (null)
         if (virtualJoystickTouchId === -1) {
