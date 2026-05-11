@@ -173,10 +173,9 @@
       padding: 4px 10px;
       font-size: 0.75rem;
       color: var(--label);
-      width: 180px;
-      min-width: 0;
-      max-width: 180px;
-      flex: 0 0 180px;
+      min-width: 180px;
+      max-width: 500px;
+      flex: 1 1 auto;
       overflow: hidden;
       transition: border-color 0.3s, color 0.3s;
     }
@@ -639,8 +638,8 @@
     .preset-btn[data-aspect-supported="true"]::before {
       display: none;
     }
-    .preset-btn:not(.edit-mode):not(.state-busy):hover { border-color: var(--accent); }
-    .preset-btn:not(.edit-mode):not(.state-busy):active { transform: scale(.97); }
+    .preset-btn:not(.editing-this):not(.state-busy):hover { border-color: var(--accent); }
+    .preset-btn:not(.editing-this):not(.state-busy):active { transform: scale(.97); }
 
     .preset-num {
       position: absolute;
@@ -650,7 +649,7 @@
       transition: color .15s;
       pointer-events: none;
     }
-    .preset-btn:not(.edit-mode):not(.state-busy):hover .preset-num { color: var(--accent); }
+    .preset-btn:not(.editing-this):not(.state-busy):hover .preset-num { color: var(--accent); }
     .preset-btn.has-image .preset-num { display: none; }
 
     .preset-snapshot {
@@ -679,41 +678,52 @@
       text-shadow: 0 1px 3px rgba(0,0,0,.9);
     }
     .ov-name {
-      font-size: .8rem; color: rgba(255,255,255,.9);
+      font-size: .85rem; color: #fff; font-weight: 500;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       text-align: right; flex: 1;
       text-shadow: 0 1px 3px rgba(0,0,0,.9);
     }
 
+    .preset-edit {
+      position: absolute; bottom: 6px; right: 6px;
+      min-width: 40px; height: 24px;
+      padding: 0 7px;
+      background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.25);
+      border-radius: 999px; color: #fff; font-size: .65rem; line-height: 1;
+      font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+      cursor: pointer; display: inline-flex;
+      align-items: center; justify-content: center;
+      transition: background .15s, border-color .15s;
+      z-index: 2;
+    }
+    .preset-edit:hover { background: var(--accent); border-color: var(--accent); }
+    .preset-btn.editing-this .preset-edit {
+      background: rgba(217, 119, 6, 0.7);
+      border-color: #fbbf24;
+      color: #fbbf24;
+    }
+    .preset-btn.editing-this .preset-edit:hover {
+      background: #d97706;
+      border-color: #fbbf24;
+    }
+
     .preset-capture {
-      position: absolute; top: 6px; left: 6px;
+      position: absolute; top: 6px; right: 6px;
       min-width: 44px; height: 24px;
       padding: 0 8px;
       background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.25);
       border-radius: 999px; color: #fff; font-size: .65rem; line-height: 1;
       font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
-      cursor: pointer; display: none;
+      cursor: pointer; display: inline-flex;
       align-items: center; justify-content: center;
       transition: background .15s;
       z-index: 2;
     }
-    .preset-btn.edit-mode .preset-capture { display: inline-flex; opacity: 0.92; }
-    .preset-btn.edit-mode:hover .preset-capture { opacity: 1; }
     .preset-capture:hover { background: var(--accent); border-color: var(--accent); }
 
     .preset-clear {
-      position: absolute; top: 5px; right: 5px;
-      width: 20px; height: 20px;
-      background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.25);
-      border-radius: 50%; color: #fff; font-size: .75rem; line-height: 1;
-      cursor: pointer; display: none;
-      align-items: center; justify-content: center;
-      transition: background .15s;
-      z-index: 2;
+      display: none;
     }
-    .preset-btn.edit-mode.has-image .preset-clear { display: flex; opacity: 0.55; }
-    .preset-btn.edit-mode.has-image:hover .preset-clear { opacity: 1; }
-    .preset-clear:hover { background: var(--error); border-color: var(--error); }
 
     .name-input {
       font-size: .7rem; background: var(--surf2);
@@ -726,13 +736,13 @@
     .preset-btn.state-ok    { border-color: var(--success); }
     .preset-btn.state-fail  { border-color: var(--error); }
 
-    .preset-btn.edit-mode { cursor: default; }
-    .preset-btn.edit-mode:hover { border-color: var(--border); }
-    .preset-btn.edit-mode:hover .preset-num { color: var(--border); }
+    .preset-btn.editing-this { cursor: default; }
+    .preset-btn.editing-this:hover { border-color: var(--border); }
+    .preset-btn.editing-this:hover .preset-num { color: var(--border); }
+    .preset-btn.editing-this:active { transform: none; }
 
     @keyframes snap-pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
     .preset-btn.needs-snap .preset-capture {
-      display: flex;
       background: rgba(234,179,8,.85);
       border-color: rgba(234,179,8,.85);
       animation: snap-pulse 1.5s ease-in-out infinite;
@@ -795,11 +805,6 @@
       transition: border-color .2s, color .2s;
     }
     .btn-ghost:hover, .btn-ghost.active { border-color: var(--accent); color: var(--accent); }
-    #btn-edit.active {
-      border-color: #d97706;
-      color: #fbbf24;
-      background: rgba(217, 119, 6, 0.14);
-    }
     #btn-auto-cut.active {
       border-color: var(--success);
       color: var(--success);
@@ -1319,7 +1324,6 @@
   </div>
   <div id="toolbar">
     <button class="btn-primary" id="btn-scan">Scan All Presets</button>
-    <button class="btn-ghost"    id="btn-edit">Edit Labels / Snap</button>
     <div id="capture-source-toggle" style="display:none">
       <button class="btn-ghost csrc-btn" data-src="active"   title="Capture from active camera">ACT</button>
       <button class="btn-ghost csrc-btn" data-src="preview"  title="Capture from ATEM preview">PVW</button>
@@ -1345,7 +1349,7 @@
 </main>
 
 <footer>
-  <span>Tap a preset to recall it &nbsp;&middot;&nbsp; Turn on Edit Labels / Snap to rename presets or refresh images &nbsp;&middot;&nbsp; Double-click a camera tab to rename it</span>
+  <span>Tap a preset to recall it &nbsp;&middot;&nbsp; Tap Edit, then tap that preset to rename it, or tap Snap to refresh its image &nbsp;&middot;&nbsp; Double-click a camera tab to rename it</span>
   <div id="build-indicator" aria-live="polite">
     <span class="build-commit">build <span id="build-commit">5efe1f2</span></span>
     <span class="build-mode" id="build-mode">normal</span>
@@ -1798,6 +1802,7 @@
 
   let state = {
     activeCam: 0,
+    editingPresetId: null,
     cameras: DEF_CAMERAS.map(c => ({ ...c })),
     labels: {},
     dwellMs: 3000,
@@ -2719,11 +2724,14 @@
     clearPendingAutoCut();
     saveCameraSettings();
     state.activeCam = idx;
+    state.editingPresetId = null;
     schedSave();
     loadCameraSettings();
     updateCameraSelectUi();
     renderTabs();
-    refreshGridForActiveCamera();
+    renderGrid();
+    lastRecalledPreset = null;
+    lastRecalledCam = null;
     applyGridLayout();
     updateAtemDebug();
     updateToolbarVisibility();
@@ -2986,15 +2994,14 @@
     if (elVirtualJoystickContainer) {
       elVirtualJoystickContainer.style.display = show ? 'block' : 'none';
     }
-    if (elVirtualJoystickBtn) {
-      elVirtualJoystickBtn.style.display = !show ? 'block' : 'none';
-    }
+    updateJoystickButtonVisibility();
   }
 
   if (elVirtualJoystickBtn) {
     elVirtualJoystickBtn.addEventListener('click', () => {
       showVirtualJoystick(true);
       localStorage.setItem('ptz-virtual-joystick', 'true');
+      updateJoystickButtonVisibility();
     });
   }
 
@@ -3071,9 +3078,20 @@
     });
   }
 
+  // ── Virtual joystick button visibility ─────────────────────────────────────
+  const isTouchDevice = window.matchMedia('(hover: none)').matches;
+
+  function updateJoystickButtonVisibility() {
+    if (!elVirtualJoystickBtn) return;
+    const settingsPanelOpen = elGspPanel && elGspPanel.classList.contains('open');
+    const joystickEnabled = localStorage.getItem('ptz-virtual-joystick') !== 'false';
+    const shouldShow = isTouchDevice && !virtualJoystickActive && !settingsPanelOpen && joystickEnabled;
+    elVirtualJoystickBtn.style.display = shouldShow ? 'block' : 'none';
+  }
+
   // Show virtual joystick button on touch devices
-  if (window.matchMedia('(hover: none)').matches) {
-    if (elVirtualJoystickBtn && localStorage.getItem('ptz-virtual-joystick') !== 'false') {
+  if (isTouchDevice && localStorage.getItem('ptz-virtual-joystick') !== 'false') {
+    if (elVirtualJoystickBtn) {
       elVirtualJoystickBtn.style.display = 'block';
     }
   }
@@ -3688,6 +3706,7 @@
     elGspFab.addEventListener('click', () => {
       const willOpen = !elGspPanel.classList.contains('open');
       elGspPanel.classList.toggle('open');
+      updateJoystickButtonVisibility();
       if (willOpen) {
         activeSettingsTab = 'cameras';
         applySettingsTabVisibility();
@@ -3697,7 +3716,10 @@
     });
   }
   if (elGspClose && elGspPanel) {
-    elGspClose.addEventListener('click', () => elGspPanel.classList.remove('open'));
+    elGspClose.addEventListener('click', () => {
+      elGspPanel.classList.remove('open');
+      updateJoystickButtonVisibility();
+    });
   }
 
   const elGspAtemDebug = document.getElementById('gsp-atem-debug');
@@ -4407,7 +4429,6 @@
   // ── Preset grid ────────────────────────────────────────────────────────────
   const elPresetStage = document.getElementById('preset-stage');
   const elGrid = document.getElementById('preset-grid');
-  let editMode = false;
   const imageVersions = Object.create(null);
 
   function presetKey(cam, preset) {
@@ -4711,10 +4732,13 @@
   function buildPresetBtn(n) {
     const cam = state.activeCam;
     const lbl = state.labels[presetKey(cam, n)] || '';
+    const presetId = presetKey(cam, n);
+    const isEditing = state.editingPresetId === presetId;
 
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className  = 'preset-btn' + (editMode ? ' edit-mode' : '') + (snapNeeded[presetKey(cam, n)] ? ' needs-snap' : '');
+    const btn = document.createElement('div');
+    btn.role = 'button';
+    btn.tabIndex = 0;
+    btn.className  = 'preset-btn' + (isEditing ? ' editing-this' : '') + (snapNeeded[presetId] ? ' needs-snap' : '');
     btn.dataset.preset = n;
     btn.dataset.displayCam = cam;
 
@@ -4765,6 +4789,48 @@
     });
     btn.appendChild(clearBtn);
 
+    const editBtn = document.createElement('button');
+    editBtn.className = 'preset-edit';
+    editBtn.type = 'button';
+    editBtn.title = 'Edit label for this preset';
+    editBtn.setAttribute('aria-label', `Edit preset ${n}`);
+    editBtn.setAttribute('aria-pressed', isEditing ? 'true' : 'false');
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('pointerup', (e) => e.stopPropagation());
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const key = presetKey(cam, n);
+      const wasEditing = state.editingPresetId === key;
+      const prevKey = state.editingPresetId;
+      state.editingPresetId = wasEditing ? null : key;
+
+      // Update only affected tiles instead of rebuilding entire grid
+      if (prevKey) {
+        const prevTile = elGrid.querySelector(`[data-preset="${prevKey.split(':')[1]}"]`);
+        if (prevTile && prevTile.dataset.displayCam === prevKey.split(':')[0]) {
+          prevTile.classList.remove('editing-this');
+          const prevEditBtn = prevTile.querySelector('.preset-edit');
+          if (prevEditBtn) {
+            prevEditBtn.setAttribute('aria-pressed', 'false');
+          }
+        }
+      }
+
+      if (state.editingPresetId) {
+        const newTile = elGrid.querySelector(`[data-preset="${n}"]`);
+        if (newTile && newTile.dataset.displayCam === cam) {
+          newTile.classList.add('editing-this');
+          const newEditBtn = newTile.querySelector('.preset-edit');
+          if (newEditBtn) {
+            newEditBtn.setAttribute('aria-pressed', 'true');
+          }
+        }
+      }
+
+      editBtn.focus();
+    });
+    btn.appendChild(editBtn);
+
     const captureBtn = document.createElement('button');
     captureBtn.className = 'preset-capture';
     captureBtn.type      = 'button';
@@ -4780,7 +4846,7 @@
 
     let handledPointerUp = false;
     function activatePreset() {
-      if (editMode) openLabelEditor(n, ovName);
+      if (state.editingPresetId === presetId) openLabelEditor(n, ovName);
       else recallPreset(n, btn);
     }
 
@@ -4796,6 +4862,14 @@
       activatePreset();
     });
 
+    btn.addEventListener('keydown', (e) => {
+      if (e.target !== btn) return;
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        activatePreset();
+      }
+    });
+
     refreshPresetImage(btn, cam, n);
 
     return btn;
@@ -4803,7 +4877,6 @@
 
   // ── Label editor ───────────────────────────────────────────────────────────
   function openLabelEditor(n, nameEl) {
-    if (!editMode) return;
     if (nameEl.querySelector('input')) return;
     const lk   = presetKey(state.activeCam, n);
     const prev = state.labels[lk] || '';
@@ -4834,19 +4907,6 @@
     });
   }
 
-  // ── Edit mode toggle ───────────────────────────────────────────────────────
-  const btnEdit = document.getElementById('btn-edit');
-  btnEdit.addEventListener('click', () => {
-    editMode = !editMode;
-    btnEdit.textContent = editMode ? 'Done' : 'Edit Labels / Snap';
-    btnEdit.classList.toggle('active', editMode);
-    elGrid.querySelectorAll('.preset-btn').forEach(b =>
-      b.classList.toggle('edit-mode', editMode)
-    );
-    if (editMode) {
-      setStatus('success', 'Edit mode: tap Snap on any preset to refresh its image');
-    }
-  });
 
   async function routeActiveCam(camIdx) {
     try {

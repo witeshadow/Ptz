@@ -17,15 +17,11 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn('id="fill-cam-strip"', self.html)
         self.assertNotIn('id="fill-cam-select"', self.html)
 
-    def test_delete_image_is_edit_mode_only(self):
-        # Clear button is always visible in edit mode (opacity-based, not hover-gated)
-        self.assertIn(
-            ".preset-btn.edit-mode.has-image .preset-clear { display: flex;",
+    def test_delete_image_is_hidden(self):
+        # Clear button is hidden in the new per-preset edit design
+        self.assertRegex(
             self.html,
-        )
-        self.assertNotIn(
-            ".preset-btn.has-image:hover .preset-clear { display: flex; }",
-            self.html,
+            r"\.preset-clear\s*\{[^}]*display:\s*none;",
         )
 
     def test_atem_pill_supports_off_wait_and_connected_states(self):
