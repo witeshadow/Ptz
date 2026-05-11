@@ -3078,11 +3078,15 @@
     }
 
     async function resetJoystick() {
-      if (virtualJoystickTouchId === null || joystickResetting) return; // Already resetting
+      console.log('[JOYSTICK] resetJoystick called, touchId=', virtualJoystickTouchId, 'resetting=', joystickResetting);
+      if (virtualJoystickTouchId === null || joystickResetting) {
+        console.log('[JOYSTICK] early return: touchId null=', virtualJoystickTouchId === null, 'resetting=', joystickResetting);
+        return; // Already resetting
+      }
       joystickResetting = true; // Lock input processing
 
       elJoystickCenter.style.transform = 'translate(-50%, -50%)';
-      console.debug('[PTZ] Sending STOP command (locked input)');
+      console.log('[JOYSTICK] Sending STOP command (locked input)');
 
       // Send STOP multiple times to match physical joystick behavior
       for (let i = 0; i < 3; i++) {
