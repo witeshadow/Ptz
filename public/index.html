@@ -3085,19 +3085,23 @@
       }
       joystickResetting = true; // Lock input processing
 
-      elJoystickCenter.style.transform = 'translate(-50%, -50%)';
-      console.log('[JOYSTICK] Sending STOP command (locked input)');
+      try {
+        elJoystickCenter.style.transform = 'translate(-50%, -50%)';
+        console.log('[JOYSTICK] Sending STOP command (locked input)');
 
-      // Send STOP multiple times to match physical joystick behavior
-      for (let i = 0; i < 3; i++) {
-        const res = await sendPtzDriveCommand(0, 0, 0);
-        console.debug(`[PTZ] STOP #${i+1}:`, res ? 'sent' : 'failed');
-        if (i < 2) await new Promise(resolve => setTimeout(resolve, 20));
+        // Send STOP multiple times to match physical joystick behavior
+        for (let i = 0; i < 3; i++) {
+          const res = await sendPtzDriveCommand(0, 0, 0);
+          console.log(`[JOYSTICK] STOP #${i+1}:`, res ? 'sent' : 'failed');
+          if (i < 2) await new Promise(resolve => setTimeout(resolve, 20));
+        }
+      } catch (err) {
+        console.error('[JOYSTICK] Error during reset:', err);
+      } finally {
+        virtualJoystickTouchId = null;
+        joystickResetting = false; // Always unlock, even on error
+        console.log('[JOYSTICK] Reset complete, flag cleared');
       }
-
-      virtualJoystickTouchId = null;
-      joystickResetting = false; // Unlock input
-      console.debug('[PTZ] Virtual joystick reset to center');
     }
 
     elVirtualJoystick.addEventListener('touchstart', (e) => {
