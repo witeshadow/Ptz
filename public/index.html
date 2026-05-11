@@ -3152,7 +3152,9 @@
     });
 
     document.addEventListener('mouseup', () => {
+      console.log('[JOYSTICK] mouseup: virtualJoystickTouchId=', virtualJoystickTouchId);
       if (virtualJoystickTouchId === -1) {
+        console.log('[JOYSTICK] calling resetJoystick');
         virtualJoystickTouchId = null;
         resetJoystick();
       }
