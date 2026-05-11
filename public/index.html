@@ -1603,8 +1603,12 @@
     <div id="joystick-settings-section" class="gsp-extra-card gsp-mobile-section active" data-mobile-tab="atem">
       <div class="gsp-section-title" style="margin-bottom:10px;">Joystick Control</div>
       <label class="atem-toggle-wrap">
+        <input id="f-virtual-joystick-enabled" type="checkbox" />
+        <span>Enable Virtual Joystick Button</span>
+      </label>
+      <label class="atem-toggle-wrap">
         <input id="f-joystick-enabled" type="checkbox" />
-        <span>Enable Joystick</span>
+        <span>Enable Physical Joystick</span>
       </label>
       <div class="field">
         <label for="f-joystick-model">Device Profile</label>
@@ -1839,6 +1843,7 @@
     activeCamAux: 'sdi1',
     positions: {},
     joystick: normalizeJoystickSettings(),
+    virtualJoystick: { enabled: true, deadzone: 0.20, sensitivity: { pan: 1.0, tilt: 1.0, zoom: 0.5 } },
     // Runtime ATEM AUX sources (not persisted, updated via SSE)
     aux1Source: 0,
     aux2Source: 0,
@@ -2001,6 +2006,7 @@
         if (s.activeCamAux) state.activeCamAux = normalizeActiveCamAux(s.activeCamAux);
         if (s.positions) state.positions = { ...s.positions };
         if (s.joystick) state.joystick = normalizeJoystickSettings(s.joystick);
+        if (s.virtualJoystick) state.virtualJoystick = { enabled: s.virtualJoystick.enabled !== false, deadzone: s.virtualJoystick.deadzone || 0.20, sensitivity: { ...s.virtualJoystick.sensitivity } };
         if (s.deviceSettings) state.deviceSettings = { ...s.deviceSettings };
       }
     } catch (_) {}
@@ -3030,15 +3036,31 @@
 
       elJoystickCenter.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
 
-      const pan = deltaX / maxDistance;
-      const tilt = -(deltaY / maxDistance);
+      let pan = deltaX / maxDistance;
+      let tilt = -(deltaY / maxDistance);
+
+      // Apply deadzone from settings
+      const deadzone = state.virtualJoystick?.deadzone || 0.20;
+      if (Math.abs(pan) < deadzone) pan = 0;
+      if (Math.abs(tilt) < deadzone) tilt = 0;
+
+      // Apply sensitivity from settings
+      const sens = state.virtualJoystick?.sensitivity || { pan: 1.0, tilt: 1.0, zoom: 0.5 };
+      pan *= (sens.pan || 1.0);
+      tilt *= (sens.tilt || 1.0);
+
+      // Quantize to 0.1 step to avoid float precision issues
+      pan = Math.round(pan * 10) / 10;
+      tilt = Math.round(tilt * 10) / 10;
+
       sendPtzDriveCommand(pan, tilt, 0);
-      console.debug('[PTZ] Virtual joystick:', { pan: pan.toFixed(2), tilt: tilt.toFixed(2) });
+      console.debug('[PTZ] Virtual joystick:', { pan: pan.toFixed(2), tilt: tilt.toFixed(2), rawDistance: distance.toFixed(2) });
     }
 
     function resetJoystick() {
       elJoystickCenter.style.transform = 'translate(-50%, -50%)';
       sendPtzDriveCommand(0, 0, 0);
+      console.debug('[PTZ] Virtual joystick reset to center');
     }
 
     elVirtualJoystick.addEventListener('touchstart', (e) => {
@@ -3660,6 +3682,7 @@
   const elGspFill  = document.getElementById('gsp-fill');
 
   // Joystick settings elements
+  const elVirtualJoystickEnabledCheckbox = document.getElementById('f-virtual-joystick-enabled');
   const elJoystickEnabled = document.getElementById('f-joystick-enabled');
   const elJoystickModel = document.getElementById('f-joystick-model');
   const elJoystickDeadzone = document.getElementById('f-joystick-deadzone');
@@ -3770,8 +3793,18 @@
   );
   elGspFill.addEventListener('change', saveGridSettings);
 
+  function updateVirtualJoystickVisibility() {
+    const enabled = state.virtualJoystick?.enabled !== false;
+    const isTouchDevice = window.matchMedia('(hover: none)').matches;
+    if (elVirtualJoystickBtn) {
+      const show = enabled && isTouchDevice && localStorage.getItem('ptz-virtual-joystick') !== 'false';
+      elVirtualJoystickBtn.style.display = show ? 'block' : 'none';
+    }
+  }
+
   function loadJoystickSettings() {
     const js = state.joystick = normalizeJoystickSettings(state.joystick);
+    if (elVirtualJoystickEnabledCheckbox) elVirtualJoystickEnabledCheckbox.checked = state.virtualJoystick?.enabled !== false;
     if (elJoystickEnabled) elJoystickEnabled.checked = !!js.enabled;
     if (elJoystickModel) elJoystickModel.value = js.model || 'logitech-extreme-3d';
     if (elJoystickDeadzone) {
@@ -3790,6 +3823,7 @@
       elJoystickZoomSens.value = (js.sensitivity?.zoom || 0.5).toFixed(1);
       document.getElementById('f-joystick-zoom-value').textContent = (js.sensitivity?.zoom || 0.5).toFixed(1) + 'x';
     }
+    updateVirtualJoystickVisibility();
     updateJoystickStatus();
   }
 
@@ -3808,6 +3842,12 @@
         zoom: parseFloat(elJoystickZoomSens?.value || 0.5),
       },
     });
+
+    state.virtualJoystick = {
+      enabled: elVirtualJoystickEnabledCheckbox?.checked !== false,
+      deadzone: 0.20,
+      sensitivity: { pan: 1.0, tilt: 1.0, zoom: 0.5 },
+    };
 
     if (wasEnabled && !state.joystick.enabled) {
       if (gamepadAnimationFrame) {
@@ -3829,6 +3869,7 @@
     }
 
     schedSave();
+    updateVirtualJoystickVisibility();
     updateJoystickStatus();
   }
 
@@ -3843,6 +3884,10 @@
     } else {
       elJoystickStatus.textContent = 'Enabled, waiting for gamepad…';
     }
+  }
+
+  if (elVirtualJoystickEnabledCheckbox) {
+    elVirtualJoystickEnabledCheckbox.addEventListener('change', saveJoystickSettings);
   }
 
   if (elJoystickEnabled) {
