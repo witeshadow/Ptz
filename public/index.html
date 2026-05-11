@@ -3078,10 +3078,12 @@
 
     async function resetJoystick() {
       elJoystickCenter.style.transform = 'translate(-50%, -50%)';
-      const res = await sendPtzDriveCommand(0, 0, 0);
-      if (!res) {
-        console.warn('[PTZ] Stop command failed, retrying...');
-        await sendPtzDriveCommand(0, 0, 0);
+      console.debug('[PTZ] Sending STOP command');
+      // Send STOP multiple times to match physical joystick behavior (continuous polling)
+      for (let i = 0; i < 3; i++) {
+        const res = await sendPtzDriveCommand(0, 0, 0);
+        console.debug(`[PTZ] STOP #${i+1}:`, res ? 'sent' : 'failed');
+        if (i < 2) await new Promise(resolve => setTimeout(resolve, 20)); // 20ms between retries
       }
       console.debug('[PTZ] Virtual joystick reset to center');
     }
