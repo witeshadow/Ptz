@@ -2961,6 +2961,7 @@
   let virtualJoystickActive = false;
   let virtualJoystickTouchId = null;
   let joystickResetting = false;
+  let joystickKeepAliveTimer = null;
   let lastVirtualPtz = { pan: 0, tilt: 0, zoom: 0 };
 
   function quantizePtzAxis(value) {
@@ -3035,6 +3036,8 @@
     const joystickRect = { x: 0, y: 0, size: 120, radius: 60 };
 
     function updateJoystickPosition(touchX, touchY) {
+      clearJoystickKeepAlive(); // Stop keep-alive when user moves joystick
+
       const rect = elVirtualJoystick.getBoundingClientRect();
       joystickRect.x = rect.left;
       joystickRect.y = rect.top;
@@ -3095,6 +3098,14 @@
           console.log(`[JOYSTICK] STOP #${i+1}:`, res ? 'sent' : 'failed');
           if (i < 2) await new Promise(resolve => setTimeout(resolve, 20));
         }
+
+        // Start keep-alive timer to continuously send STOP while joystick is released
+        // This matches the gamepad behavior which continuously polls/sends updates
+        if (joystickKeepAliveTimer) clearInterval(joystickKeepAliveTimer);
+        joystickKeepAliveTimer = setInterval(() => {
+          sendPtzDriveCommand(0, 0, 0);
+        }, 50); // Send STOP every 50ms to keep camera halted
+        console.log('[JOYSTICK] Keep-alive timer started (50ms interval)');
       } catch (err) {
         console.error('[JOYSTICK] Error during reset:', err);
       } finally {
@@ -3104,10 +3115,19 @@
       }
     }
 
+    function clearJoystickKeepAlive() {
+      if (joystickKeepAliveTimer) {
+        clearInterval(joystickKeepAliveTimer);
+        joystickKeepAliveTimer = null;
+        console.log('[JOYSTICK] Keep-alive timer cleared');
+      }
+    }
+
     elVirtualJoystick.addEventListener('touchstart', (e) => {
       e.preventDefault();
       if (virtualJoystickTouchId !== null) return;
 
+      clearJoystickKeepAlive();
       const touch = e.touches[0];
       virtualJoystickTouchId = touch.identifier;
       updateJoystickPosition(touch.clientX, touch.clientY);
@@ -3143,6 +3163,7 @@
     // Mouse support for desktop testing
     elVirtualJoystick.addEventListener('mousedown', (e) => {
       if (virtualJoystickTouchId !== null) return; // Ignore if touch active
+      clearJoystickKeepAlive();
       virtualJoystickTouchId = -1; // Use -1 for mouse
       updateJoystickPosition(e.clientX, e.clientY);
     });
