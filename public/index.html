@@ -3362,16 +3362,9 @@
 
     const cmd = { pan: pan, tilt: -tilt, zoom: zoom };
     const isDuplicate = cmd.pan === lastVirtualPtz.pan && cmd.tilt === lastVirtualPtz.tilt && cmd.zoom === lastVirtualPtz.zoom;
-    if (state.showJoystickDebug) {
-      if (cmd.pan === 0 && cmd.tilt === 0 && cmd.zoom === 0) {
-        if (!isDuplicate) {
-          console.debug('[GAMEPAD] Sending STOP command');
-        } else {
-          console.debug('[GAMEPAD] STOP already sent, deduplicating');
-        }
-      } else {
-        console.debug('[GAMEPAD] Sending command:', cmd, isDuplicate ? '(duplicate, skipped)' : '(sent)');
-      }
+    const isStop = cmd.pan === 0 && cmd.tilt === 0 && cmd.zoom === 0;
+    if (isStop) {
+      console.debug('[GAMEPAD] STOP:', isDuplicate ? 'deduplicated' : 'sent');
     }
     sendPtzDriveCommand(pan, -tilt, zoom);
   }
