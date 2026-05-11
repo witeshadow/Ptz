@@ -2960,10 +2960,8 @@
 
   let virtualJoystickActive = false;
   let virtualJoystickTouchId = null;
-  let joystickResetting = false;
   let joystickKeepAliveTimer = null;
   let lastVirtualPtz = { pan: 0, tilt: 0, zoom: 0 };
-  let lastJoystickDirection = { pan: 0, tilt: 0 }; // Track direction for braking
 
   function quantizePtzAxis(value) {
     const n = Math.max(-1, Math.min(1, Number(value) || 0));
@@ -3086,12 +3084,7 @@
     }
 
     async function resetJoystick() {
-      console.log('[JOYSTICK] resetJoystick called, touchId=', virtualJoystickTouchId, 'resetting=', joystickResetting);
-      if (virtualJoystickTouchId === null || joystickResetting) {
-        console.log('[JOYSTICK] early return: touchId null=', virtualJoystickTouchId === null, 'resetting=', joystickResetting);
-        return; // Already resetting
-      }
-      joystickResetting = true; // Lock input processing
+      if (virtualJoystickTouchId === null) return; // Already reset
 
       try {
         elJoystickCenter.style.transform = 'translate(-50%, -50%)';
@@ -3112,8 +3105,7 @@
         console.error('[JOYSTICK] Error during reset:', err);
       } finally {
         virtualJoystickTouchId = null;
-        joystickResetting = false; // Always unlock, even on error
-        console.log('[JOYSTICK] Reset complete, flag cleared');
+        console.log('[JOYSTICK] Reset complete');
       }
     }
 
@@ -3146,7 +3138,6 @@
     }, { passive: false });
 
     document.addEventListener('touchmove', (e) => {
-      if (joystickResetting) return; // Ignore input during reset
       if (virtualJoystickTouchId === null) return;
 
       for (let i = 0; i < e.touches.length; i++) {
@@ -3181,7 +3172,6 @@
     });
 
     document.addEventListener('mousemove', (e) => {
-      if (joystickResetting) return; // Ignore input during reset
       if (virtualJoystickTouchId === null || virtualJoystickTouchId === -1) {
         // Call updateJoystickPosition only if mouse active (-1) or nothing active (null)
         if (virtualJoystickTouchId === -1) {
