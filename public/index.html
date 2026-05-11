@@ -3125,8 +3125,7 @@
     document.addEventListener('touchend', (e) => {
       for (let i = 0; i < e.changedTouches.length; i++) {
         if (e.changedTouches[i].identifier === virtualJoystickTouchId) {
-          virtualJoystickTouchId = null;
-          resetJoystick();
+          resetJoystick(); // Let resetJoystick handle clearing virtualJoystickTouchId
           break;
         }
       }
@@ -3159,8 +3158,7 @@
       console.log('[JOYSTICK] mouseup: virtualJoystickTouchId=', virtualJoystickTouchId);
       if (virtualJoystickTouchId === -1) {
         console.log('[JOYSTICK] calling resetJoystick');
-        virtualJoystickTouchId = null;
-        resetJoystick();
+        resetJoystick(); // Let resetJoystick handle clearing virtualJoystickTouchId
       }
     });
   }
