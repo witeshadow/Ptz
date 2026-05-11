@@ -3075,10 +3075,6 @@
       pan = Math.round(pan * 10) / 10;
       tilt = Math.round(tilt * 10) / 10;
 
-      // Track direction for braking on release
-      if (pan !== 0) lastJoystickDirection.pan = pan > 0 ? 1 : -1;
-      if (tilt !== 0) lastJoystickDirection.tilt = tilt > 0 ? 1 : -1;
-
       sendPtzDriveCommand(pan, tilt, 0);
       console.debug('[PTZ] Virtual joystick:', { pan: pan.toFixed(2), tilt: tilt.toFixed(2), rawDistance: distance.toFixed(2) });
     }
