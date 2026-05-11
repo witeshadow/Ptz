@@ -1843,7 +1843,7 @@
     activeCamAux: 'sdi1',
     positions: {},
     joystick: normalizeJoystickSettings(),
-    virtualJoystick: { enabled: true, deadzone: 0.35, sensitivity: { pan: 0.6, tilt: 0.6, zoom: 0.3 } },
+    virtualJoystick: { enabled: true, deadzone: 0.25, sensitivity: { pan: 0.6, tilt: 0.6, zoom: 0.3 } },
     // Runtime ATEM AUX sources (not persisted, updated via SSE)
     aux1Source: 0,
     aux2Source: 0,
@@ -3057,9 +3057,13 @@
       console.debug('[PTZ] Virtual joystick:', { pan: pan.toFixed(2), tilt: tilt.toFixed(2), rawDistance: distance.toFixed(2) });
     }
 
-    function resetJoystick() {
+    async function resetJoystick() {
       elJoystickCenter.style.transform = 'translate(-50%, -50%)';
-      sendPtzDriveCommand(0, 0, 0);
+      const res = await sendPtzDriveCommand(0, 0, 0);
+      if (!res) {
+        console.warn('[PTZ] Stop command failed, retrying...');
+        await sendPtzDriveCommand(0, 0, 0);
+      }
       console.debug('[PTZ] Virtual joystick reset to center');
     }
 
