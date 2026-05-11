@@ -2985,10 +2985,13 @@
       return false;
     }
     const isStopCommand = next.pan === 0 && next.tilt === 0 && next.zoom === 0;
-    if (!isStopCommand && next.pan === lastVirtualPtz.pan && next.tilt === lastVirtualPtz.tilt && next.zoom === lastVirtualPtz.zoom) {
+    const isDuplicate = next.pan === lastVirtualPtz.pan && next.tilt === lastVirtualPtz.tilt && next.zoom === lastVirtualPtz.zoom;
+    if (!isStopCommand && isDuplicate) {
+      console.debug('[PTZ] Dedup: skipping duplicate command', next);
       return true;
     }
 
+    console.debug('[PTZ] Sending command:', next, isDuplicate ? '(duplicate stop, forced)' : '');
     try {
       const res = await fetch('/api/ptz/drive', {
         method: 'POST',
@@ -2997,6 +3000,7 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
+        console.error('[PTZ] Command failed:', data);
         setStatus('error', data.error || data.message || 'PTZ move failed');
         return false;
       }
@@ -3004,6 +3008,7 @@
       checkRecalledPresetForDrift();
       return true;
     } catch (err) {
+      console.error('[PTZ] Fetch error:', err);
       setStatus('error', `PTZ move failed: ${err.message || err}`);
       return false;
     }
