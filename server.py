@@ -1058,9 +1058,13 @@ def send_visca_pan_tilt_drive(
 ) -> tuple[bool, str]:
     # Allow speed=0 for STOP command (dir=0x03); clamp to min=1 for movement
     min_speed = 0 if pan_dir == 0x03 else 1
-    pan_speed = max(min_speed, min(0x18, int(pan_speed or (0 if pan_dir == 0x03 else 1))))
+    pan_speed = max(
+        min_speed, min(0x18, int(pan_speed or (0 if pan_dir == 0x03 else 1)))
+    )
     min_speed = 0 if tilt_dir == 0x03 else 1
-    tilt_speed = max(min_speed, min(0x18, int(tilt_speed or (0 if tilt_dir == 0x03 else 1))))
+    tilt_speed = max(
+        min_speed, min(0x18, int(tilt_speed or (0 if tilt_dir == 0x03 else 1)))
+    )
     command = bytes([0x01, 0x06, 0x01, pan_speed, tilt_speed, pan_dir, tilt_dir])
     return send_visca_command(ip, port, command, camera_address=camera_address)
 

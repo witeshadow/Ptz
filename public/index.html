@@ -3080,10 +3080,15 @@
     }
 
     async function resetJoystick() {
-      if (virtualJoystickTouchId === null) return; // Already reset
+      console.log('[JOYSTICK] resetJoystick called, touchId=', virtualJoystickTouchId);
+      if (virtualJoystickTouchId === null) {
+        console.log('[JOYSTICK] early return: touchId already null');
+        return; // Already reset
+      }
 
       try {
         elJoystickCenter.style.transform = 'translate(-50%, -50%)';
+        console.log('[JOYSTICK] centered visual');
 
         // Send STOP command
         await sendPtzDriveCommand(0, 0, 0);
@@ -3168,13 +3173,9 @@
     });
 
     document.addEventListener('mousemove', (e) => {
-      if (virtualJoystickTouchId === null || virtualJoystickTouchId === -1) {
-        // Call updateJoystickPosition only if mouse active (-1) or nothing active (null)
-        if (virtualJoystickTouchId === -1) {
-          updateJoystickPosition(e.clientX, e.clientY);
-        }
+      if (virtualJoystickTouchId === -1) {
+        updateJoystickPosition(e.clientX, e.clientY);
       }
-      // Ignore mousemove if touch is active (virtualJoystickTouchId > 0)
     });
 
     document.addEventListener('mouseup', () => {
