@@ -1775,8 +1775,14 @@
     <div style="position:absolute; width:100%; height:100%; border:1px dashed var(--border); border-radius:50%; opacity:0.3;"></div>
   </div>
   <div id="joystick-label" style="text-align:center; margin-top:8px; font-size:0.75rem; color:var(--muted); white-space:nowrap;">Pan/Tilt</div>
-  <button id="joystick-zoom-up" style="position:absolute; top:50%; left:calc(100% + 12px); transform:translateY(-110%); width:44px; height:44px; padding:0; border:1px solid var(--border); background:var(--surf2); color:var(--accent); border-radius:10px; font-size:24px; font-weight:700; line-height:1; cursor:pointer; display:none;">+</button>
-  <button id="joystick-zoom-down" style="position:absolute; top:50%; left:calc(100% + 12px); transform:translateY(10%); width:44px; height:44px; padding:0; border:1px solid var(--border); background:var(--surf2); color:var(--accent); border-radius:10px; font-size:24px; font-weight:700; line-height:1; cursor:pointer; display:none;">−</button>
+  <div id="joystick-zoom-slider" style="display:none; position:absolute; top:50%; left:calc(100% + 12px); transform:translateY(-50%); width:60px; height:176px; touch-action:none; user-select:none;">
+    <div id="joystick-zoom-in-label" style="position:absolute; top:0; left:50%; transform:translateX(-50%); font-size:20px; font-weight:700; color:var(--accent); line-height:1;">+</div>
+    <div id="joystick-zoom-track" style="position:absolute; top:28px; bottom:28px; left:50%; width:18px; transform:translateX(-50%); border:1px solid var(--border); background:var(--surf2); border-radius:999px;">
+      <div style="position:absolute; top:50%; left:2px; right:2px; height:1px; background:rgba(255,255,255,0.18); transform:translateY(-50%);"></div>
+      <div id="joystick-zoom-thumb" style="position:absolute; top:50%; left:50%; width:44px; height:44px; transform:translate(-50%, -50%); border:1px solid var(--border); background:var(--surf); color:var(--accent); border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,0.28);"></div>
+    </div>
+    <div id="joystick-zoom-out-label" style="position:absolute; bottom:0; left:50%; transform:translateX(-50%); font-size:20px; font-weight:700; color:var(--accent); line-height:1;">−</div>
+  </div>
 </div>
 
 <!-- Virtual Joystick Toggle Button -->
@@ -1818,6 +1824,7 @@
   const DEFAULT_VIRTUAL_JOYSTICK_DEADZONE = 0.10;
   const DEFAULT_VIRTUAL_JOYSTICK_RESPONSE_EXPONENT = 1.35;
   const VIRTUAL_JOYSTICK_AXIS_STEP = 0.05;
+  const VIRTUAL_ZOOM_DEADZONE = 0.08;
 
   function normalizeJoystickSettings(value) {
     const joystick = value && typeof value === 'object' ? value : {};
@@ -3074,11 +3081,15 @@
   const elVirtualJoystickContainer = document.getElementById('virtual-joystick-container');
   const elJoystickCloseBtn = document.getElementById('joystick-close-btn');
   const elJoystickSizeBtn = document.getElementById('joystick-size-btn');
-  const elJoystickZoomUp = document.getElementById('joystick-zoom-up');
-  const elJoystickZoomDown = document.getElementById('joystick-zoom-down');
+  const elJoystickZoomSlider = document.getElementById('joystick-zoom-slider');
+  const elJoystickZoomTrack = document.getElementById('joystick-zoom-track');
+  const elJoystickZoomThumb = document.getElementById('joystick-zoom-thumb');
+  const elJoystickZoomInLabel = document.getElementById('joystick-zoom-in-label');
+  const elJoystickZoomOutLabel = document.getElementById('joystick-zoom-out-label');
 
   let virtualJoystickActive = false;
   let virtualJoystickTouchId = null;
+  let virtualZoomTouchId = null;
   let lastVirtualJoystickCommand = { pan: 0, tilt: 0 };
   let pendingVirtualJoystickDirection = { pan: 0, tilt: 0 };
   let virtualJoystickCommand = { pan: 0, tilt: 0, zoom: 0 };
@@ -3303,14 +3314,81 @@
   function getVirtualJoystickMetrics() {
     const size = state.virtualJoystick?.size || 'normal';
     if (size === 'double') {
-      return { diameter: 240, handle: 72, zoomInset: 14, zoomGap: 12, zoomButtonSize: 56, zoomFontSize: 30, labelMargin: 10 };
+      return {
+        diameter: 240,
+        handle: 72,
+        zoomInset: 16,
+        zoomControlWidth: 72,
+        zoomControlHeight: 240,
+        zoomTrackWidth: 20,
+        zoomTrackPadding: 32,
+        zoomThumbSize: 50,
+        zoomLabelFontSize: 26,
+        labelMargin: 10,
+      };
     }
     if (size === 'fullscreen') {
       const diameter = Math.max(220, Math.min(window.innerWidth, window.innerHeight) - 64);
       const handle = Math.max(56, Math.min(96, Math.round(diameter * 0.3)));
-      return { diameter, handle, zoomInset: 24, zoomGap: 14, zoomButtonSize: 64, zoomFontSize: 36, labelMargin: 14 };
+      return {
+        diameter,
+        handle,
+        zoomInset: 28,
+        zoomControlWidth: 84,
+        zoomControlHeight: Math.max(260, Math.min(360, Math.round(diameter * 0.9))),
+        zoomTrackWidth: 22,
+        zoomTrackPadding: 36,
+        zoomThumbSize: 58,
+        zoomLabelFontSize: 30,
+        labelMargin: 14,
+      };
     }
-    return { diameter: 120, handle: 40, zoomInset: 12, zoomGap: 10, zoomButtonSize: 44, zoomFontSize: 24, labelMargin: 8 };
+    return {
+      diameter: 120,
+      handle: 40,
+      zoomInset: 14,
+      zoomControlWidth: 60,
+      zoomControlHeight: 176,
+      zoomTrackWidth: 18,
+      zoomTrackPadding: 28,
+      zoomThumbSize: 44,
+      zoomLabelFontSize: 20,
+      labelMargin: 8,
+    };
+  }
+
+  function applyVirtualZoomDeadzone(value) {
+    const n = Math.max(-1, Math.min(1, Number(value) || 0));
+    const mag = Math.abs(n);
+    if (mag < VIRTUAL_ZOOM_DEADZONE) return 0;
+    return Math.sign(n) * ((mag - VIRTUAL_ZOOM_DEADZONE) / (1 - VIRTUAL_ZOOM_DEADZONE));
+  }
+
+  function positionVirtualZoomThumb(zoom = virtualJoystickCommand.zoom) {
+    if (!elJoystickZoomTrack || !elJoystickZoomThumb) return;
+    const trackHeight = elJoystickZoomTrack.clientHeight || 1;
+    const thumbSize = elJoystickZoomThumb.offsetHeight || 1;
+    const travel = Math.max(0, trackHeight - thumbSize);
+    const normalized = Math.max(-1, Math.min(1, Number(zoom) || 0));
+    const offset = ((1 - normalized) / 2) * travel;
+    elJoystickZoomThumb.style.top = `${offset}px`;
+    elJoystickZoomThumb.style.transform = 'translateX(-50%)';
+  }
+
+  function updateVirtualZoomFromClientY(clientY) {
+    if (!elJoystickZoomTrack) return;
+    const rect = elJoystickZoomTrack.getBoundingClientRect();
+    const centerY = rect.top + rect.height / 2;
+    const rawZoom = (centerY - clientY) / (rect.height / 2);
+    const zoom = applyVirtualZoomDeadzone(rawZoom);
+    positionVirtualZoomThumb(zoom);
+    void setVirtualJoystickZoom(zoom);
+  }
+
+  function resetVirtualZoomSlider() {
+    virtualJoystickCommand.zoom = 0;
+    positionVirtualZoomThumb(0);
+    void stopVirtualJoystickZoom();
   }
 
   function applyVirtualJoystickLayout() {
@@ -3326,7 +3404,7 @@
     elVirtualJoystickContainer.style.right = 'auto';
     elVirtualJoystickContainer.style.bottom = isFullscreen ? '0' : '20px';
     elVirtualJoystickContainer.style.left = isFullscreen ? '0' : '20px';
-    elVirtualJoystickContainer.style.width = isFullscreen ? '100vw' : `${metrics.diameter + metrics.zoomInset + metrics.zoomButtonSize}px`;
+    elVirtualJoystickContainer.style.width = isFullscreen ? '100vw' : `${metrics.diameter + metrics.zoomInset + metrics.zoomControlWidth}px`;
     elVirtualJoystickContainer.style.height = isFullscreen ? '100vh' : 'auto';
     elVirtualJoystickContainer.style.background = isFullscreen ? 'rgba(5, 15, 24, 0.22)' : 'transparent';
 
@@ -3346,31 +3424,37 @@
       elJoystickSizeBtn.style.top = isFullscreen ? '20px' : '-12px';
       elJoystickSizeBtn.style.left = isFullscreen ? '20px' : '-12px';
     }
-    if (elJoystickZoomUp) {
-      elJoystickZoomUp.style.display = 'block';
-      elJoystickZoomUp.style.width = `${metrics.zoomButtonSize}px`;
-      elJoystickZoomUp.style.height = `${metrics.zoomButtonSize}px`;
-      elJoystickZoomUp.style.fontSize = `${metrics.zoomFontSize}px`;
-      elJoystickZoomUp.style.left = isFullscreen ? `calc(50% + ${Math.round(metrics.diameter / 2) + metrics.zoomInset}px)` : `${metrics.diameter + metrics.zoomInset}px`;
-      elJoystickZoomUp.style.top = isFullscreen ? '50%' : '50%';
-      elJoystickZoomUp.style.bottom = 'auto';
-      elJoystickZoomUp.style.transform = `translateY(calc(-100% - ${metrics.zoomGap / 2}px))`;
+    if (elJoystickZoomSlider) {
+      elJoystickZoomSlider.style.display = 'block';
+      elJoystickZoomSlider.style.width = `${metrics.zoomControlWidth}px`;
+      elJoystickZoomSlider.style.height = `${metrics.zoomControlHeight}px`;
+      elJoystickZoomSlider.style.left = isFullscreen ? `calc(50% + ${Math.round(metrics.diameter / 2) + metrics.zoomInset}px)` : `${metrics.diameter + metrics.zoomInset}px`;
+      elJoystickZoomSlider.style.top = '50%';
+      elJoystickZoomSlider.style.bottom = 'auto';
+      elJoystickZoomSlider.style.transform = 'translateY(-50%)';
     }
-    if (elJoystickZoomDown) {
-      elJoystickZoomDown.style.display = 'block';
-      elJoystickZoomDown.style.width = `${metrics.zoomButtonSize}px`;
-      elJoystickZoomDown.style.height = `${metrics.zoomButtonSize}px`;
-      elJoystickZoomDown.style.fontSize = `${metrics.zoomFontSize}px`;
-      elJoystickZoomDown.style.left = isFullscreen ? `calc(50% + ${Math.round(metrics.diameter / 2) + metrics.zoomInset}px)` : `${metrics.diameter + metrics.zoomInset}px`;
-      elJoystickZoomDown.style.top = isFullscreen ? '50%' : '50%';
-      elJoystickZoomDown.style.bottom = 'auto';
-      elJoystickZoomDown.style.transform = `translateY(${metrics.zoomGap / 2}px)`;
+    if (elJoystickZoomTrack) {
+      elJoystickZoomTrack.style.top = `${metrics.zoomTrackPadding}px`;
+      elJoystickZoomTrack.style.bottom = `${metrics.zoomTrackPadding}px`;
+      elJoystickZoomTrack.style.width = `${metrics.zoomTrackWidth}px`;
+    }
+    if (elJoystickZoomThumb) {
+      elJoystickZoomThumb.style.width = `${metrics.zoomThumbSize}px`;
+      elJoystickZoomThumb.style.height = `${metrics.zoomThumbSize}px`;
+      elJoystickZoomThumb.style.borderRadius = `${Math.round(metrics.zoomThumbSize * 0.32)}px`;
+    }
+    if (elJoystickZoomInLabel) {
+      elJoystickZoomInLabel.style.fontSize = `${metrics.zoomLabelFontSize}px`;
+    }
+    if (elJoystickZoomOutLabel) {
+      elJoystickZoomOutLabel.style.fontSize = `${metrics.zoomLabelFontSize}px`;
     }
     const elJoystickLabel = document.getElementById('joystick-label');
     if (elJoystickLabel) {
       elJoystickLabel.style.marginTop = `${metrics.labelMargin}px`;
       elJoystickLabel.style.fontSize = metrics.diameter >= 220 ? '0.85rem' : '0.75rem';
     }
+    positionVirtualZoomThumb();
   }
 
   function setVirtualJoystickSize(size, options = {}) {
@@ -3399,6 +3483,7 @@
     virtualJoystickActive = show;
     if (!show) {
       virtualJoystickTouchId = null;
+      virtualZoomTouchId = null;
       lastVirtualJoystickCommand = { pan: 0, tilt: 0 };
       pendingVirtualJoystickDirection = { pan: 0, tilt: 0 };
       virtualJoystickCommand = { pan: 0, tilt: 0, zoom: 0 };
@@ -3406,6 +3491,7 @@
       if (elJoystickCenter) {
         elJoystickCenter.style.transform = 'translate(-50%, -50%)';
       }
+      positionVirtualZoomThumb(0);
     }
     if (elVirtualJoystickContainer) {
       elVirtualJoystickContainer.style.display = show ? 'block' : 'none';
@@ -3482,6 +3568,7 @@
       pendingVirtualJoystickDirection = { pan: 0, tilt: 0 };
       virtualJoystickCommand = { pan: 0, tilt: 0, zoom: 0 };
       void stopPtzInput('virtual');
+      positionVirtualZoomThumb(0);
       console.debug('[PTZ] Virtual joystick reset to center');
     }
 
@@ -3535,27 +3622,41 @@
     });
   }
 
-  function bindVirtualJoystickZoomButton(el, direction) {
-    if (!el) return;
-    const start = (e) => {
+  if (elJoystickZoomSlider && elJoystickZoomTrack) {
+    elJoystickZoomSlider.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      void setVirtualJoystickZoom(direction);
-    };
-    const stop = (e) => {
-      e.preventDefault();
-      void stopVirtualJoystickZoom();
-    };
-    el.addEventListener('pointerdown', start);
-    el.addEventListener('pointerup', stop);
-    el.addEventListener('pointercancel', stop);
-    el.addEventListener('lostpointercapture', stop);
-    el.addEventListener('pointerleave', (e) => {
-      if (e.buttons) stop(e);
+      if (virtualZoomTouchId !== null) return;
+      const touch = e.touches[0];
+      virtualZoomTouchId = touch.identifier;
+      updateVirtualZoomFromClientY(touch.clientY);
+    }, { passive: false });
+
+    document.addEventListener('touchmove', (e) => {
+      if (virtualZoomTouchId === null) return;
+      for (let i = 0; i < e.touches.length; i++) {
+        if (e.touches[i].identifier === virtualZoomTouchId) {
+          e.preventDefault();
+          updateVirtualZoomFromClientY(e.touches[i].clientY);
+          break;
+        }
+      }
+    }, { passive: false });
+
+    document.addEventListener('touchend', (e) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === virtualZoomTouchId) {
+          virtualZoomTouchId = null;
+          resetVirtualZoomSlider();
+          break;
+        }
+      }
+    });
+
+    elJoystickZoomSlider.addEventListener('touchcancel', () => {
+      virtualZoomTouchId = null;
+      resetVirtualZoomSlider();
     });
   }
-
-  bindVirtualJoystickZoomButton(elJoystickZoomUp, 0.5);
-  bindVirtualJoystickZoomButton(elJoystickZoomDown, -0.5);
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') {
