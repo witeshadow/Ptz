@@ -51,19 +51,23 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("Active Cam", self.html)
         self.assertIn("Route to:", self.html)
 
-    def test_lock_and_label_snap_copy_are_explicit_about_safety(self):
+    def test_live_protection_and_manage_copy_are_explicit(self):
         self.assertIn(
-            "Edit view active. This does not block camera movement; Locked does.",
+            "Protect Live Camera is on. Switch away from the live camera or turn protection off to modify this mapping.",
             self.html,
         )
         self.assertIn(
-            "Blocks PTZ moves, preset recalls, and scans when the selected camera is live on ATEM program.",
+            "Protect Live Camera is on. Label changes are safe, but recapturing the image is blocked while this camera is live on ATEM program.",
             self.html,
         )
         self.assertIn(
-            "Edit view active. Label / Snap mode controls images and labels only; Locked controls movement safety.",
+            "Tap Manage on a preset to rename it or recapture its image",
             self.html,
         )
+        self.assertIn("Follow Active Camera", self.html)
+        self.assertIn('<option value="off">Off</option>', self.html)
+        self.assertIn('id="preset-manage-sheet"', self.html)
+        self.assertIn("manageBtn.className = 'preset-manage';", self.html)
 
     def test_positions_state_and_capture_integration(self):
         # positions initialized in state
@@ -83,7 +87,7 @@ class TestFrontendContracts(unittest.TestCase):
             self.html,
         )
         # position cleared on image delete
-        self.assertIn("delete state.positions[presetKey(activeCam, n)];", self.html)
+        self.assertIn("delete state.positions[presetKey(cam, preset)];", self.html)
         # position shown as tooltip on preset button
         self.assertIn(
             "Pan: ${pos.pan_hex}  Tilt: ${pos.tilt_hex}  Zoom: ${pos.zoom_hex}",
@@ -107,6 +111,8 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("btn.classList.add('needs-snap');", self.html)
         # needs-snap cleared after a new capture
         self.assertIn("clearSnapNeeded(cam, preset);", self.html)
+        self.assertIn("Needs Recapture", self.html)
+        self.assertIn("open Manage to recapture", self.html)
 
     def test_active_cam_capture_mode(self):
         # ACT button exists in toolbar with correct data-src
@@ -135,7 +141,8 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("#status.multiline #status-text {", self.html)
         self.assertIn("const multiline = type === 'error' && msg.length > 32;", self.html)
         self.assertIn("elStatus.title = msg;", self.html)
-        self.assertIn("Scan stopped at preset ${recallFailure.preset}", self.html)
+        self.assertIn("#status.warning {", self.html)
+        self.assertIn("Recapture stopped at preset ${recallFailure.preset}", self.html)
         self.assertIn(
             "ATEM ${busLabel} capture needs a reported output. Use Active Cam routing or an SDI output instead of USB Webcam.",
             self.html,

@@ -340,7 +340,7 @@ class TestDefaultSettings(unittest.TestCase):
         "labels",
         "dwellMs",
         "atem",
-        "liveMode",
+        "protectLiveCamera",
         "atemFollows",
         "atemSourceLabels",
     }
@@ -768,6 +768,7 @@ class TestHTTPRoutes(unittest.TestCase):
         settings = dict(server.DEFAULT_SETTINGS)
         settings["positions"] = {}
         server.write_settings(settings)
+        server._reset_ptz_runtime_state()
         # Clean up any leftover image files from previous tests
         import glob
         for img_file in glob.glob(os.path.join(server.IMAGES_DIR, "*.jpg")):
@@ -909,10 +910,9 @@ class TestHTTPRoutes(unittest.TestCase):
             "Motion did not settle in time",
         )
 
-    def test_recall_live_lock_returns_409_when_target_camera_is_on_program(self):
+    def test_recall_live_protection_returns_409_when_target_camera_is_on_program(self):
         settings = dict(server.DEFAULT_SETTINGS)
-        settings["liveMode"] = True
-        settings["lockLiveMode"] = True
+        settings["protectLiveCamera"] = True
         settings["atem"] = {"ip": "10.0.0.50", "enabled": True}
         settings["cameras"] = [
             dict(
@@ -935,6 +935,90 @@ class TestHTTPRoutes(unittest.TestCase):
         data = json.loads(body)
         self.assertFalse(data["success"])
         self.assertIn("before recalling a preset", data["message"])
+
+    def test_ptz_drive_ignores_stale_command_ids(self):
+        settings = dict(server.DEFAULT_SETTINGS)
+        settings["cameras"] = [
+            dict(server.DEFAULT_SETTINGS["cameras"][0], ip="10.0.0.1")
+        ]
+        server.write_settings(settings)
+        first = json.dumps(
+            {"camIdx": 0, "pan": 0.4, "tilt": 0.1, "zoom": 0, "commandId": 500}
+        ).encode()
+        stale = json.dumps(
+            {"camIdx": 0, "pan": 0.2, "tilt": 0.1, "zoom": 0, "commandId": 499}
+        ).encode()
+
+        with (
+            patch(
+                "server.send_visca_pan_tilt_drive", return_value=(True, "pt ok")
+            ) as mock_pt,
+            patch("server.send_visca_zoom_drive", return_value=(True, "zoom ok")),
+        ):
+            first_status, _ = self.srv.post("/api/ptz/drive", first)
+            stale_status, stale_body = self.srv.post("/api/ptz/drive", stale)
+
+        self.assertEqual(first_status, 200)
+        self.assertEqual(stale_status, 200)
+        stale_data = json.loads(stale_body)
+        self.assertTrue(stale_data["ok"])
+        self.assertTrue(stale_data["stale"])
+        self.assertEqual(stale_data["commandId"], 499)
+        self.assertEqual(stale_data["lastCommandId"], 500)
+        self.assertEqual(mock_pt.call_count, 1)
+
+    def test_ptz_drive_applies_newer_command_ids(self):
+        settings = dict(server.DEFAULT_SETTINGS)
+        settings["cameras"] = [
+            dict(server.DEFAULT_SETTINGS["cameras"][0], ip="10.0.0.1")
+        ]
+        server.write_settings(settings)
+        first = json.dumps(
+            {"camIdx": 0, "pan": 0.4, "tilt": 0.1, "zoom": 0, "commandId": 500}
+        ).encode()
+        newer = json.dumps(
+            {"camIdx": 0, "pan": -0.3, "tilt": 0.2, "zoom": 0.1, "commandId": 501}
+        ).encode()
+
+        with (
+            patch(
+                "server.send_visca_pan_tilt_drive", return_value=(True, "pt ok")
+            ) as mock_pt,
+            patch("server.send_visca_zoom_drive", return_value=(True, "zoom ok")),
+        ):
+            self.srv.post("/api/ptz/drive", first)
+            status, body = self.srv.post("/api/ptz/drive", newer)
+
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["ok"])
+        self.assertFalse(data["stale"])
+        self.assertEqual(data["commandId"], 501)
+        self.assertEqual(mock_pt.call_count, 2)
+
+    def test_post_image_live_protection_returns_409_when_target_camera_is_on_program(self):
+        settings = dict(server.DEFAULT_SETTINGS)
+        settings["protectLiveCamera"] = True
+        settings["atem"] = {"ip": "10.0.0.50", "enabled": True}
+        settings["cameras"] = [
+            dict(
+                server.DEFAULT_SETTINGS["cameras"][0],
+                ip="10.0.0.1",
+                port=52381,
+                viscaAddr=1,
+                atemInput=5,
+            )
+        ]
+        server.write_settings(settings)
+        fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+
+        with patch("server._get_atem", return_value={"connected": True, "program": 5}):
+            status, body = self.srv.post("/api/image/0/4", fake_jpeg, "image/jpeg")
+
+        self.assertEqual(status, 409)
+        data = json.loads(body)
+        self.assertFalse(data["ok"])
+        self.assertIn("before recapturing a preset image", data["error"])
 
     def test_recall_dwell_mode_passed_through(self):
         payload = json.dumps(
