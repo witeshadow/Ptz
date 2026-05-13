@@ -219,6 +219,16 @@ class TestFrontendContracts(unittest.TestCase):
             self.html,
         )
 
+    def test_ptz_stop_retries_are_retained_after_centering(self):
+        self.assertIn("const PTZ_STOP_RETRY_COUNT = 2;", self.html)
+        self.assertIn("const PTZ_STOP_RETRY_INTERVAL_MS = 120;", self.html)
+        self.assertIn("stopResendRemaining: 0,", self.html)
+        self.assertIn("function clearPtzStopRetryTimer()", self.html)
+        self.assertIn("function schedulePtzStopRetry()", self.html)
+        self.assertIn("void flushPtzDriveController();", self.html)
+        self.assertIn("ptzDriveController.stopResendRemaining = PTZ_STOP_RETRY_COUNT;", self.html)
+        self.assertIn("schedulePtzStopRetry();", self.html)
+
     def test_virtual_joystick_size_controls_present(self):
         self.assertIn('id="f-virtual-joystick-size"', self.html)
         self.assertIn('id="joystick-size-btn"', self.html)
