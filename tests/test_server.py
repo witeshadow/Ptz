@@ -493,6 +493,47 @@ class TestViscaPackets(unittest.TestCase):
         self.assertIn("ACK", msg)
         self.assertIn("Completion", msg)
 
+    def test_pan_tilt_drive_uses_low_latency_timeout(self):
+        with patch(
+            "server.send_visca_command", return_value=(True, "Command sent")
+        ) as mock_send:
+            ok, msg = server.send_visca_pan_tilt_drive(
+                "10.0.0.1",
+                52381,
+                6,
+                5,
+                0x02,
+                0x01,
+                camera_address=3,
+            )
+
+        self.assertTrue(ok)
+        self.assertEqual(msg, "Command sent")
+        mock_send.assert_called_once()
+        self.assertEqual(
+            mock_send.call_args.kwargs["timeout_s"],
+            server.VISCA_DRIVE_COMMAND_TIMEOUT_S,
+        )
+
+    def test_zoom_drive_uses_low_latency_timeout(self):
+        with patch(
+            "server.send_visca_command", return_value=(True, "Command sent")
+        ) as mock_send:
+            ok, msg = server.send_visca_zoom_drive(
+                "10.0.0.1",
+                52381,
+                0.5,
+                camera_address=2,
+            )
+
+        self.assertTrue(ok)
+        self.assertEqual(msg, "Command sent")
+        mock_send.assert_called_once()
+        self.assertEqual(
+            mock_send.call_args.kwargs["timeout_s"],
+            server.VISCA_DRIVE_COMMAND_TIMEOUT_S,
+        )
+
 
 class TestRecallProbeModes(unittest.TestCase):
     def test_confirm_mode_treats_command_send_as_success(self):
