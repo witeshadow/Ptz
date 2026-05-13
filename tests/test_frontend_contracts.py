@@ -250,6 +250,15 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("bindVirtualJoystickZoomButton(elJoystickZoomUp, 0.5);", self.html)
         self.assertIn("bindVirtualJoystickZoomButton(elJoystickZoomDown, -0.5);", self.html)
 
+    def test_virtual_joystick_zoom_buttons_use_mobile_friendly_sizes(self):
+        self.assertIn("width:44px; height:44px;", self.html)
+        self.assertIn("font-size:24px;", self.html)
+        self.assertIn("zoomButtonSize: 44, zoomFontSize: 24", self.html)
+        self.assertIn("zoomButtonSize: 56, zoomFontSize: 30", self.html)
+        self.assertIn("zoomButtonSize: 64, zoomFontSize: 36", self.html)
+        self.assertIn("elJoystickZoomUp.style.width = `${metrics.zoomButtonSize}px`;", self.html)
+        self.assertIn("elJoystickZoomDown.style.width = `${metrics.zoomButtonSize}px`;", self.html)
+
     def test_virtual_joystick_size_controls_present(self):
         self.assertIn('id="f-virtual-joystick-size"', self.html)
         self.assertIn('id="joystick-size-btn"', self.html)
