@@ -303,7 +303,7 @@ def recall_visca_preset(
         stable_count=VISCA_STABLE_COUNT,
         inquiry_timeout=VISCA_INQUIRY_TIMEOUT_S,
         include_focus=False,
-        require_settle=wait_mode == "settle",
+        require_settle=wait_mode in ("settle", "autocut"),
         verbose=False,
     )
     success = (
