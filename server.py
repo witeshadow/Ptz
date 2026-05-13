@@ -46,6 +46,7 @@ except ImportError:
 _IS_MACOS = platform.system() == "Darwin"
 
 _logger = logging.getLogger(__name__)
+VISCA_DRIVE_COMMAND_TIMEOUT_S = 0.05
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -1167,7 +1168,13 @@ def send_visca_pan_tilt_drive(
     pan_speed = max(1, min(0x18, int(pan_speed or 1)))
     tilt_speed = max(1, min(0x18, int(tilt_speed or 1)))
     command = bytes([0x01, 0x06, 0x01, pan_speed, tilt_speed, pan_dir, tilt_dir])
-    return send_visca_command(ip, port, command, camera_address=camera_address)
+    return send_visca_command(
+        ip,
+        port,
+        command,
+        camera_address=camera_address,
+        timeout_s=VISCA_DRIVE_COMMAND_TIMEOUT_S,
+    )
 
 
 def send_visca_zoom_drive(
@@ -1180,7 +1187,13 @@ def send_visca_zoom_drive(
     else:
         zoom_cmd = 0x20 | zoom_speed if zoom_value > 0 else 0x30 | zoom_speed
     command = bytes([0x01, 0x04, 0x07, zoom_cmd])
-    return send_visca_command(ip, port, command, camera_address=camera_address)
+    return send_visca_command(
+        ip,
+        port,
+        command,
+        camera_address=camera_address,
+        timeout_s=VISCA_DRIVE_COMMAND_TIMEOUT_S,
+    )
 
 
 def inquire_visca_pan_tilt_position(
