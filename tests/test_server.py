@@ -803,7 +803,7 @@ class TestHTTPRoutes(unittest.TestCase):
         # Use a fresh positions dict so TestTryRecordPosition mutation doesn't bleed in.
         """
         Reset persistent test state before each test.
-        
+
         Writes DEFAULT_SETTINGS to the settings file with an empty `positions` dictionary to ensure tests start with a clean configuration, and removes any existing JPEG files from the images directory. File-removal errors are ignored.
         """
         settings = dict(server.DEFAULT_SETTINGS)
@@ -812,6 +812,7 @@ class TestHTTPRoutes(unittest.TestCase):
         server._reset_ptz_runtime_state()
         # Clean up any leftover image files from previous tests
         import glob
+
         for img_file in glob.glob(os.path.join(server.IMAGES_DIR, "*.jpg")):
             try:
                 os.remove(img_file)
@@ -1054,7 +1055,9 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertEqual(data["commandId"], 501)
         self.assertEqual(mock_pt.call_count, 2)
 
-    def test_post_image_live_protection_returns_409_when_target_camera_is_on_program(self):
+    def test_post_image_live_protection_returns_409_when_target_camera_is_on_program(
+        self,
+    ):
         settings = dict(server.DEFAULT_SETTINGS)
         settings["protectLiveCamera"] = True
         settings["atem"] = {"ip": "10.0.0.50", "enabled": True}
@@ -1197,7 +1200,7 @@ class TestHTTPRoutes(unittest.TestCase):
     def test_image_response_is_cacheable(self):
         """
         Verifies that an uploaded image is retrievable and served with correct cache and content-type headers.
-        
+
         Uploads a JPEG for camera 0 preset 3 (with a configured camera IP and a successful VISCA position inquiry), then requests the image and asserts:
         - response status is 200
         - response body equals the uploaded JPEG
@@ -1337,7 +1340,7 @@ class TestHTTPRoutes(unittest.TestCase):
     def test_post_image_position_null_when_inquiry_fails(self):
         """
         Ensure uploading an image fails and no file is stored when VISCA position inquiry fails.
-        
+
         Mocks `inquire_visca_absolute_position` to fail, posts a JPEG to the image upload endpoint for camera 0 preset 3, and asserts the server responds with HTTP 400, `ok == False`, an error message mentioning inability to record camera position, and that the image is not present afterwards.
         """
         server.write_settings(self._settings_with_camera_ip())
@@ -1360,7 +1363,7 @@ class TestHTTPRoutes(unittest.TestCase):
     def test_delete_image_clears_stored_position(self):
         """
         Verifies that deleting an uploaded image removes the stored VISCA position entry for that camera:preset.
-        
+
         Writes settings with a configured camera IP, uploads a fake JPEG while mocking a successful VISCA inquiry so a position is recorded, confirms the position was persisted under "positions" with key "0:5", then deletes the image via the API and asserts the "0:5" entry is removed from stored settings.
         """
         server.write_settings(self._settings_with_camera_ip())
@@ -1727,13 +1730,16 @@ class TestDefaultSettingsCamera4(unittest.TestCase):
 
 
 class TestAtemStateConfirmTimeout(unittest.TestCase):
-    def test_constant_is_2_seconds(self):
-        self.assertEqual(server.ATEM_STATE_CONFIRM_TIMEOUT_S, 2.0)
+    def test_constant_is_aggressive_for_responsive_atem(self):
+        # Reduced from 2.0 to 0.5 seconds to improve auto-cut latency.
+        # ATEM hardware responds quickly (typically 50-200ms); aggressive
+        # timeout minimizes perceived delay in live operations.
+        self.assertEqual(server.ATEM_STATE_CONFIRM_TIMEOUT_S, 0.5)
 
-    def test_constant_is_greater_than_old_value(self):
-        # Previously hardcoded as 1.0; the PR increased it to 2.0 to give
-        # the ATEM switcher more time to confirm state changes.
-        self.assertGreater(server.ATEM_STATE_CONFIRM_TIMEOUT_S, 1.0)
+    def test_constant_is_less_than_previous_conservative_value(self):
+        # Previously 2.0 seconds for safety margin; now optimized for
+        # responsive hardware on local networks.
+        self.assertLess(server.ATEM_STATE_CONFIRM_TIMEOUT_S, 1.0)
 
 
 # ── Additional recall_visca_preset edge cases ─────────────────────────────────
