@@ -1638,6 +1638,14 @@
         <input id="f-virtual-joystick-enabled" type="checkbox" />
         <span>Enable Virtual Joystick Button</span>
       </label>
+      <div class="field">
+        <label for="f-virtual-joystick-size">Virtual Joystick Size</label>
+        <select id="f-virtual-joystick-size">
+          <option value="normal">Normal</option>
+          <option value="double">Double</option>
+          <option value="fullscreen">Full Screen</option>
+        </select>
+      </div>
       <label class="atem-toggle-wrap">
         <input id="f-joystick-enabled" type="checkbox" />
         <span>Enable Physical Joystick</span>
@@ -1761,6 +1769,7 @@
 <!-- Virtual Joystick for Touch Devices -->
 <div id="virtual-joystick-container" style="display:none; position:fixed; bottom:20px; left:20px; z-index:100; touch-action:none;">
   <button id="joystick-close-btn" style="position:absolute; top:-12px; right:-12px; width:28px; height:28px; padding:0; border:1px solid var(--border); background:var(--surf); color:var(--text); border-radius:999px; font-size:14px; cursor:pointer;">×</button>
+  <button id="joystick-size-btn" style="position:absolute; top:-12px; left:-12px; min-width:40px; height:28px; padding:0 8px; border:1px solid var(--border); background:var(--surf); color:var(--text); border-radius:999px; font-size:12px; font-weight:600; cursor:pointer;">1x</button>
   <div id="virtual-joystick" style="position:relative; width:120px; height:120px; background:var(--surf2); border:2px solid var(--border); border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:grab; user-select:none;">
     <div id="joystick-center" style="position:absolute; width:40px; height:40px; background:var(--accent); border-radius:50%; top:50%; left:50%; transform:translate(-50%,-50%); transition:all 0.05s ease-out; box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>
     <div style="position:absolute; width:100%; height:100%; border:1px dashed var(--border); border-radius:50%; opacity:0.3;"></div>
@@ -1828,6 +1837,23 @@
       sensitivity: { ...defaults.sensitivity, ...(joystick.sensitivity || {}) },
       axisMap: { ...defaults.axisMap, ...(joystick.axisMap || {}) },
       buttonMap: { ...defaults.buttonMap, ...(joystick.buttonMap || {}) },
+    };
+  }
+
+  function normalizeVirtualJoystickSettings(value) {
+    const virtual = value && typeof value === 'object' ? value : {};
+    const size = ['normal', 'double', 'fullscreen'].includes(virtual.size) ? virtual.size : 'normal';
+    const deadzone = Number.isFinite(+virtual.deadzone) ? Math.max(0, Math.min(0.8, +virtual.deadzone)) : 0.25;
+    return {
+      enabled: virtual.enabled !== false,
+      size,
+      deadzone,
+      sensitivity: {
+        pan: 0.6,
+        tilt: 0.6,
+        zoom: 0.3,
+        ...(virtual.sensitivity || {}),
+      },
     };
   }
 
@@ -1904,7 +1930,7 @@
     activeCamAux: 'sdi1',
     positions: {},
     joystick: normalizeJoystickSettings(),
-    virtualJoystick: { enabled: true, deadzone: 0.25, sensitivity: { pan: 0.6, tilt: 0.6, zoom: 0.3 } },
+    virtualJoystick: normalizeVirtualJoystickSettings(),
     // Runtime ATEM AUX sources (not persisted, updated via SSE)
     aux1Source: 0,
     aux2Source: 0,
@@ -2066,7 +2092,7 @@
         if (s.activeCamAux) state.activeCamAux = normalizeActiveCamAux(s.activeCamAux);
         if (s.positions) state.positions = { ...s.positions };
         if (s.joystick) state.joystick = normalizeJoystickSettings(s.joystick);
-        if (s.virtualJoystick) state.virtualJoystick = { enabled: s.virtualJoystick.enabled !== false, deadzone: s.virtualJoystick.deadzone || 0.20, sensitivity: { ...s.virtualJoystick.sensitivity } };
+        if (s.virtualJoystick) state.virtualJoystick = normalizeVirtualJoystickSettings(s.virtualJoystick);
         if (s.deviceSettings) state.deviceSettings = { ...s.deviceSettings };
       }
     } catch (_) {}
@@ -3042,12 +3068,14 @@
   const elVirtualJoystickBtn = document.getElementById('virtual-joystick-btn');
   const elVirtualJoystickContainer = document.getElementById('virtual-joystick-container');
   const elJoystickCloseBtn = document.getElementById('joystick-close-btn');
+  const elJoystickSizeBtn = document.getElementById('joystick-size-btn');
   const elJoystickZoomUp = document.getElementById('joystick-zoom-up');
   const elJoystickZoomDown = document.getElementById('joystick-zoom-down');
 
   let virtualJoystickActive = false;
   let virtualJoystickTouchId = null;
   let lastVirtualJoystickCommand = { pan: 0, tilt: 0 };
+  let pendingVirtualJoystickDirection = { pan: 0, tilt: 0 };
   const ptzDriveController = {
     desiredCommand: { pan: 0, tilt: 0, zoom: 0 },
     lastSentCommand: null,
@@ -3156,19 +3184,111 @@
   function applyVirtualJoystickResponseCurve(value) {
     const n = Math.max(-1, Math.min(1, Number(value) || 0));
     if (!n) return 0;
-    return Math.sign(n) * Math.pow(Math.abs(n), 1.6);
+    return Math.sign(n) * Math.pow(Math.abs(n), 1.9);
   }
 
-  function applyVirtualJoystickSnapbackGuard(next, previous) {
+  function applyVirtualJoystickSnapbackGuard(next, previous, axis) {
     if (!next || !previous) return next;
     if (Math.sign(next) !== Math.sign(previous)) {
       const reverseGuard = Math.max(
         0.25,
         (state.virtualJoystick?.deadzone || 0.20) + 0.15
       );
-      if (Math.abs(next) < reverseGuard) return 0;
+      if (Math.abs(next) < reverseGuard) {
+        pendingVirtualJoystickDirection[axis] = 0;
+        return 0;
+      }
+      const nextDirection = Math.sign(next);
+      if (pendingVirtualJoystickDirection[axis] !== nextDirection) {
+        pendingVirtualJoystickDirection[axis] = nextDirection;
+        return 0;
+      }
     }
+    pendingVirtualJoystickDirection[axis] = 0;
     return next;
+  }
+
+  const VIRTUAL_JOYSTICK_SIZE_ORDER = ['normal', 'double', 'fullscreen'];
+
+  function getVirtualJoystickMetrics() {
+    const size = state.virtualJoystick?.size || 'normal';
+    if (size === 'double') {
+      return { diameter: 240, handle: 72, zoomOffset: 52, labelMargin: 10 };
+    }
+    if (size === 'fullscreen') {
+      const diameter = Math.max(220, Math.min(window.innerWidth, window.innerHeight) - 64);
+      const handle = Math.max(56, Math.min(96, Math.round(diameter * 0.3)));
+      return { diameter, handle, zoomOffset: 64, labelMargin: 14 };
+    }
+    return { diameter: 120, handle: 40, zoomOffset: 40, labelMargin: 8 };
+  }
+
+  function applyVirtualJoystickLayout() {
+    if (!elVirtualJoystickContainer || !elVirtualJoystick || !elJoystickCenter) return;
+    const size = state.virtualJoystick?.size || 'normal';
+    const metrics = getVirtualJoystickMetrics();
+    const isFullscreen = size === 'fullscreen';
+    const overlaySpace = Math.max(24, (window.innerHeight - metrics.diameter) / 2 - 36);
+    const sizeLabel = size === 'double' ? '2x' : (isFullscreen ? 'Full' : '1x');
+
+    elVirtualJoystickContainer.style.inset = isFullscreen ? '0' : 'auto';
+    elVirtualJoystickContainer.style.top = isFullscreen ? '0' : 'auto';
+    elVirtualJoystickContainer.style.right = 'auto';
+    elVirtualJoystickContainer.style.bottom = isFullscreen ? '0' : '20px';
+    elVirtualJoystickContainer.style.left = isFullscreen ? '0' : '20px';
+    elVirtualJoystickContainer.style.width = isFullscreen ? '100vw' : `${metrics.diameter}px`;
+    elVirtualJoystickContainer.style.height = isFullscreen ? '100vh' : 'auto';
+    elVirtualJoystickContainer.style.background = isFullscreen ? 'rgba(5, 15, 24, 0.22)' : 'transparent';
+
+    elVirtualJoystick.style.width = `${metrics.diameter}px`;
+    elVirtualJoystick.style.height = `${metrics.diameter}px`;
+    elVirtualJoystick.style.margin = isFullscreen ? `${overlaySpace}px auto 0` : '0';
+
+    elJoystickCenter.style.width = `${metrics.handle}px`;
+    elJoystickCenter.style.height = `${metrics.handle}px`;
+
+    if (elJoystickCloseBtn) {
+      elJoystickCloseBtn.style.top = isFullscreen ? '20px' : '-12px';
+      elJoystickCloseBtn.style.right = isFullscreen ? '20px' : '-12px';
+    }
+    if (elJoystickSizeBtn) {
+      elJoystickSizeBtn.textContent = sizeLabel;
+      elJoystickSizeBtn.style.top = isFullscreen ? '20px' : '-12px';
+      elJoystickSizeBtn.style.left = isFullscreen ? '20px' : '-12px';
+    }
+    if (elJoystickZoomUp) {
+      elJoystickZoomUp.style.top = isFullscreen ? `${Math.max(24, overlaySpace - metrics.zoomOffset + 36)}px` : `-${metrics.zoomOffset}px`;
+    }
+    if (elJoystickZoomDown) {
+      elJoystickZoomDown.style.bottom = isFullscreen ? `${Math.max(24, overlaySpace - metrics.zoomOffset + 36)}px` : `-${metrics.zoomOffset}px`;
+    }
+    const elJoystickLabel = document.getElementById('joystick-label');
+    if (elJoystickLabel) {
+      elJoystickLabel.style.marginTop = `${metrics.labelMargin}px`;
+      elJoystickLabel.style.fontSize = metrics.diameter >= 220 ? '0.85rem' : '0.75rem';
+    }
+  }
+
+  function setVirtualJoystickSize(size, options = {}) {
+    const nextSize = VIRTUAL_JOYSTICK_SIZE_ORDER.includes(size) ? size : 'normal';
+    state.virtualJoystick = normalizeVirtualJoystickSettings({
+      ...state.virtualJoystick,
+      size: nextSize,
+    });
+    applyVirtualJoystickLayout();
+    if (!options.skipUiSync && elVirtualJoystickSize) {
+      elVirtualJoystickSize.value = nextSize;
+    }
+    if (!options.skipSave) {
+      schedSave();
+    }
+  }
+
+  function cycleVirtualJoystickSize() {
+    const current = state.virtualJoystick?.size || 'normal';
+    const idx = VIRTUAL_JOYSTICK_SIZE_ORDER.indexOf(current);
+    const next = VIRTUAL_JOYSTICK_SIZE_ORDER[(idx + 1) % VIRTUAL_JOYSTICK_SIZE_ORDER.length];
+    setVirtualJoystickSize(next);
   }
 
   function showVirtualJoystick(show) {
@@ -3176,6 +3296,7 @@
     if (!show) {
       virtualJoystickTouchId = null;
       lastVirtualJoystickCommand = { pan: 0, tilt: 0 };
+      pendingVirtualJoystickDirection = { pan: 0, tilt: 0 };
       void stopPtzInput('virtual');
       if (elJoystickCenter) {
         elJoystickCenter.style.transform = 'translate(-50%, -50%)';
@@ -3184,6 +3305,7 @@
     if (elVirtualJoystickContainer) {
       elVirtualJoystickContainer.style.display = show ? 'block' : 'none';
     }
+    if (show) applyVirtualJoystickLayout();
     updateJoystickButtonVisibility();
   }
 
@@ -3196,12 +3318,8 @@
   }
 
   if (elVirtualJoystick) {
-    const joystickRect = { x: 0, y: 0, size: 120, radius: 60 };
-
     function updateJoystickPosition(touchX, touchY) {
       const rect = elVirtualJoystick.getBoundingClientRect();
-      joystickRect.x = rect.left;
-      joystickRect.y = rect.top;
 
       const centerX = rect.left + rect.width / 2;
       const centerY = rect.top + rect.height / 2;
@@ -3210,7 +3328,8 @@
       let deltaY = touchY - centerY;
 
       const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-      const maxDistance = joystickRect.radius - 20;
+      const handleSize = elJoystickCenter.getBoundingClientRect().width || 40;
+      const maxDistance = Math.max(1, rect.width / 2 - handleSize / 2);
 
       if (distance > maxDistance) {
         const ratio = maxDistance / distance;
@@ -3240,8 +3359,8 @@
       pan = Math.round(pan * 10) / 10;
       tilt = Math.round(tilt * 10) / 10;
 
-      pan = applyVirtualJoystickSnapbackGuard(pan, lastVirtualJoystickCommand.pan);
-      tilt = applyVirtualJoystickSnapbackGuard(tilt, lastVirtualJoystickCommand.tilt);
+      pan = applyVirtualJoystickSnapbackGuard(pan, lastVirtualJoystickCommand.pan, 'pan');
+      tilt = applyVirtualJoystickSnapbackGuard(tilt, lastVirtualJoystickCommand.tilt, 'tilt');
       lastVirtualJoystickCommand = { pan, tilt };
 
       sendPtzDriveCommand(pan, tilt, 0, 'virtual');
@@ -3255,6 +3374,7 @@
     function resetJoystick() {
       elJoystickCenter.style.transform = 'translate(-50%, -50%)';
       lastVirtualJoystickCommand = { pan: 0, tilt: 0 };
+      pendingVirtualJoystickDirection = { pan: 0, tilt: 0 };
       void stopPtzInput('virtual');
       console.debug('[PTZ] Virtual joystick reset to center');
     }
@@ -3302,6 +3422,13 @@
     });
   }
 
+  if (elJoystickSizeBtn) {
+    elJoystickSizeBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      cycleVirtualJoystickSize();
+    });
+  }
+
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') {
       void stopPtzInput('system');
@@ -3311,6 +3438,7 @@
   window.addEventListener('pagehide', () => {
     void stopPtzInput('system');
   });
+  window.addEventListener('resize', applyVirtualJoystickLayout);
 
   // ── Virtual joystick button visibility ─────────────────────────────────────
   const isTouchDevice = window.matchMedia('(hover: none)').matches;
@@ -3318,8 +3446,9 @@
   function updateJoystickButtonVisibility() {
     if (!elVirtualJoystickBtn) return;
     const settingsPanelOpen = elGspPanel && elGspPanel.classList.contains('open');
+    const enabled = state.virtualJoystick?.enabled !== false;
     const joystickEnabled = localStorage.getItem('ptz-virtual-joystick') !== 'false';
-    const shouldShow = isTouchDevice && !virtualJoystickActive && !settingsPanelOpen && joystickEnabled;
+    const shouldShow = enabled && isTouchDevice && !virtualJoystickActive && !settingsPanelOpen && joystickEnabled;
     elVirtualJoystickBtn.style.display = shouldShow ? 'block' : 'none';
   }
 
@@ -3960,6 +4089,7 @@
 
   // Joystick settings elements
   const elVirtualJoystickEnabledCheckbox = document.getElementById('f-virtual-joystick-enabled');
+  const elVirtualJoystickSize = document.getElementById('f-virtual-joystick-size');
   const elJoystickEnabled = document.getElementById('f-joystick-enabled');
   const elJoystickModel = document.getElementById('f-joystick-model');
   const elJoystickDeadzone = document.getElementById('f-joystick-deadzone');
@@ -4073,17 +4203,19 @@
   elGspFill.addEventListener('change', saveGridSettings);
 
   function updateVirtualJoystickVisibility() {
-    const enabled = state.virtualJoystick?.enabled !== false;
-    const isTouchDevice = window.matchMedia('(hover: none)').matches;
-    if (elVirtualJoystickBtn) {
-      const show = enabled && isTouchDevice && localStorage.getItem('ptz-virtual-joystick') !== 'false';
-      elVirtualJoystickBtn.style.display = show ? 'block' : 'none';
+    state.virtualJoystick = normalizeVirtualJoystickSettings(state.virtualJoystick);
+    if (state.virtualJoystick.enabled === false && virtualJoystickActive) {
+      showVirtualJoystick(false);
     }
+    applyVirtualJoystickLayout();
+    updateJoystickButtonVisibility();
   }
 
   function loadJoystickSettings() {
+    state.virtualJoystick = normalizeVirtualJoystickSettings(state.virtualJoystick);
     const js = state.joystick = normalizeJoystickSettings(state.joystick);
     if (elVirtualJoystickEnabledCheckbox) elVirtualJoystickEnabledCheckbox.checked = state.virtualJoystick?.enabled !== false;
+    if (elVirtualJoystickSize) elVirtualJoystickSize.value = state.virtualJoystick?.size || 'normal';
     if (elJoystickEnabled) elJoystickEnabled.checked = !!js.enabled;
     if (elJoystickModel) elJoystickModel.value = js.model || 'logitech-extreme-3d';
     if (elJoystickDeadzone) {
@@ -4126,11 +4258,13 @@
       zoomCompensationCurve: elJoystickZoomComp?.value || 'linear',
     });
 
-    state.virtualJoystick = {
+    state.virtualJoystick = normalizeVirtualJoystickSettings({
+      ...state.virtualJoystick,
       enabled: elVirtualJoystickEnabledCheckbox?.checked !== false,
+      size: elVirtualJoystickSize?.value || state.virtualJoystick?.size || 'normal',
       deadzone: 0.35,
       sensitivity: { pan: 0.6, tilt: 0.6, zoom: 0.3 },
-    };
+    });
 
     if (wasEnabled && !state.joystick.enabled) {
       if (gamepadAnimationFrame) {
@@ -4173,6 +4307,10 @@
 
   if (elVirtualJoystickEnabledCheckbox) {
     elVirtualJoystickEnabledCheckbox.addEventListener('change', saveJoystickSettings);
+  }
+
+  if (elVirtualJoystickSize) {
+    elVirtualJoystickSize.addEventListener('change', saveJoystickSettings);
   }
 
   if (elJoystickEnabled) {
