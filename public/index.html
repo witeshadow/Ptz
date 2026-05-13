@@ -182,6 +182,7 @@
     #status.success { border-color: var(--success); color: var(--success); }
     #status.error   { border-color: var(--error);   color: var(--error);   }
     #status.busy    { border-color: var(--accent);  color: var(--accent);  }
+    #status.warning { border-color: #f59e0b; color: #fbbf24; }
 
     .status-dot {
       width: 7px; height: 7px; border-radius: 50%;
@@ -190,6 +191,7 @@
     #status.success .status-dot { background: var(--success); }
     #status.error   .status-dot { background: var(--error);   }
     #status.busy    .status-dot { background: var(--accent); animation: blink .8s ease-in-out infinite; }
+    #status.warning .status-dot { background: #f59e0b; }
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
 
     #status-text {
@@ -250,34 +252,41 @@
     }
     #fullscreen-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-    #live-mode-btn {
-      background: var(--surf2);
-      border: 1px solid var(--border);
+    #protect-live-btn {
+      background: rgba(234, 179, 8, 0.12);
+      border: 1px solid rgba(234, 179, 8, 0.35);
       border-radius: 6px;
-      padding: 8px 14px;
+      padding: 8px 12px;
       min-height: 46px;
-      color: var(--muted);
+      color: #fcd34d;
       font-size: 0.75rem;
-      font-weight: 600;
-      line-height: 1;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: 0.04em;
       cursor: pointer;
-      transition: border-color 0.2s, color 0.2s, background-color 0.2s;
+      transition: border-color 0.2s, color 0.2s, background-color 0.2s, opacity 0.2s;
       user-select: none;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       box-sizing: border-box;
+      text-align: center;
     }
-    #live-mode-btn:hover { border-color: var(--accent); color: var(--accent); }
-    #live-mode-btn.live {
-      background: var(--success);
-      border-color: var(--success);
-      color: white;
-      font-weight: 700;
+    #protect-live-btn:hover {
+      border-color: #fbbf24;
+      color: #fde68a;
+      background: rgba(234, 179, 8, 0.2);
     }
-    #live-mode-btn.live:hover { background: var(--success); opacity: 0.9; }
+    #protect-live-btn.protected {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: rgba(16, 185, 129, 0.4);
+      color: #6ee7b7;
+    }
+    #protect-live-btn.protected:hover {
+      background: rgba(16, 185, 129, 0.22);
+      border-color: #34d399;
+      color: #a7f3d0;
+    }
     #cut-live-btn {
       background: rgba(239, 68, 68, 0.12);
       border: 1px solid rgba(239, 68, 68, 0.35);
@@ -322,46 +331,6 @@
       justify-content: center;
       box-sizing: border-box;
     }
-    #lock-live-btn {
-      background: #d97706;
-      border: 1px solid #d97706;
-      border-radius: 6px;
-      padding: 7px 8px;
-      min-height: 46px;
-      color: white;
-      font-size: 0.75rem;
-      font-weight: 600;
-      line-height: 1;
-      cursor: pointer;
-      transition: border-color 0.2s, color 0.2s, background-color 0.2s, box-shadow 0.3s;
-      min-width: 86px;
-      text-align: center;
-      box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.7);
-      animation: unlock-pulse 2s infinite;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      box-sizing: border-box;
-    }
-    @keyframes unlock-pulse {
-      0%, 100% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.7); }
-      50% { box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.2); }
-    }
-    #lock-live-btn:hover { background: #b45309; border-color: #b45309; }
-    #lock-live-btn.locked {
-      color: white;
-      background: var(--accent);
-      border-color: var(--accent);
-      font-weight: 600;
-      animation: none;
-      box-shadow: none;
-    }
-    #lock-live-btn.locked:hover {
-      background: #2563eb;
-      border-color: #2563eb;
-      opacity: 1;
-    }
-
     .atem-dot {
       width: 7px; height: 7px; border-radius: 50%;
       background: var(--muted); flex-shrink: 0;
@@ -465,7 +434,7 @@
       padding: 5px 10px;
       min-height: 40px;
     }
-    body.header-compact #live-mode-btn {
+    body.header-compact #protect-live-btn {
       padding: 6px 12px;
       min-height: 40px;
     }
@@ -475,10 +444,6 @@
     }
     body.header-compact #btn-auto-cut {
       padding: 6px 12px;
-      min-height: 40px;
-    }
-    body.header-compact #lock-live-btn {
-      padding: 5px 8px;
       min-height: 40px;
     }
     body.header-compact .cam-tab {
@@ -696,9 +661,9 @@
       text-shadow: 0 1px 3px rgba(0,0,0,.9);
     }
 
-    .preset-edit {
+    .preset-manage {
       position: absolute; bottom: 6px; right: 6px;
-      min-width: 40px; height: 24px;
+      min-width: 58px; height: 24px;
       padding: 0 7px;
       background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.25);
       border-radius: 999px; color: #fff; font-size: .65rem; line-height: 1;
@@ -708,61 +673,117 @@
       transition: background .15s, border-color .15s;
       z-index: 2;
     }
-    .preset-edit:hover { background: var(--accent); border-color: var(--accent); }
-    .preset-btn.editing-this .preset-edit {
-      background: rgba(217, 119, 6, 0.7);
-      border-color: #fbbf24;
-      color: #fbbf24;
-    }
-    .preset-btn.editing-this .preset-edit:hover {
-      background: #d97706;
-      border-color: #fbbf24;
-    }
-
-    .preset-capture {
-      position: absolute; top: 6px; right: 6px;
-      min-width: 44px; height: 24px;
-      padding: 0 8px;
-      background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.25);
-      border-radius: 999px; color: #fff; font-size: .65rem; line-height: 1;
-      font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
-      cursor: pointer; display: inline-flex;
-      align-items: center; justify-content: center;
-      transition: background .15s;
-      z-index: 2;
-    }
-    .preset-capture:hover { background: var(--accent); border-color: var(--accent); }
+    .preset-manage:hover { background: var(--accent); border-color: var(--accent); }
 
     .preset-clear {
       display: none;
-    }
-
-    .name-input {
-      font-size: .7rem; background: var(--surf2);
-      border: 1px solid var(--accent); border-radius: 3px;
-      color: var(--text); padding: 1px 5px;
-      text-align: right; outline: none; width: 100%;
     }
 
     .preset-btn.state-busy  { border-color: var(--accent); pointer-events: none; }
     .preset-btn.state-ok    { border-color: var(--success); }
     .preset-btn.state-fail  { border-color: var(--error); }
 
-    .preset-btn.editing-this { cursor: default; }
-    .preset-btn.editing-this:hover { border-color: var(--border); }
-    .preset-btn.editing-this:hover .preset-num { color: var(--border); }
-    .preset-btn.editing-this:active { transform: none; }
-
     @keyframes snap-pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
-    .preset-btn.needs-snap .preset-capture {
+    .preset-btn.needs-snap .preset-manage {
       background: rgba(234,179,8,.85);
       border-color: rgba(234,179,8,.85);
       animation: snap-pulse 1.5s ease-in-out infinite;
     }
-    .preset-btn.needs-snap .preset-capture:hover {
+    .preset-btn.needs-snap .preset-manage:hover {
       background: #eab308;
       border-color: #eab308;
       animation: none;
+    }
+    .preset-alert {
+      position: absolute;
+      top: 6px;
+      left: 6px;
+      padding: 4px 7px;
+      border-radius: 999px;
+      background: rgba(234, 179, 8, 0.9);
+      border: 1px solid rgba(250, 204, 21, 0.9);
+      color: #111827;
+      font-size: 0.58rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      z-index: 2;
+      animation: snap-pulse 1.5s ease-in-out infinite;
+    }
+    .manage-sheet {
+      position: fixed;
+      inset: 0;
+      z-index: 210;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(2, 6, 23, 0.72);
+      padding: 18px;
+    }
+    .manage-sheet.open { display: flex; }
+    .manage-card {
+      width: min(100%, 420px);
+      background: var(--surf);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 14px 40px rgba(0,0,0,.45);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .manage-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .manage-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .manage-note {
+      font-size: 0.78rem;
+      line-height: 1.45;
+      color: var(--label);
+      background: rgba(148, 163, 184, 0.08);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .manage-note.warning {
+      color: #fcd34d;
+      border-color: rgba(234, 179, 8, 0.35);
+      background: rgba(234, 179, 8, 0.12);
+    }
+    .manage-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .manage-field label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--label);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .manage-field input {
+      background: var(--surf2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 9px 10px;
+      font-size: 0.9rem;
+    }
+    .manage-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .manage-actions button {
+      flex: 1 1 120px;
     }
 
     /* ── Toolbar ─────────────────────────────────────── */
@@ -905,10 +926,9 @@
     body.fill-mode .brand-text { display: none; }
     body.fill-mode #fill-cam-strip { display: none; }
     body.fill-mode #fullscreen-btn { padding: 4px 8px; font-size: 0.92rem; }
-    body.fill-mode #live-mode-btn { padding: 4px 9px; font-size: 0.68rem; min-height: 40px; }
+    body.fill-mode #protect-live-btn { padding: 4px 9px; font-size: 0.68rem; min-height: 40px; }
     body.fill-mode #cut-live-btn { min-height: 40px; }
     body.fill-mode #btn-auto-cut { min-height: 40px; font-size: 0.68rem; padding: 4px 9px; }
-    body.fill-mode #lock-live-btn { padding: 4px 7px; font-size: 0.65rem; min-width: 82px; min-height: 40px; }
     body.fill-mode #atem-pill { padding: 4px 8px; font-size: 0.68rem; }
     body.fill-mode #status { width: 150px; max-width: 150px; flex-basis: 150px; padding: 3px 8px; font-size: 0.7rem; }
     body.fill-mode #cam-tabs { display: flex; }
@@ -1322,8 +1342,7 @@
     <div id="cam-tabs"><!-- rendered by JS --></div>
     <div class="header-actions">
       <button id="cut-live-btn" style="display:none" title="Cut active camera to ATEM program">Cut</button>
-      <button type="button" id="live-mode-btn" class="live" title="Toggle Live/Edit view. Use Locked to block movement of the camera on ATEM program.">Live</button>
-      <button type="button" id="lock-live-btn" title="Blocks PTZ moves, preset recalls, and scans when the selected camera is live on ATEM program."></button>
+      <button type="button" id="protect-live-btn" title="Blocks PTZ moves, preset recalls, scans, and recaptures when the selected camera is live on ATEM program."></button>
       <button type="button" class="btn-ghost" id="btn-auto-cut" style="display:none">Auto Cut</button>
       <button type="button" id="fullscreen-btn" title="Toggle fullscreen">&#x26F6;</button>
     </div>
@@ -1335,7 +1354,7 @@
     <div id="preset-grid"><!-- rendered by JS --></div>
   </div>
   <div id="toolbar">
-    <button class="btn-primary" id="btn-scan">Scan All Presets</button>
+    <button class="btn-primary" id="btn-scan">Recapture Preset Range</button>
     <div id="capture-source-toggle" style="display:none">
       <button class="btn-ghost csrc-btn" data-src="active"   title="Capture from active camera">ACT</button>
       <button class="btn-ghost csrc-btn" data-src="preview"  title="Capture from ATEM preview">PVW</button>
@@ -1361,7 +1380,7 @@
 </main>
 
 <footer>
-  <span>Tap a preset to recall it &nbsp;&middot;&nbsp; Tap Edit, then tap that preset to rename it, or tap Snap to refresh its image &nbsp;&middot;&nbsp; Double-click a camera tab to rename it</span>
+  <span>Tap a preset to recall it &nbsp;&middot;&nbsp; Tap Manage on a preset to rename it or recapture its image &nbsp;&middot;&nbsp; Double-click a camera tab to rename it</span>
   <div id="build-indicator" aria-live="polite">
     <span class="build-commit">build <span id="build-commit">5efe1f2</span></span>
     <span class="build-mode" id="build-mode">normal</span>
@@ -1387,7 +1406,7 @@
         <label for="f-camera-select">Select Camera</label>
         <select id="f-camera-select"></select>
         <div id="camera-select-guard" class="field-note" style="color: var(--error); display: none;">
-          Cannot edit active camera in live mode. Exit live mode to modify.
+          Protect Live Camera is on. Switch away from the live camera or turn protection off to modify this mapping.
         </div>
       </div>
       <div class="field">
@@ -1474,7 +1493,7 @@
       </div>
       <label class="atem-toggle-wrap gsp-mobile-section active" data-mobile-tab="atem">
         <input id="f-atem-enabled" type="checkbox" />
-        <span>Follow ATEM</span>
+        <span>Enable ATEM Integration</span>
       </label>
       <div class="field gsp-mobile-section active" data-mobile-tab="atem">
       <label for="f-atem-ip">ATEM IP</label>
@@ -1553,8 +1572,9 @@
     </div>
 
     <div class="field gsp-extra-card gsp-mobile-section active" id="live-preference-field" data-mobile-tab="atem" style="display:none;">
-      <label>Live Mode Follows</label>
+      <label for="f-atem-follows">Follow Active Camera</label>
       <select id="f-atem-follows">
+        <option value="off">Off</option>
         <option value="preview">Preview</option>
         <option value="program">Program</option>
       </select>
@@ -1717,8 +1737,30 @@
   </svg>
 </button>
 
+<div id="preset-manage-sheet" class="manage-sheet" aria-hidden="true">
+  <div class="manage-card" role="dialog" aria-modal="true" aria-label="Manage preset">
+    <div class="manage-header">
+      <div class="manage-title" id="manage-preset-title">Manage Preset</div>
+      <button type="button" class="btn-ghost" id="manage-close-btn">Close</button>
+    </div>
+    <div class="manage-note" id="manage-preset-note">Rename this preset or refresh its saved image.</div>
+    <div class="manage-note warning" id="manage-drift-note" style="display:none;"></div>
+    <div class="manage-field">
+      <label for="manage-label-input">Preset Label</label>
+      <input id="manage-label-input" type="text" maxlength="24" autocomplete="off" spellcheck="false" />
+    </div>
+    <div class="manage-note" id="manage-position-note">No stored camera position.</div>
+    <div class="manage-actions">
+      <button type="button" class="btn-primary" id="manage-save-btn">Save Label</button>
+      <button type="button" class="btn-ghost" id="manage-recapture-btn">Recapture Image</button>
+      <button type="button" class="btn-ghost" id="manage-clear-btn">Clear Image</button>
+    </div>
+  </div>
+</div>
+
 <!-- Virtual Joystick for Touch Devices -->
 <div id="virtual-joystick-container" style="display:none; position:fixed; bottom:20px; left:20px; z-index:100; touch-action:none;">
+  <button id="joystick-close-btn" style="position:absolute; top:-12px; right:-12px; width:28px; height:28px; padding:0; border:1px solid var(--border); background:var(--surf); color:var(--text); border-radius:999px; font-size:14px; cursor:pointer;">×</button>
   <div id="virtual-joystick" style="position:relative; width:120px; height:120px; background:var(--surf2); border:2px solid var(--border); border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:grab; user-select:none;">
     <div id="joystick-center" style="position:absolute; width:40px; height:40px; background:var(--accent); border-radius:50%; top:50%; left:50%; transform:translate(-50%,-50%); transition:all 0.05s ease-out; box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>
     <div style="position:absolute; width:100%; height:100%; border:1px dashed var(--border); border-radius:50%; opacity:0.3;"></div>
@@ -1827,7 +1869,7 @@
 
   let state = {
     activeCam: 0,
-    editingPresetId: null,
+    managedPresetId: null,
     cameras: DEF_CAMERAS.map(c => ({ ...c })),
     labels: {},
     dwellMs: 3000,
@@ -1835,9 +1877,7 @@
     atem: { ip: '', enabled: false },
     showAtemDebug: false,
     showJoystickDebug: false,
-    liveMode: true,
-    lockLiveMode: false,
-    unlockOnExitLiveMode: true,
+    protectLiveCamera: true,
     atemFollows: 'preview',
     autoCutDelayMs: 0,
     previewSource: null,
@@ -2014,12 +2054,11 @@
         if (s.gridCols    != null) state.gridCols    = +s.gridCols;
         if (s.gridRows    != null) state.gridRows    = +s.gridRows;
         if (s.fillWindow  != null) state.fillWindow  = !!s.fillWindow;
-        if (s.liveMode      != null) state.liveMode      = !!s.liveMode;
-        if (s.lockLiveMode  != null) state.lockLiveMode  = !!s.lockLiveMode;
-        if (s.unlockOnExitLiveMode != null) state.unlockOnExitLiveMode = !!s.unlockOnExitLiveMode;
+        if (s.protectLiveCamera != null) state.protectLiveCamera = !!s.protectLiveCamera;
+        else if (s.lockLiveMode != null) state.protectLiveCamera = !!s.lockLiveMode;
         if (s.showAtemDebug != null) state.showAtemDebug = !!s.showAtemDebug;
         if (s.showJoystickDebug != null) state.showJoystickDebug = !!s.showJoystickDebug;
-        if (s.atemFollows)           state.atemFollows   = s.atemFollows;
+        if (s.atemFollows)           state.atemFollows   = ['off', 'preview', 'program'].includes(s.atemFollows) ? s.atemFollows : 'preview';
         if (s.autoCutDelayMs != null) state.autoCutDelayMs = Math.max(0, +s.autoCutDelayMs || 0);
         if (s.atemOutputMap) state.atemOutputMap = normalizeAtemOutputMap(s.atemOutputMap);
         if (s.atemSourceLabels) state.atemSourceLabels = { ...s.atemSourceLabels };
@@ -2040,10 +2079,18 @@
 
   async function pushSettings() {
     try {
+      const payload = { ...state };
+      delete payload.managedPresetId;
+      delete payload.previewSource;
+      delete payload.programSource;
+      delete payload.aux1Source;
+      delete payload.aux2Source;
+      delete payload.aux3Source;
+      delete payload.aux4Source;
       await fetch('/settings', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(state),
+        body:    JSON.stringify(payload),
       });
     } catch (_) {}
   }
@@ -2128,6 +2175,12 @@
   function cameraMatchesAtemSource(idx, source) {
     if (source == null || source === 0) return false;
     return getCameraAtemInput(idx) === Number(source);
+  }
+
+  function isProtectedLiveCamera(camIdx = state.activeCam) {
+    return !!state.protectLiveCamera
+      && !!state.atem.enabled
+      && cameraMatchesAtemSource(camIdx, state.programSource);
   }
 
   function getUsbDeviceName(deviceIndex) {
@@ -2515,8 +2568,7 @@
 
     if (onProgram) return 'LIVE';
     if (onPreview) return 'PVW';
-    if (idx === state.activeCam && state.liveMode) return 'SEL';
-    if (idx === state.activeCam && !state.liveMode) return 'EDIT';
+    if (idx === state.activeCam) return 'SEL';
     return '';
   }
 
@@ -2661,7 +2713,6 @@
       const badge = getCameraBadgeText(idx);
       if (badge === 'LIVE') btn.classList.add('live');
       else if (badge === 'PVW') btn.classList.add('preview');
-      else if (badge === 'EDIT') btn.classList.add('edit');
 
       btn.appendChild(dot);
       nameWrap.appendChild(nameEl);
@@ -2757,12 +2808,14 @@
     }
     clearPendingAutoCut();
     saveCameraSettings();
+    void stopPtzInput('system');
     state.activeCam = idx;
-    state.editingPresetId = null;
+    state.managedPresetId = null;
     currentCameraZoom = { value: 0, timestamp: 0 };
     if (gamepadConnected && state.joystick?.enabled) {
       startZoomPolling();
     }
+    closePresetManageSheet();
     schedSave();
     loadCameraSettings();
     updateCameraSelectUi();
@@ -2906,16 +2959,15 @@
   }
 
   function updateCameraSelectUi() {
-    const isLiveAndActive = state.liveMode && settingsCameraIdx === state.activeCam;
+    const protectedLiveCamera = isProtectedLiveCamera(settingsCameraIdx);
     if (elCameraSelect) {
       elCameraSelect.value = String(settingsCameraIdx);
     }
     if (elCameraSelectGuard) {
-      elCameraSelectGuard.style.display = isLiveAndActive ? 'block' : 'none';
+      elCameraSelectGuard.style.display = protectedLiveCamera ? 'block' : 'none';
     }
-    // Disable camera input fields when editing the active camera in live mode
     [elIp, elPort, elVisca, elAtemInput, elUsbDevice, elStreamUrl].forEach(el => {
-      if (el) el.disabled = isLiveAndActive;
+      if (el) el.disabled = protectedLiveCamera;
     });
   }
 
@@ -2974,61 +3026,126 @@
   const elJoystickCenter = document.getElementById('joystick-center');
   const elVirtualJoystickBtn = document.getElementById('virtual-joystick-btn');
   const elVirtualJoystickContainer = document.getElementById('virtual-joystick-container');
+  const elJoystickCloseBtn = document.getElementById('joystick-close-btn');
   const elJoystickZoomUp = document.getElementById('joystick-zoom-up');
   const elJoystickZoomDown = document.getElementById('joystick-zoom-down');
 
   let virtualJoystickActive = false;
   let virtualJoystickTouchId = null;
-  let lastVirtualPtz = { pan: 0, tilt: 0, zoom: 0 };
+  const ptzDriveController = {
+    desiredCommand: { pan: 0, tilt: 0, zoom: 0 },
+    lastSentCommand: null,
+    inFlight: false,
+    nextCommandId: Date.now(),
+    activeInputSource: null,
+  };
 
   function quantizePtzAxis(value) {
     const n = Math.max(-1, Math.min(1, Number(value) || 0));
     return Math.round(n * 10) / 10;
   }
 
-  async function sendPtzDriveCommand(pan = 0, tilt = 0, zoom = 0) {
-    const next = {
-      pan: quantizePtzAxis(pan),
-      tilt: quantizePtzAxis(tilt),
-      zoom: quantizePtzAxis(zoom),
+  function clonePtzCommand(command) {
+    return {
+      pan: quantizePtzAxis(command.pan),
+      tilt: quantizePtzAxis(command.tilt),
+      zoom: quantizePtzAxis(command.zoom),
     };
+  }
 
-    if (state.liveMode && state.lockLiveMode && cameraMatchesAtemSource(state.activeCam, state.programSource)) {
-      setStatus('error', 'LIVE camera is locked. Switch cameras or tap Locked to go Unlocked before moving.');
-      return false;
-    }
+  function ptzCommandsEqual(a, b) {
+    return !!a && !!b && a.pan === b.pan && a.tilt === b.tilt && a.zoom === b.zoom;
+  }
 
-    const cam = state.cameras[state.activeCam];
-    if (!cam || !cam.ip) {
-      setStatus('error', 'Enter the camera IP address first');
-      return false;
-    }
-    if (next.pan === lastVirtualPtz.pan && next.tilt === lastVirtualPtz.tilt && next.zoom === lastVirtualPtz.zoom) {
-      return true;
-    }
+  function isZeroPtzCommand(command) {
+    return !!command && command.pan === 0 && command.tilt === 0 && command.zoom === 0;
+  }
 
-    try {
-      const res = await fetch('/api/ptz/drive', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ camIdx: state.activeCam, pan: next.pan, tilt: next.tilt, zoom: next.zoom }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) {
-        setStatus('error', data.error || data.message || 'PTZ move failed');
+  async function flushPtzDriveController() {
+    if (ptzDriveController.inFlight) return true;
+    while (!ptzCommandsEqual(ptzDriveController.desiredCommand, ptzDriveController.lastSentCommand)) {
+      const next = clonePtzCommand(ptzDriveController.desiredCommand);
+      if (!isZeroPtzCommand(next) && isProtectedLiveCamera(state.activeCam)) {
+        setStatus('error', 'Protected live camera is on ATEM program. Switch cameras or turn off Protect Live Camera before moving.');
+        ptzDriveController.desiredCommand = { pan: 0, tilt: 0, zoom: 0 };
+        ptzDriveController.activeInputSource = null;
+        if (ptzCommandsEqual(ptzDriveController.desiredCommand, ptzDriveController.lastSentCommand)) {
+          return false;
+        }
+        continue;
+      }
+
+      const cam = state.cameras[state.activeCam];
+      if (!cam || !cam.ip) {
+        setStatus('error', 'Enter the camera IP address first');
         return false;
       }
-      lastVirtualPtz = next;
-      checkRecalledPresetForDrift();
-      return true;
-    } catch (err) {
-      setStatus('error', `PTZ move failed: ${err.message || err}`);
-      return false;
+
+      const commandId = ptzDriveController.nextCommandId++;
+      ptzDriveController.inFlight = true;
+      try {
+        const res = await fetch('/api/ptz/drive', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            camIdx: state.activeCam,
+            pan: next.pan,
+            tilt: next.tilt,
+            zoom: next.zoom,
+            commandId,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          setStatus('error', data.error || data.message || 'PTZ move failed');
+          return false;
+        }
+        if (data.stale) {
+          const lastCommandId = Number(data.lastCommandId || 0);
+          ptzDriveController.nextCommandId = Math.max(
+            ptzDriveController.nextCommandId,
+            lastCommandId + 1
+          );
+          continue;
+        }
+        ptzDriveController.lastSentCommand = next;
+        checkRecalledPresetForDrift();
+      } catch (err) {
+        setStatus('error', `PTZ move failed: ${err.message || err}`);
+        return false;
+      } finally {
+        ptzDriveController.inFlight = false;
+      }
     }
+    return true;
+  }
+
+  function sendPtzDriveCommand(pan = 0, tilt = 0, zoom = 0, source = 'virtual') {
+    const next = clonePtzCommand({ pan, tilt, zoom });
+    ptzDriveController.desiredCommand = next;
+    if (isZeroPtzCommand(next)) {
+      if (source === 'system' || source === ptzDriveController.activeInputSource) {
+        ptzDriveController.activeInputSource = null;
+      }
+    } else {
+      ptzDriveController.activeInputSource = source;
+    }
+    return flushPtzDriveController();
+  }
+
+  function stopPtzInput(source = 'system') {
+    return sendPtzDriveCommand(0, 0, 0, source);
   }
 
   function showVirtualJoystick(show) {
     virtualJoystickActive = show;
+    if (!show) {
+      virtualJoystickTouchId = null;
+      void stopPtzInput('virtual');
+      if (elJoystickCenter) {
+        elJoystickCenter.style.transform = 'translate(-50%, -50%)';
+      }
+    }
     if (elVirtualJoystickContainer) {
       elVirtualJoystickContainer.style.display = show ? 'block' : 'none';
     }
@@ -3085,17 +3202,13 @@
       pan = Math.round(pan * 10) / 10;
       tilt = Math.round(tilt * 10) / 10;
 
-      sendPtzDriveCommand(pan, tilt, 0);
+      sendPtzDriveCommand(pan, tilt, 0, 'virtual');
       console.debug('[PTZ] Virtual joystick:', { pan: pan.toFixed(2), tilt: tilt.toFixed(2), rawDistance: distance.toFixed(2) });
     }
 
-    async function resetJoystick() {
+    function resetJoystick() {
       elJoystickCenter.style.transform = 'translate(-50%, -50%)';
-      const res = await sendPtzDriveCommand(0, 0, 0);
-      if (!res) {
-        console.warn('[PTZ] Stop command failed, retrying...');
-        await sendPtzDriveCommand(0, 0, 0);
-      }
+      void stopPtzInput('virtual');
       console.debug('[PTZ] Virtual joystick reset to center');
     }
 
@@ -3135,6 +3248,22 @@
       resetJoystick();
     });
   }
+
+  if (elJoystickCloseBtn) {
+    elJoystickCloseBtn.addEventListener('click', () => {
+      showVirtualJoystick(false);
+    });
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') {
+      void stopPtzInput('system');
+      if (virtualJoystickActive) showVirtualJoystick(false);
+    }
+  });
+  window.addEventListener('pagehide', () => {
+    void stopPtzInput('system');
+  });
 
   // ── Virtual joystick button visibility ─────────────────────────────────────
   const isTouchDevice = window.matchMedia('(hover: none)').matches;
@@ -3211,7 +3340,7 @@
         gamepadConnected = false;
         gamepadState = { pan: 0, tilt: 0, zoom: 0 };
         stopZoomPolling();
-        sendPtzDriveCommand(0, 0, 0);
+        stopPtzInput('gamepad');
         console.debug('[PTZ] Gamepad disconnected');
         updateJoystickStatus();
       }
@@ -3301,7 +3430,7 @@
     const zoom = gamepadState.zoom;
 
     const cfg = state.joystick || {};
-    if (cfg.enabled && pan !== 0 || tilt !== 0) {
+    if ((cfg.enabled && pan !== 0) || tilt !== 0) {
       const curve = cfg.zoomCompensationCurve || 'linear';
       const compensation = calculateZoomCompensation(currentCameraZoom.value, curve);
       pan *= compensation;
@@ -3309,7 +3438,7 @@
     }
 
     const cmd = { pan: pan, tilt: -tilt, zoom: zoom };
-    const isDuplicate = cmd.pan === lastVirtualPtz.pan && cmd.tilt === lastVirtualPtz.tilt && cmd.zoom === lastVirtualPtz.zoom;
+    const isDuplicate = ptzCommandsEqual(cmd, ptzDriveController.desiredCommand);
     if (state.showJoystickDebug) {
       if (cmd.pan === 0 && cmd.tilt === 0 && cmd.zoom === 0) {
         if (!isDuplicate) {
@@ -3318,10 +3447,10 @@
           console.debug('[GAMEPAD] STOP already sent, deduplicating');
         }
       } else {
-        console.debug('[GAMEPAD] Sending command:', cmd, isDuplicate ? '(duplicate, skipped)' : '(sent)');
+        console.debug('[GAMEPAD] Desired command:', cmd, isDuplicate ? '(duplicate, skipped)' : '(queued)');
       }
     }
-    sendPtzDriveCommand(pan, -tilt, zoom);
+    sendPtzDriveCommand(pan, -tilt, zoom, 'gamepad');
   }
 
   // Initialize gamepad support
@@ -3341,7 +3470,7 @@
     gamepadState = { pan: 0, tilt: 0, zoom: 0 };
     gamepadButtonStates = {};
     stopZoomPolling();
-    sendPtzDriveCommand(0, 0, 0);
+    stopPtzInput('gamepad');
     console.debug('[PTZ] Gamepad disconnected');
     updateJoystickStatus();
     updateJoystickDebug();
@@ -3360,6 +3489,8 @@
           updateAtemPill();
           updateCameraStatusHints();
           renderTabs();
+          updateCameraSelectUi();
+          if (state.managedPresetId) renderPresetManageSheet();
           updateAtemDebug();
           updateCaptureOutputLabel();
           renderOutputMapTable();
@@ -3370,11 +3501,12 @@
           updateAtemPill();
           updateCameraStatusHints();
           renderTabs();
+          updateCameraSelectUi();
+          if (state.managedPresetId) renderPresetManageSheet();
           updateAtemDebug();
           updateCaptureOutputLabel();
           renderOutputMapTable();
-          // Auto-switch in Live mode if following preview
-          if (state.liveMode && state.atem.enabled && state.atemFollows === 'preview') {
+          if (state.atem.enabled && state.atemFollows === 'preview') {
             const idx = state.cameras.findIndex((_, camIdx) => cameraMatchesAtemSource(camIdx, ev.source));
             if (idx >= 0 && idx !== state.activeCam) switchCamera(idx);
           }
@@ -3385,11 +3517,12 @@
           updateAtemPill();
           updateCameraStatusHints();
           renderTabs();
+          updateCameraSelectUi();
+          if (state.managedPresetId) renderPresetManageSheet();
           updateAtemDebug();
           updateCaptureOutputLabel();
           renderOutputMapTable();
-          // Auto-switch in Live mode if following program
-          if (state.liveMode && state.atem.enabled && state.atemFollows === 'program') {
+          if (state.atem.enabled && state.atemFollows === 'program') {
             const idx = state.cameras.findIndex((_, camIdx) => cameraMatchesAtemSource(camIdx, ev.source));
             if (idx >= 0 && idx !== state.activeCam) switchCamera(idx);
           }
@@ -3719,63 +3852,34 @@
     });
   })();
 
-  // Define lock button handler FIRST so it's available for live button to use
-  let updateLockIcon;
-  const elLockLiveBtn = document.getElementById('lock-live-btn');
-  if (elLockLiveBtn) {
-    updateLockIcon = function() {
-      if (state.lockLiveMode) {
-        elLockLiveBtn.textContent = '🔒 Locked';
-        elLockLiveBtn.title = 'Blocks PTZ moves, preset recalls, and scans when the selected camera is live on ATEM program.';
-        elLockLiveBtn.classList.add('locked');
-      } else {
-        elLockLiveBtn.textContent = '⚠ Unlocked';
-        elLockLiveBtn.title = 'Allows PTZ moves, preset recalls, and scans even if the selected camera is live on ATEM program.';
-        elLockLiveBtn.classList.remove('locked');
-      }
-    };
-    updateLockIcon();
-    elLockLiveBtn.addEventListener('click', () => {
-      state.lockLiveMode = !state.lockLiveMode;
-      updateLockIcon();
+  const elProtectLiveBtn = document.getElementById('protect-live-btn');
+  function updateProtectLiveButton() {
+    if (!elProtectLiveBtn) return;
+    if (state.protectLiveCamera) {
+      elProtectLiveBtn.textContent = 'Protect Live Camera';
+      elProtectLiveBtn.classList.add('protected');
+      elProtectLiveBtn.title = 'Blocks PTZ moves, preset recalls, scans, and recaptures when the selected camera is live on ATEM program.';
+    } else {
+      elProtectLiveBtn.textContent = 'Live Protection Off';
+      elProtectLiveBtn.classList.remove('protected');
+      elProtectLiveBtn.title = 'Allows PTZ moves, preset recalls, scans, and recaptures even if the selected camera is live on ATEM program.';
+    }
+  }
+
+  if (elProtectLiveBtn) {
+    updateProtectLiveButton();
+    elProtectLiveBtn.addEventListener('click', () => {
+      state.protectLiveCamera = !state.protectLiveCamera;
+      updateProtectLiveButton();
+      updateCameraSelectUi();
+      if (state.managedPresetId) renderPresetManageSheet();
       setStatus(
         'success',
-        state.lockLiveMode
-          ? 'Locked: PTZ moves, preset recalls, and scans are blocked when the selected camera is live on ATEM program.'
-          : 'Unlocked: PTZ moves, preset recalls, and scans are allowed even if that camera is live on ATEM program.'
+        state.protectLiveCamera
+          ? 'Protect Live Camera is on. PTZ moves, recalls, scans, and recaptures are blocked when the selected camera is live on ATEM program.'
+          : 'Protect Live Camera is off. Live cameras can now be moved and recaptured.'
       );
       schedSave();
-    });
-  }
-
-  const elLiveBtn = document.getElementById('live-mode-btn');
-  function updateLiveModeButton() {
-    if (!elLiveBtn) return;
-    elLiveBtn.textContent = state.liveMode ? 'Live' : 'Edit';
-    elLiveBtn.classList.toggle('live', state.liveMode);
-    elLiveBtn.title = state.liveMode
-      ? 'Live view active. Use Locked to block movement of the camera on ATEM program.'
-      : 'Edit view active. This does not block camera movement; Locked does.';
-  }
-
-  if (elLiveBtn) {
-    elLiveBtn.addEventListener('click', () => {
-      state.liveMode = !state.liveMode;
-      if (state.liveMode) {
-        state.lockLiveMode = true;
-        setStatus('success', 'Live view active. Locked protects the camera on ATEM program from PTZ moves, preset recalls, and scans.');
-      } else {
-        if (state.unlockOnExitLiveMode) {
-          state.lockLiveMode = false;
-        }
-        setStatus('success', 'Edit view active. Label / Snap mode controls images and labels only; Locked controls movement safety.');
-      }
-      updateLiveModeButton();
-      if (updateLockIcon) updateLockIcon();
-      updateCameraSelectUi();
-      schedSave();
-      renderTabs();
-      updateToolbarVisibility();
     });
   }
 
@@ -3855,6 +3959,7 @@
   if (elGspFab && elGspPanel) {
     elGspFab.addEventListener('click', () => {
       const willOpen = !elGspPanel.classList.contains('open');
+      if (willOpen && virtualJoystickActive) showVirtualJoystick(false);
       elGspPanel.classList.toggle('open');
       updateJoystickButtonVisibility();
       if (willOpen) {
@@ -3987,7 +4092,7 @@
       }
       gamepadState = { pan: 0, tilt: 0, zoom: 0 };
       stopZoomPolling();
-      sendPtzDriveCommand(0, 0, 0);
+      stopPtzInput('gamepad');
     } else if (!wasEnabled && state.joystick.enabled) {
       const connectedGamepads = typeof navigator !== 'undefined' && navigator.getGamepads
         ? Array.from(navigator.getGamepads()).filter(Boolean)
@@ -4562,8 +4667,8 @@
   }
 
   async function capturePresetImage(cam, preset, btn) {
-    btn.disabled = true;
-    const preset_btn = btn.closest('.preset-btn');
+    if (btn) btn.disabled = true;
+    const preset_btn = btn ? btn.closest('.preset-btn') : elGrid.querySelector(`[data-preset="${preset}"]`);
     if (preset_btn) {
       preset_btn.classList.add('state-busy');
       preset_btn.classList.remove('state-ok', 'state-fail');
@@ -4600,7 +4705,7 @@
         }
       }
     } finally {
-      btn.disabled = false;
+      if (btn) btn.disabled = false;
     }
   }
 
@@ -4663,7 +4768,7 @@
         snapNeeded[key] = true;
         const btn = elGrid.querySelector(`[data-preset="${preset}"]`);
         if (btn) btn.classList.add('needs-snap');
-        setStatus('warning', `Preset ${preset} position has drifted — tap Snap to update`);
+        setStatus('warning', `Preset ${preset} position has drifted — open Manage to recapture`);
       } else {
         clearSnapNeeded(camIdx, preset);
       }
@@ -4907,16 +5012,143 @@
     }
   }
 
+  const elManageSheet = document.getElementById('preset-manage-sheet');
+  const elManageTitle = document.getElementById('manage-preset-title');
+  const elManageNote = document.getElementById('manage-preset-note');
+  const elManageDriftNote = document.getElementById('manage-drift-note');
+  const elManageLabelInput = document.getElementById('manage-label-input');
+  const elManagePositionNote = document.getElementById('manage-position-note');
+  const elManageSaveBtn = document.getElementById('manage-save-btn');
+  const elManageRecaptureBtn = document.getElementById('manage-recapture-btn');
+  const elManageClearBtn = document.getElementById('manage-clear-btn');
+  const elManageCloseBtn = document.getElementById('manage-close-btn');
+
+  function getManagedPresetContext() {
+    if (!state.managedPresetId) return null;
+    const [camText, presetText] = state.managedPresetId.split(':');
+    const cam = Number(camText);
+    const preset = Number(presetText);
+    if (!Number.isInteger(cam) || !Number.isInteger(preset)) return null;
+    return { cam, preset, key: state.managedPresetId };
+  }
+
+  function closePresetManageSheet() {
+    state.managedPresetId = null;
+    if (elManageSheet) {
+      elManageSheet.classList.remove('open');
+      elManageSheet.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  async function clearPresetImage(cam, preset) {
+    const res = await fetch(`/api/image/${cam}/${preset}`, { method: 'DELETE' });
+    if (!res.ok) return false;
+    delete state.positions[presetKey(cam, preset)];
+    clearSnapNeeded(cam, preset);
+    bumpImageVersion(cam, preset);
+    refreshPresetBtn(preset, cam);
+    if (state.managedPresetId === presetKey(cam, preset)) {
+      renderPresetManageSheet();
+    }
+    return true;
+  }
+
+  function renderPresetManageSheet() {
+    const ctx = getManagedPresetContext();
+    if (!ctx || !elManageSheet) return;
+    const { cam, preset, key } = ctx;
+    const cameraName = (state.cameras[cam] && state.cameras[cam].name) || `Camera ${cam + 1}`;
+    const storedLabel = state.labels[key] || '';
+    const pos = state.positions[key];
+    const needsRecapture = !!snapNeeded[key];
+    const liveProtected = isProtectedLiveCamera(cam);
+
+    elManageTitle.textContent = `${cameraName} Preset ${preset}`;
+    elManageNote.textContent = liveProtected
+      ? 'Protect Live Camera is on. Label changes are safe, but recapturing the image is blocked while this camera is live on ATEM program.'
+      : 'Tap recall on the tile. Use this sheet for label changes, recapture, and cleanup.';
+    elManageLabelInput.value = storedLabel;
+    if (pos) {
+      elManagePositionNote.textContent = `Stored position: pan ${pos.pan_hex} · tilt ${pos.tilt_hex} · zoom ${pos.zoom_hex}`;
+    } else {
+      elManagePositionNote.textContent = 'No stored camera position.';
+    }
+    elManageDriftNote.style.display = needsRecapture ? 'block' : 'none';
+    elManageDriftNote.textContent = needsRecapture
+      ? `Needs Recapture: the saved image no longer matches the current camera position for preset ${preset}.`
+      : '';
+    elManageRecaptureBtn.disabled = liveProtected;
+  }
+
+  function openPresetManageSheet(cam, preset) {
+    state.managedPresetId = presetKey(cam, preset);
+    renderPresetManageSheet();
+    if (elManageSheet) {
+      elManageSheet.classList.add('open');
+      elManageSheet.setAttribute('aria-hidden', 'false');
+    }
+  }
+
+  if (elManageCloseBtn) {
+    elManageCloseBtn.addEventListener('click', closePresetManageSheet);
+  }
+  if (elManageSheet) {
+    elManageSheet.addEventListener('click', (e) => {
+      if (e.target === elManageSheet) closePresetManageSheet();
+    });
+  }
+  if (elManageSaveBtn) {
+    elManageSaveBtn.addEventListener('click', () => {
+      const ctx = getManagedPresetContext();
+      if (!ctx) return;
+      const nextValue = elManageLabelInput.value.trim();
+      if (nextValue) state.labels[ctx.key] = nextValue;
+      else delete state.labels[ctx.key];
+      schedSave();
+      refreshPresetBtn(ctx.preset, ctx.cam);
+      renderPresetManageSheet();
+      setStatus('success', `Saved label for preset ${ctx.preset}`);
+    });
+  }
+  if (elManageLabelInput) {
+    elManageLabelInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (elManageSaveBtn) elManageSaveBtn.click();
+      } else if (e.key === 'Escape') {
+        closePresetManageSheet();
+      }
+    });
+  }
+  if (elManageRecaptureBtn) {
+    elManageRecaptureBtn.addEventListener('click', async () => {
+      const ctx = getManagedPresetContext();
+      if (!ctx) return;
+      await capturePresetImage(ctx.cam, ctx.preset, null);
+      renderPresetManageSheet();
+    });
+  }
+  if (elManageClearBtn) {
+    elManageClearBtn.addEventListener('click', async () => {
+      const ctx = getManagedPresetContext();
+      if (!ctx) return;
+      const ok = await clearPresetImage(ctx.cam, ctx.preset);
+      if (ok) {
+        setStatus('success', `Cleared image for preset ${ctx.preset}`);
+        renderPresetManageSheet();
+      }
+    });
+  }
+
   function buildPresetBtn(n) {
     const cam = state.activeCam;
     const lbl = state.labels[presetKey(cam, n)] || '';
     const presetId = presetKey(cam, n);
-    const isEditing = state.editingPresetId === presetId;
 
     const btn = document.createElement('div');
     btn.role = 'button';
     btn.tabIndex = 0;
-    btn.className  = 'preset-btn' + (isEditing ? ' editing-this' : '') + (snapNeeded[presetId] ? ' needs-snap' : '');
+    btn.className  = 'preset-btn' + (snapNeeded[presetId] ? ' needs-snap' : '');
     btn.dataset.preset = n;
     btn.dataset.displayCam = cam;
 
@@ -4950,139 +5182,51 @@
     ov.appendChild(ovName);
     btn.appendChild(ov);
 
-    const clearBtn = document.createElement('button');
-    clearBtn.className   = 'preset-clear';
-    clearBtn.type        = 'button';
-    clearBtn.title       = 'Clear snapshot';
-    clearBtn.textContent = '×';
-    clearBtn.addEventListener('click', async (e) => {
+    if (snapNeeded[presetId]) {
+      const alertEl = document.createElement('div');
+      alertEl.className = 'preset-alert';
+      alertEl.textContent = 'Needs Recapture';
+      btn.appendChild(alertEl);
+    }
+
+    const manageBtn = document.createElement('button');
+    manageBtn.className = 'preset-manage';
+    manageBtn.type = 'button';
+    manageBtn.title = 'Manage this preset';
+    manageBtn.setAttribute('aria-label', `Manage preset ${n}`);
+    manageBtn.textContent = 'Manage';
+    manageBtn.addEventListener('pointerup', (e) => e.stopPropagation());
+    manageBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const activeCam = state.activeCam;
-      const res = await fetch(`/api/image/${activeCam}/${n}`, { method: 'DELETE' });
-      if (!res.ok) return;
-      delete state.positions[presetKey(activeCam, n)];
-      clearSnapNeeded(activeCam, n);
-      bumpImageVersion(activeCam, n);
-      refreshPresetBtn(n, activeCam);
+      openPresetManageSheet(cam, n);
     });
-    btn.appendChild(clearBtn);
-
-    const editBtn = document.createElement('button');
-    editBtn.className = 'preset-edit';
-    editBtn.type = 'button';
-    editBtn.title = 'Edit label for this preset';
-    editBtn.setAttribute('aria-label', `Edit preset ${n}`);
-    editBtn.setAttribute('aria-pressed', isEditing ? 'true' : 'false');
-    editBtn.textContent = 'Edit';
-    editBtn.addEventListener('pointerup', (e) => e.stopPropagation());
-    editBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const key = presetKey(cam, n);
-      const wasEditing = state.editingPresetId === key;
-      const prevKey = state.editingPresetId;
-      state.editingPresetId = wasEditing ? null : key;
-
-      // Update only affected tiles instead of rebuilding entire grid
-      if (prevKey) {
-        const prevTile = elGrid.querySelector(`[data-preset="${prevKey.split(':')[1]}"]`);
-        if (prevTile && prevTile.dataset.displayCam === prevKey.split(':')[0]) {
-          prevTile.classList.remove('editing-this');
-          const prevEditBtn = prevTile.querySelector('.preset-edit');
-          if (prevEditBtn) {
-            prevEditBtn.setAttribute('aria-pressed', 'false');
-          }
-        }
-      }
-
-      if (state.editingPresetId) {
-        const newTile = elGrid.querySelector(`[data-preset="${n}"]`);
-        if (newTile && newTile.dataset.displayCam === cam) {
-          newTile.classList.add('editing-this');
-          const newEditBtn = newTile.querySelector('.preset-edit');
-          if (newEditBtn) {
-            newEditBtn.setAttribute('aria-pressed', 'true');
-          }
-        }
-      }
-
-      editBtn.focus();
-    });
-    btn.appendChild(editBtn);
-
-    const captureBtn = document.createElement('button');
-    captureBtn.className = 'preset-capture';
-    captureBtn.type      = 'button';
-    captureBtn.title     = 'Update screenshot';
-    captureBtn.setAttribute('aria-label', 'Update screenshot');
-    captureBtn.textContent = 'Snap';
-    captureBtn.addEventListener('pointerup', (e) => e.stopPropagation());
-    captureBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      await capturePresetImage(cam, n, captureBtn);
-    });
-    btn.appendChild(captureBtn);
+    btn.appendChild(manageBtn);
 
     let handledPointerUp = false;
-    function activatePreset() {
-      if (state.editingPresetId === presetId) openLabelEditor(n, ovName);
-      else recallPreset(n, btn);
-    }
 
     btn.addEventListener('pointerup', (e) => {
       if (e.button != null && e.button !== 0) return;
       handledPointerUp = true;
-      activatePreset();
+      recallPreset(n, btn);
       setTimeout(() => { handledPointerUp = false; }, 0);
     });
 
     btn.addEventListener('click', (e) => {
       if (handledPointerUp && e.detail !== 0) return;
-      activatePreset();
+      recallPreset(n, btn);
     });
 
     btn.addEventListener('keydown', (e) => {
       if (e.target !== btn) return;
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        activatePreset();
+        recallPreset(n, btn);
       }
     });
 
     refreshPresetImage(btn, cam, n);
 
     return btn;
-  }
-
-  // ── Label editor ───────────────────────────────────────────────────────────
-  function openLabelEditor(n, nameEl) {
-    if (nameEl.querySelector('input')) return;
-    const lk   = presetKey(state.activeCam, n);
-    const prev = state.labels[lk] || '';
-
-    const inp = document.createElement('input');
-    inp.type      = 'text';
-    inp.className = 'name-input';
-    inp.value     = prev;
-    inp.maxLength = 24;
-    inp.addEventListener('click', e => e.stopPropagation());
-
-    nameEl.innerHTML = '';
-    nameEl.appendChild(inp);
-    inp.focus(); inp.select();
-
-    function commit() {
-      const v = inp.value.trim();
-      if (v) state.labels[lk] = v; else delete state.labels[lk];
-      schedSave();
-      nameEl.innerHTML  = '';
-      nameEl.textContent = v;
-    }
-
-    inp.addEventListener('blur', commit);
-    inp.addEventListener('keydown', e => {
-      if (e.key === 'Enter')  inp.blur();
-      if (e.key === 'Escape') { nameEl.innerHTML = ''; nameEl.textContent = prev; }
-    });
   }
 
   async function routeActiveCam(camIdx) {
@@ -5126,12 +5270,9 @@
     const recallStartedAt = (typeof performance !== 'undefined' && performance.now)
       ? performance.now()
       : Date.now();
-    if (state.liveMode && state.lockLiveMode) {
-      const isLiveCamera = cameraMatchesAtemSource(recallCamIdx, state.programSource);
-      if (isLiveCamera) {
-        setStatus('error', 'LIVE camera is locked. Switch cameras or tap Locked to go Unlocked before recalling a preset.');
-        flash(btn, 'fail'); return;
-      }
+    if (isProtectedLiveCamera(recallCamIdx)) {
+      setStatus('error', 'Protected live camera is on ATEM program. Switch cameras or turn off Protect Live Camera before recalling a preset.');
+      flash(btn, 'fail'); return;
     }
     const cam = state.cameras[recallCamIdx];
     if (!cam.ip) {
@@ -5235,8 +5376,8 @@
     const scanCamIdx = state.activeCam;
     const cam = state.cameras[scanCamIdx];
     if (!cam.ip) { setStatus('error', 'Enter the camera IP address first'); return; }
-    if (state.liveMode && state.lockLiveMode && cameraMatchesAtemSource(scanCamIdx, state.programSource)) {
-      setStatus('error', 'LIVE camera is locked. Switch cameras or tap Locked to go Unlocked before scanning presets.');
+    if (isProtectedLiveCamera(scanCamIdx)) {
+      setStatus('error', 'Protected live camera is on ATEM program. Switch cameras or turn off Protect Live Camera before recapturing presets.');
       return;
     }
 
@@ -5280,7 +5421,7 @@
 
       elScanFill.style.width = `${Math.round(i / total * 100)}%`;
       elScanLbl.textContent  = `Camera ${scanCamIdx + 1}: recalling preset ${i + 1} of ${total}…`;
-      setStatus('busy', `Scanning Camera ${scanCamIdx + 1} preset ${i + 1} of ${total}…`, false);
+      setStatus('busy', `Recapturing Camera ${scanCamIdx + 1} preset ${i + 1} of ${total}…`, false);
 
       const waitMode = state.scanWaitMode === 'dwell' ? 'dwell' : 'settle';
       const result = await doRecall(p, scanCamIdx, waitMode);
@@ -5316,15 +5457,15 @@
     }
 
     scanning = false;
-    btnScan.textContent = 'Scan All Presets';
+    btnScan.textContent = 'Recapture Preset Range';
     btnScan.classList.remove('cancel');
     hideScanBar();
     if (recallFailure) {
-      setStatus('error', `Scan stopped at preset ${recallFailure.preset}: ${recallFailure.message}`);
+      setStatus('error', `Recapture stopped at preset ${recallFailure.preset}: ${recallFailure.message}`);
     } else if (captureErrors.length) {
-      setStatus('error', `Capture failed for preset(s): ${captureErrors.join(', ')} — check server console`);
+      setStatus('error', `Recapture failed for preset(s): ${captureErrors.join(', ')} — check server console`);
     } else {
-      setStatus('success', cancelScan ? 'Scan cancelled' : 'Scan complete');
+      setStatus('success', cancelScan ? 'Recapture cancelled' : 'Recapture complete');
     }
     cancelScan = false;
   }
@@ -5335,8 +5476,7 @@
     settingsCameraIdx = state.activeCam ?? 0;
     // Hydrate runtime auto-cut armed state from persisted device settings
     autoCutArmed = getDeviceAutoCutArmed() && canArmAutoCut() && !!getActiveCameraCutSource();
-    updateLiveModeButton();
-    if (updateLockIcon) updateLockIcon();
+    updateProtectLiveButton();
     initCameraSelector();
     loadCameraSettings();
     loadGridSettings();

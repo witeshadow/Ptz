@@ -102,9 +102,7 @@ DEFAULT_SETTINGS = {
     "dwellMs": 3000,
     "scanWaitMode": "settle",
     "atem": {"ip": "", "enabled": False},
-    "liveMode": True,
-    "lockLiveMode": False,
-    "unlockOnExitLiveMode": True,
+    "protectLiveCamera": True,
     "atemFollows": "preview",
     "autoCutDelayMs": 0,
     "atemOutputMap": {
@@ -318,13 +316,92 @@ def _ensure_dirs():
     os.makedirs(IMAGES_DIR, exist_ok=True)
 
 
+def _normalize_atem_follows(value: str | None) -> str:
+    return value if value in {"off", "preview", "program"} else "preview"
+
+
+def _default_settings_copy() -> dict:
+    return json.loads(json.dumps(DEFAULT_SETTINGS))
+
+
+def _normalize_settings(data: dict | None) -> dict:
+    settings = _default_settings_copy()
+    if not isinstance(data, dict):
+        return settings
+
+    settings.update(data)
+
+    raw_cameras = data.get("cameras")
+    if isinstance(raw_cameras, list) and raw_cameras:
+        default_cameras = _default_settings_copy()["cameras"]
+        merged_cameras = []
+        for idx, default_camera in enumerate(default_cameras):
+            raw_camera = raw_cameras[idx] if idx < len(raw_cameras) else {}
+            if not isinstance(raw_camera, dict):
+                raw_camera = {}
+            merged_cameras.append({**default_camera, **raw_camera})
+        settings["cameras"] = merged_cameras
+
+    raw_atem = data.get("atem")
+    if isinstance(raw_atem, dict):
+        settings["atem"] = {**DEFAULT_SETTINGS["atem"], **raw_atem}
+
+    raw_joystick = data.get("joystick")
+    if isinstance(raw_joystick, dict):
+        settings["joystick"] = {
+            **DEFAULT_SETTINGS["joystick"],
+            **raw_joystick,
+            "sensitivity": {
+                **DEFAULT_SETTINGS["joystick"]["sensitivity"],
+                **(raw_joystick.get("sensitivity") or {}),
+            },
+            "axisMap": {
+                **DEFAULT_SETTINGS["joystick"]["axisMap"],
+                **(raw_joystick.get("axisMap") or {}),
+            },
+            "buttonMap": {
+                **DEFAULT_SETTINGS["joystick"]["buttonMap"],
+                **(raw_joystick.get("buttonMap") or {}),
+            },
+        }
+
+    raw_virtual = data.get("virtualJoystick")
+    if isinstance(raw_virtual, dict):
+        settings["virtualJoystick"] = {
+            **DEFAULT_SETTINGS["virtualJoystick"],
+            **raw_virtual,
+            "sensitivity": {
+                **DEFAULT_SETTINGS["virtualJoystick"]["sensitivity"],
+                **(raw_virtual.get("sensitivity") or {}),
+            },
+        }
+
+    if "protectLiveCamera" in data:
+        settings["protectLiveCamera"] = bool(data.get("protectLiveCamera"))
+    elif "lockLiveMode" in data:
+        settings["protectLiveCamera"] = bool(data.get("lockLiveMode"))
+    elif settings.get("atem", {}).get("enabled"):
+        settings["protectLiveCamera"] = True
+
+    settings["atemFollows"] = _normalize_atem_follows(
+        str(data.get("atemFollows", settings.get("atemFollows", "preview")))
+    )
+    for legacy_key in ("liveMode", "lockLiveMode", "unlockOnExitLiveMode"):
+        settings.pop(legacy_key, None)
+    return settings
+
+
 def load_settings() -> dict:
     _ensure_dirs()
     if not os.path.exists(SETTINGS_F):
         write_settings(DEFAULT_SETTINGS)
-        return dict(DEFAULT_SETTINGS)
+        return _default_settings_copy()
     with open(SETTINGS_F) as f:
-        return json.load(f)
+        raw = json.load(f)
+    settings = _normalize_settings(raw)
+    if settings != raw:
+        write_settings(settings)
+    return settings
 
 
 def write_settings(data: dict):
@@ -376,6 +453,9 @@ _atem_conn = {
     "packet_id": 0,
 }
 _atem_conn_lock = threading.Lock()
+_ptz_runtime_lock = threading.Lock()
+_ptz_last_command_ids: dict[int, int] = {}
+_ptz_camera_locks: dict[int, threading.Lock] = {}
 
 
 def _set_atem(
@@ -399,6 +479,34 @@ def _set_atem(
 def _get_atem() -> dict:
     with _atem_state_lock:
         return dict(_atem_state)
+
+
+def _reset_ptz_runtime_state():
+    with _ptz_runtime_lock:
+        _ptz_last_command_ids.clear()
+        _ptz_camera_locks.clear()
+
+
+def _get_ptz_camera_lock(cam_idx: int) -> threading.Lock:
+    with _ptz_runtime_lock:
+        lock = _ptz_camera_locks.get(cam_idx)
+        if lock is None:
+            lock = threading.Lock()
+            _ptz_camera_locks[cam_idx] = lock
+        return lock
+
+
+def _claim_ptz_command_id(
+    cam_idx: int, command_id: int | None
+) -> tuple[bool, int | None]:
+    if command_id is None:
+        return True, None
+    with _ptz_runtime_lock:
+        last_seen = _ptz_last_command_ids.get(cam_idx)
+        if last_seen is not None and command_id <= last_seen:
+            return False, last_seen
+        _ptz_last_command_ids[cam_idx] = command_id
+        return True, last_seen
 
 
 def _set_atem_last_action(
@@ -1519,7 +1627,7 @@ def _require_atem_enabled_and_connected() -> tuple[bool, dict | None]:
 
 
 def _live_movement_block_reason(settings: dict, cam_idx: int, cfg: dict) -> str | None:
-    if not settings.get("liveMode") or not settings.get("lockLiveMode"):
+    if not settings.get("protectLiveCamera"):
         return None
     if not settings.get("atem", {}).get("enabled"):
         return None
@@ -1528,11 +1636,9 @@ def _live_movement_block_reason(settings: dict, cam_idx: int, cfg: dict) -> str 
         return None
     atem = _get_atem()
     if not atem.get("connected"):
-        return "ATEM is disconnected. Live lock stays enabled until program state can be confirmed."
+        return "ATEM is disconnected. Live protection stays enabled until program state can be confirmed."
     if int(atem.get("program", 0) or 0) == atem_input:
-        return (
-            "LIVE camera is locked. Switch cameras or unlock Live mode before moving."
-        )
+        return "Protected live camera is on ATEM program."
     return None
 
 
@@ -1695,10 +1801,10 @@ class Handler(BaseHTTPRequestHandler):
         if cfg is not None:
             block_reason = _live_movement_block_reason(settings, cam_idx, cfg)
             if block_reason:
-                if block_reason.startswith("LIVE camera is locked."):
+                if block_reason == "Protected live camera is on ATEM program.":
                     block_reason = (
-                        "LIVE camera is locked. Switch cameras or unlock Live mode "
-                        "before recalling a preset."
+                        "Protected live camera is on ATEM program. Switch cameras "
+                        "or turn off Protect Live Camera before recalling a preset."
                     )
                 self._json(409, {"success": False, "message": block_reason})
                 return
@@ -1737,6 +1843,10 @@ class Handler(BaseHTTPRequestHandler):
             pan = max(-1.0, min(1.0, float(data.get("pan", 0) or 0)))
             tilt = max(-1.0, min(1.0, float(data.get("tilt", 0) or 0)))
             zoom = max(-1.0, min(1.0, float(data.get("zoom", 0) or 0)))
+            raw_command_id = data.get("commandId")
+            command_id = (
+                int(raw_command_id) if raw_command_id not in (None, "") else None
+            )
         except (TypeError, ValueError):
             self._json(400, {"ok": False, "error": "Invalid PTZ command payload"})
             return
@@ -1753,42 +1863,71 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"ok": False, "error": "Camera IP is required"})
             return
 
-        block_reason = _live_movement_block_reason(settings, cam_idx, cfg)
-        if block_reason:
-            self._json(409, {"ok": False, "error": block_reason})
-            return
+        is_stop = pan == 0 and tilt == 0 and zoom == 0
+        if not is_stop:
+            block_reason = _live_movement_block_reason(settings, cam_idx, cfg)
+            if block_reason:
+                if block_reason == "Protected live camera is on ATEM program.":
+                    block_reason = (
+                        "Protected live camera is on ATEM program. Switch cameras "
+                        "or turn off Protect Live Camera before moving."
+                    )
+                self._json(409, {"ok": False, "error": block_reason})
+                return
 
-        port = int(cfg.get("port", 52381) or 52381)
-        visca_addr = int(cfg.get("viscaAddr", 1) or 1)
-        deadzone = 0.20
-        pan_mag = abs(pan)
-        tilt_mag = abs(tilt)
-        pan_dir = 0x03 if pan_mag < deadzone else (0x01 if pan < 0 else 0x02)
-        tilt_dir = 0x03 if tilt_mag < deadzone else (0x01 if tilt > 0 else 0x02)
-        pan_speed = (
-            1 if pan_dir == 0x03 else max(1, min(0x10, int(round(pan_mag * 0x10))))
-        )
-        tilt_speed = (
-            1 if tilt_dir == 0x03 else max(1, min(0x10, int(round(tilt_mag * 0x10))))
-        )
+        with _get_ptz_camera_lock(cam_idx):
+            fresh, last_seen = _claim_ptz_command_id(cam_idx, command_id)
+            if not fresh:
+                self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "stale": True,
+                        "commandId": command_id,
+                        "lastCommandId": last_seen,
+                        "camIdx": cam_idx,
+                        "pan": pan,
+                        "tilt": tilt,
+                        "zoom": zoom,
+                    },
+                )
+                return
 
-        pt_ok, pt_message = send_visca_pan_tilt_drive(
-            ip,
-            port,
-            pan_speed,
-            tilt_speed,
-            pan_dir,
-            tilt_dir,
-            camera_address=visca_addr,
-        )
-        zoom_ok, zoom_message = send_visca_zoom_drive(
-            ip, port, zoom, camera_address=visca_addr
-        )
-        ok = pt_ok and zoom_ok
+            port = int(cfg.get("port", 52381) or 52381)
+            visca_addr = int(cfg.get("viscaAddr", 1) or 1)
+            deadzone = 0.20
+            pan_mag = abs(pan)
+            tilt_mag = abs(tilt)
+            pan_dir = 0x03 if pan_mag < deadzone else (0x01 if pan < 0 else 0x02)
+            tilt_dir = 0x03 if tilt_mag < deadzone else (0x01 if tilt > 0 else 0x02)
+            pan_speed = (
+                1 if pan_dir == 0x03 else max(1, min(0x10, int(round(pan_mag * 0x10))))
+            )
+            tilt_speed = (
+                1
+                if tilt_dir == 0x03
+                else max(1, min(0x10, int(round(tilt_mag * 0x10))))
+            )
+
+            pt_ok, pt_message = send_visca_pan_tilt_drive(
+                ip,
+                port,
+                pan_speed,
+                tilt_speed,
+                pan_dir,
+                tilt_dir,
+                camera_address=visca_addr,
+            )
+            zoom_ok, zoom_message = send_visca_zoom_drive(
+                ip, port, zoom, camera_address=visca_addr
+            )
+            ok = pt_ok and zoom_ok
         self._json(
             200 if ok else 502,
             {
                 "ok": ok,
+                "stale": False,
+                "commandId": command_id,
                 "camIdx": cam_idx,
                 "pan": pan,
                 "tilt": tilt,
@@ -2053,6 +2192,19 @@ class Handler(BaseHTTPRequestHandler):
         """
         data = self._read_body()
         settings = load_settings()
+        ok, error_resp, cfg = _require_camera(settings, cam)
+        if not ok:
+            self._json(404, error_resp)
+            return
+        block_reason = _live_movement_block_reason(settings, cam, cfg or {})
+        if block_reason:
+            if block_reason == "Protected live camera is on ATEM program.":
+                block_reason = (
+                    "Protected live camera is on ATEM program. Switch cameras "
+                    "or turn off Protect Live Camera before recapturing a preset image."
+                )
+            self._json(409, {"ok": False, "error": block_reason})
+            return
         position = _try_record_position(settings, cam, preset)
         if position is None:
             self._json(
@@ -2102,6 +2254,21 @@ class Handler(BaseHTTPRequestHandler):
             - If persisting the JPEG or updating settings fails: attempts to remove any written file and sends HTTP 500 with an error.
             - Any other unexpected exception results in HTTP 500 with the exception string.
         """
+        settings = load_settings()
+        ok, error_resp, cfg = _require_camera(settings, cam)
+        if not ok:
+            self._json(404, error_resp)
+            return
+        block_reason = _live_movement_block_reason(settings, cam, cfg or {})
+        if block_reason:
+            if block_reason == "Protected live camera is on ATEM program.":
+                block_reason = (
+                    "Protected live camera is on ATEM program. Switch cameras "
+                    "or turn off Protect Live Camera before recapturing a preset image."
+                )
+            self._json(409, {"ok": False, "error": block_reason})
+            return
+
         try:
             req = json.loads(self._read_body())
         except Exception:
@@ -2180,7 +2347,6 @@ class Handler(BaseHTTPRequestHandler):
                     },
                 )
                 return
-            settings = load_settings()
             position = _try_record_position(settings, cam, preset)
             if position is None:
                 self._json(
