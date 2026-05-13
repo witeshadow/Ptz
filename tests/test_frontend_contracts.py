@@ -220,7 +220,7 @@ class TestFrontendContracts(unittest.TestCase):
         )
 
     def test_ptz_stop_retries_are_retained_after_centering(self):
-        self.assertIn("const PTZ_STOP_RETRY_COUNT = 2;", self.html)
+        self.assertIn("const PTZ_STOP_RETRY_COUNT = 8;", self.html)
         self.assertIn("const PTZ_STOP_RETRY_INTERVAL_MS = 120;", self.html)
         self.assertIn("stopResendRemaining: 0,", self.html)
         self.assertIn("function clearPtzStopRetryTimer()", self.html)
@@ -228,6 +228,12 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("void flushPtzDriveController();", self.html)
         self.assertIn("ptzDriveController.stopResendRemaining = PTZ_STOP_RETRY_COUNT;", self.html)
         self.assertIn("schedulePtzStopRetry();", self.html)
+
+    def test_virtual_joystick_deadzone_uses_smaller_default(self):
+        self.assertIn("const DEFAULT_VIRTUAL_JOYSTICK_DEADZONE = 0.15;", self.html)
+        self.assertIn(": DEFAULT_VIRTUAL_JOYSTICK_DEADZONE;", self.html)
+        self.assertIn("const deadzone = state.virtualJoystick?.deadzone ?? DEFAULT_VIRTUAL_JOYSTICK_DEADZONE;", self.html)
+        self.assertIn("deadzone: DEFAULT_VIRTUAL_JOYSTICK_DEADZONE,", self.html)
 
     def test_virtual_joystick_size_controls_present(self):
         self.assertIn('id="f-virtual-joystick-size"', self.html)

@@ -1815,6 +1815,7 @@
       dpadMap: { up: 12, down: 13, left: 14, right: 15 },
     },
   };
+  const DEFAULT_VIRTUAL_JOYSTICK_DEADZONE = 0.15;
 
   function normalizeJoystickSettings(value) {
     const joystick = value && typeof value === 'object' ? value : {};
@@ -1843,7 +1844,9 @@
   function normalizeVirtualJoystickSettings(value) {
     const virtual = value && typeof value === 'object' ? value : {};
     const size = ['normal', 'double', 'fullscreen'].includes(virtual.size) ? virtual.size : 'normal';
-    const deadzone = Number.isFinite(+virtual.deadzone) ? Math.max(0, Math.min(0.8, +virtual.deadzone)) : 0.25;
+    const deadzone = Number.isFinite(+virtual.deadzone)
+      ? Math.max(0, Math.min(0.8, +virtual.deadzone))
+      : DEFAULT_VIRTUAL_JOYSTICK_DEADZONE;
     return {
       enabled: virtual.enabled !== false,
       size,
@@ -3076,7 +3079,7 @@
   let virtualJoystickTouchId = null;
   let lastVirtualJoystickCommand = { pan: 0, tilt: 0 };
   let pendingVirtualJoystickDirection = { pan: 0, tilt: 0 };
-  const PTZ_STOP_RETRY_COUNT = 2;
+  const PTZ_STOP_RETRY_COUNT = 8;
   const PTZ_STOP_RETRY_INTERVAL_MS = 120;
   const ptzDriveController = {
     desiredCommand: { pan: 0, tilt: 0, zoom: 0 },
@@ -3399,7 +3402,7 @@
       let tilt = -(deltaY / maxDistance);
 
       // Apply deadzone from settings
-      const deadzone = state.virtualJoystick?.deadzone || 0.20;
+      const deadzone = state.virtualJoystick?.deadzone ?? DEFAULT_VIRTUAL_JOYSTICK_DEADZONE;
       if (Math.abs(pan) < deadzone) pan = 0;
       if (Math.abs(tilt) < deadzone) tilt = 0;
 
@@ -4318,7 +4321,7 @@
       ...state.virtualJoystick,
       enabled: elVirtualJoystickEnabledCheckbox?.checked !== false,
       size: elVirtualJoystickSize?.value || state.virtualJoystick?.size || 'normal',
-      deadzone: 0.35,
+      deadzone: DEFAULT_VIRTUAL_JOYSTICK_DEADZONE,
       sensitivity: { pan: 0.6, tilt: 0.6, zoom: 0.3 },
     });
 
