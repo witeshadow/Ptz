@@ -1828,11 +1828,11 @@ class TestRecallViscaPresetEdgeCases(unittest.TestCase):
             server.recall_visca_preset("10.0.0.1", 52381, 1, 1, wait_mode="dwell")
         self.assertFalse(mock_probe.call_args.kwargs["require_settle"])
 
-    def test_autocut_mode_sets_require_settle_false(self):
+    def test_autocut_mode_sets_require_settle_true(self):
         probe_result = self._make_probe_result(saw_completion=True)
         with patch("server._probe_preset", return_value=probe_result) as mock_probe:
             server.recall_visca_preset("10.0.0.1", 52381, 1, 1, wait_mode="autocut")
-        self.assertFalse(mock_probe.call_args.kwargs["require_settle"])
+        self.assertTrue(mock_probe.call_args.kwargs["require_settle"])
 
     def test_settle_mode_sets_require_settle_true(self):
         probe_result = self._make_probe_result(settled=True)
