@@ -1845,9 +1845,7 @@ class Handler(BaseHTTPRequestHandler):
             zoom = max(-1.0, min(1.0, float(data.get("zoom", 0) or 0)))
             raw_command_id = data.get("commandId")
             command_id = (
-                int(raw_command_id)
-                if raw_command_id not in (None, "")
-                else None
+                int(raw_command_id) if raw_command_id not in (None, "") else None
             )
         except (TypeError, ValueError):
             self._json(400, {"ok": False, "error": "Invalid PTZ command payload"})
@@ -1903,9 +1901,7 @@ class Handler(BaseHTTPRequestHandler):
             pan_dir = 0x03 if pan_mag < deadzone else (0x01 if pan < 0 else 0x02)
             tilt_dir = 0x03 if tilt_mag < deadzone else (0x01 if tilt > 0 else 0x02)
             pan_speed = (
-                1
-                if pan_dir == 0x03
-                else max(1, min(0x10, int(round(pan_mag * 0x10))))
+                1 if pan_dir == 0x03 else max(1, min(0x10, int(round(pan_mag * 0x10))))
             )
             tilt_speed = (
                 1
