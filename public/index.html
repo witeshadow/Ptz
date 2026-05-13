@@ -1775,8 +1775,8 @@
     <div style="position:absolute; width:100%; height:100%; border:1px dashed var(--border); border-radius:50%; opacity:0.3;"></div>
   </div>
   <div id="joystick-label" style="text-align:center; margin-top:8px; font-size:0.75rem; color:var(--muted); white-space:nowrap;">Pan/Tilt</div>
-  <button id="joystick-zoom-up" style="position:absolute; top:50%; left:calc(100% + 12px); transform:translateY(-110%); width:32px; height:32px; padding:0; border:1px solid var(--border); background:var(--surf2); color:var(--accent); border-radius:4px; font-size:18px; cursor:pointer; display:none;">+</button>
-  <button id="joystick-zoom-down" style="position:absolute; top:50%; left:calc(100% + 12px); transform:translateY(10%); width:32px; height:32px; padding:0; border:1px solid var(--border); background:var(--surf2); color:var(--accent); border-radius:4px; font-size:18px; cursor:pointer; display:none;">−</button>
+  <button id="joystick-zoom-up" style="position:absolute; top:50%; left:calc(100% + 12px); transform:translateY(-110%); width:44px; height:44px; padding:0; border:1px solid var(--border); background:var(--surf2); color:var(--accent); border-radius:10px; font-size:24px; font-weight:700; line-height:1; cursor:pointer; display:none;">+</button>
+  <button id="joystick-zoom-down" style="position:absolute; top:50%; left:calc(100% + 12px); transform:translateY(10%); width:44px; height:44px; padding:0; border:1px solid var(--border); background:var(--surf2); color:var(--accent); border-radius:10px; font-size:24px; font-weight:700; line-height:1; cursor:pointer; display:none;">−</button>
 </div>
 
 <!-- Virtual Joystick Toggle Button -->
@@ -3303,14 +3303,14 @@
   function getVirtualJoystickMetrics() {
     const size = state.virtualJoystick?.size || 'normal';
     if (size === 'double') {
-      return { diameter: 240, handle: 72, zoomInset: 12, zoomGap: 10, labelMargin: 10 };
+      return { diameter: 240, handle: 72, zoomInset: 14, zoomGap: 12, zoomButtonSize: 56, zoomFontSize: 30, labelMargin: 10 };
     }
     if (size === 'fullscreen') {
       const diameter = Math.max(220, Math.min(window.innerWidth, window.innerHeight) - 64);
       const handle = Math.max(56, Math.min(96, Math.round(diameter * 0.3)));
-      return { diameter, handle, zoomInset: 24, zoomGap: 12, labelMargin: 14 };
+      return { diameter, handle, zoomInset: 24, zoomGap: 14, zoomButtonSize: 64, zoomFontSize: 36, labelMargin: 14 };
     }
-    return { diameter: 120, handle: 40, zoomInset: 12, zoomGap: 8, labelMargin: 8 };
+    return { diameter: 120, handle: 40, zoomInset: 12, zoomGap: 10, zoomButtonSize: 44, zoomFontSize: 24, labelMargin: 8 };
   }
 
   function applyVirtualJoystickLayout() {
@@ -3326,7 +3326,7 @@
     elVirtualJoystickContainer.style.right = 'auto';
     elVirtualJoystickContainer.style.bottom = isFullscreen ? '0' : '20px';
     elVirtualJoystickContainer.style.left = isFullscreen ? '0' : '20px';
-    elVirtualJoystickContainer.style.width = isFullscreen ? '100vw' : `${metrics.diameter + 48}px`;
+    elVirtualJoystickContainer.style.width = isFullscreen ? '100vw' : `${metrics.diameter + metrics.zoomInset + metrics.zoomButtonSize}px`;
     elVirtualJoystickContainer.style.height = isFullscreen ? '100vh' : 'auto';
     elVirtualJoystickContainer.style.background = isFullscreen ? 'rgba(5, 15, 24, 0.22)' : 'transparent';
 
@@ -3348,6 +3348,9 @@
     }
     if (elJoystickZoomUp) {
       elJoystickZoomUp.style.display = 'block';
+      elJoystickZoomUp.style.width = `${metrics.zoomButtonSize}px`;
+      elJoystickZoomUp.style.height = `${metrics.zoomButtonSize}px`;
+      elJoystickZoomUp.style.fontSize = `${metrics.zoomFontSize}px`;
       elJoystickZoomUp.style.left = isFullscreen ? `calc(50% + ${Math.round(metrics.diameter / 2) + metrics.zoomInset}px)` : `${metrics.diameter + metrics.zoomInset}px`;
       elJoystickZoomUp.style.top = isFullscreen ? '50%' : '50%';
       elJoystickZoomUp.style.bottom = 'auto';
@@ -3355,6 +3358,9 @@
     }
     if (elJoystickZoomDown) {
       elJoystickZoomDown.style.display = 'block';
+      elJoystickZoomDown.style.width = `${metrics.zoomButtonSize}px`;
+      elJoystickZoomDown.style.height = `${metrics.zoomButtonSize}px`;
+      elJoystickZoomDown.style.fontSize = `${metrics.zoomFontSize}px`;
       elJoystickZoomDown.style.left = isFullscreen ? `calc(50% + ${Math.round(metrics.diameter / 2) + metrics.zoomInset}px)` : `${metrics.diameter + metrics.zoomInset}px`;
       elJoystickZoomDown.style.top = isFullscreen ? '50%' : '50%';
       elJoystickZoomDown.style.bottom = 'auto';
