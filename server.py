@@ -142,7 +142,7 @@ DEFAULT_SETTINGS = {
     "virtualJoystick": {
         "enabled": True,
         "size": "normal",
-        "deadzone": 0.15,
+        "deadzone": 0.10,
         "sensitivity": {
             "pan": 0.6,
             "tilt": 0.6,
