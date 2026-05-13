@@ -178,6 +178,53 @@ def _normalize_scan_wait_mode(wait_mode: str | None) -> str:
     return normalized if normalized in {"dwell", "settle"} else "settle"
 
 
+def _run_git_command(args: list[str]) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", _HERE, *args],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    output = result.stdout.strip()
+    return output or None
+
+
+def _get_version_info() -> dict:
+    head_commit = _run_git_command(["rev-parse", "HEAD"])
+    short_commit = _run_git_command(["rev-parse", "--short", "HEAD"])
+    branch = _run_git_command(["branch", "--show-current"]) or "(detached)"
+    dirty_output = _run_git_command(["status", "--porcelain"])
+    dirty = bool(dirty_output)
+
+    local_default_ref = None
+    local_default_commit = None
+    for ref in ("origin/default", "default"):
+        ref_commit = _run_git_command(["rev-parse", ref])
+        if ref_commit:
+            local_default_ref = ref
+            local_default_commit = ref_commit
+            break
+
+    git_available = bool(head_commit and short_commit)
+    return {
+        "gitAvailable": git_available,
+        "branch": branch if git_available else None,
+        "commit": head_commit,
+        "shortCommit": short_commit,
+        "dirty": dirty if git_available else None,
+        "localDefaultRef": local_default_ref,
+        "localDefaultCommit": local_default_commit,
+        "headMatchesLocalDefault": (
+            head_commit == local_default_commit
+            if git_available and local_default_commit
+            else None
+        ),
+    }
+
+
 def _probe_recall_command_succeeded(result: ProbeResult) -> bool:
     if result.error is not None:
         return False
@@ -1746,6 +1793,8 @@ class Handler(BaseHTTPRequestHandler):
                     else "Playwright not installed. Run: pip install playwright && playwright install chromium",
                 },
             )
+        elif path == "/api/version":
+            self._json(200, _get_version_info())
         elif m := re.match(r"^/api/position/(\d+)$", path):
             self._get_position(int(m.group(1)))
         elif m := re.match(r"^/api/image/(\d+)/(\d+)/position$", path):

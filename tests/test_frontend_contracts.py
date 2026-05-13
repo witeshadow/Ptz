@@ -148,6 +148,14 @@ class TestFrontendContracts(unittest.TestCase):
             self.html,
         )
 
+    def test_build_indicator_uses_version_endpoint(self):
+        self.assertIn("function applyBuildVersion(version)", self.html)
+        self.assertIn("fetch('/api/version')", self.html)
+        self.assertIn(
+            "elBuildCommit.title = `${branch} @ ${shortCommit} (${dirty}, ${defaultState})`;",
+            self.html,
+        )
+
     def test_joystick_state_is_normalized_and_visible(self):
         self.assertIn(
             'id="joystick-settings-section" class="gsp-extra-card gsp-mobile-section active" data-mobile-tab="atem"',
@@ -168,6 +176,26 @@ class TestFrontendContracts(unittest.TestCase):
             self.html,
         )
         self.assertIn("state.joystick = normalizeJoystickSettings({", self.html)
+
+    def test_virtual_joystick_response_curve_and_snapback_guard_present(self):
+        self.assertIn("let lastVirtualJoystickCommand = { pan: 0, tilt: 0 };", self.html)
+        self.assertIn("function applyVirtualJoystickResponseCurve(value)", self.html)
+        self.assertIn(
+            "return Math.sign(n) * Math.pow(Math.abs(n), 1.6);",
+            self.html,
+        )
+        self.assertIn(
+            "function applyVirtualJoystickSnapbackGuard(next, previous)",
+            self.html,
+        )
+        self.assertIn(
+            "pan = applyVirtualJoystickSnapbackGuard(pan, lastVirtualJoystickCommand.pan);",
+            self.html,
+        )
+        self.assertIn(
+            "tilt = applyVirtualJoystickSnapbackGuard(tilt, lastVirtualJoystickCommand.tilt);",
+            self.html,
+        )
 
     def test_dpad_invalid_warn_is_deduplicated(self):
         # Deduplication guard variable is initialized to true (valid by default).

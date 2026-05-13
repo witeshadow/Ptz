@@ -2123,8 +2123,23 @@
   let statusTimer    = null;
 
   if (elBuildCommit) elBuildCommit.textContent = BUILD_COMMIT;
+  if (elBuildCommit) elBuildCommit.title = `build ${BUILD_COMMIT}`;
   if (elStatus) elStatus.title = elStatusText.textContent;
   if (elStatusText) elStatusText.title = elStatusText.textContent;
+
+  function applyBuildVersion(version) {
+    if (!elBuildCommit || !version || !version.gitAvailable) return;
+    const shortCommit = version.shortCommit || BUILD_COMMIT;
+    const branch = version.branch || '(detached)';
+    const dirty = version.dirty ? 'dirty' : 'clean';
+    const defaultState = version.headMatchesLocalDefault === true
+      ? `matches ${version.localDefaultRef || 'default'}`
+      : version.headMatchesLocalDefault === false
+        ? `differs from ${version.localDefaultRef || 'default'}`
+        : 'default ref unavailable';
+    elBuildCommit.textContent = shortCommit;
+    elBuildCommit.title = `${branch} @ ${shortCommit} (${dirty}, ${defaultState})`;
+  }
 
   function updateBuildIndicator() {
     if (!elBuildMode) return;
@@ -3032,6 +3047,7 @@
 
   let virtualJoystickActive = false;
   let virtualJoystickTouchId = null;
+  let lastVirtualJoystickCommand = { pan: 0, tilt: 0 };
   const ptzDriveController = {
     desiredCommand: { pan: 0, tilt: 0, zoom: 0 },
     lastSentCommand: null,
@@ -3137,10 +3153,29 @@
     return sendPtzDriveCommand(0, 0, 0, source);
   }
 
+  function applyVirtualJoystickResponseCurve(value) {
+    const n = Math.max(-1, Math.min(1, Number(value) || 0));
+    if (!n) return 0;
+    return Math.sign(n) * Math.pow(Math.abs(n), 1.6);
+  }
+
+  function applyVirtualJoystickSnapbackGuard(next, previous) {
+    if (!next || !previous) return next;
+    if (Math.sign(next) !== Math.sign(previous)) {
+      const reverseGuard = Math.max(
+        0.25,
+        (state.virtualJoystick?.deadzone || 0.20) + 0.15
+      );
+      if (Math.abs(next) < reverseGuard) return 0;
+    }
+    return next;
+  }
+
   function showVirtualJoystick(show) {
     virtualJoystickActive = show;
     if (!show) {
       virtualJoystickTouchId = null;
+      lastVirtualJoystickCommand = { pan: 0, tilt: 0 };
       void stopPtzInput('virtual');
       if (elJoystickCenter) {
         elJoystickCenter.style.transform = 'translate(-50%, -50%)';
@@ -3193,6 +3228,9 @@
       if (Math.abs(pan) < deadzone) pan = 0;
       if (Math.abs(tilt) < deadzone) tilt = 0;
 
+      pan = applyVirtualJoystickResponseCurve(pan);
+      tilt = applyVirtualJoystickResponseCurve(tilt);
+
       // Apply sensitivity from settings
       const sens = state.virtualJoystick?.sensitivity || { pan: 1.0, tilt: 1.0, zoom: 0.5 };
       pan *= (sens.pan || 1.0);
@@ -3202,12 +3240,21 @@
       pan = Math.round(pan * 10) / 10;
       tilt = Math.round(tilt * 10) / 10;
 
+      pan = applyVirtualJoystickSnapbackGuard(pan, lastVirtualJoystickCommand.pan);
+      tilt = applyVirtualJoystickSnapbackGuard(tilt, lastVirtualJoystickCommand.tilt);
+      lastVirtualJoystickCommand = { pan, tilt };
+
       sendPtzDriveCommand(pan, tilt, 0, 'virtual');
-      console.debug('[PTZ] Virtual joystick:', { pan: pan.toFixed(2), tilt: tilt.toFixed(2), rawDistance: distance.toFixed(2) });
+      console.debug('[PTZ] Virtual joystick:', {
+        pan: pan.toFixed(2),
+        tilt: tilt.toFixed(2),
+        rawDistance: distance.toFixed(2),
+      });
     }
 
     function resetJoystick() {
       elJoystickCenter.style.transform = 'translate(-50%, -50%)';
+      lastVirtualJoystickCommand = { pan: 0, tilt: 0 };
       void stopPtzInput('virtual');
       console.debug('[PTZ] Virtual joystick reset to center');
     }
@@ -5508,6 +5555,10 @@
         if (elPlaywright) elPlaywright.style.display = 'block';
         if (elWarnings) elWarnings.style.display = 'block';
       }
+    } catch (_) {}
+    try {
+      const version = await fetch('/api/version').then(r => r.ok ? r.json() : null);
+      if (version) applyBuildVersion(version);
     } catch (_) {}
     // USB devices from server — store for use in output-map table
     try {
