@@ -3076,12 +3076,17 @@
   let virtualJoystickTouchId = null;
   let lastVirtualJoystickCommand = { pan: 0, tilt: 0 };
   let pendingVirtualJoystickDirection = { pan: 0, tilt: 0 };
+  const PTZ_STOP_RETRY_COUNT = 2;
+  const PTZ_STOP_RETRY_INTERVAL_MS = 120;
   const ptzDriveController = {
     desiredCommand: { pan: 0, tilt: 0, zoom: 0 },
     lastSentCommand: null,
     inFlight: false,
     nextCommandId: Date.now(),
     activeInputSource: null,
+    retryStopNow: false,
+    stopRetryTimer: null,
+    stopResendRemaining: 0,
   };
 
   function quantizePtzAxis(value) {
@@ -3105,14 +3110,43 @@
     return !!command && command.pan === 0 && command.tilt === 0 && command.zoom === 0;
   }
 
+  function clearPtzStopRetryTimer() {
+    if (ptzDriveController.stopRetryTimer) {
+      clearTimeout(ptzDriveController.stopRetryTimer);
+      ptzDriveController.stopRetryTimer = null;
+    }
+  }
+
+  function schedulePtzStopRetry() {
+    clearPtzStopRetryTimer();
+    if (!ptzDriveController.stopResendRemaining || !isZeroPtzCommand(ptzDriveController.desiredCommand)) {
+      return;
+    }
+    ptzDriveController.stopRetryTimer = setTimeout(() => {
+      ptzDriveController.stopRetryTimer = null;
+      ptzDriveController.retryStopNow = true;
+      void flushPtzDriveController();
+    }, PTZ_STOP_RETRY_INTERVAL_MS);
+  }
+
   async function flushPtzDriveController() {
     if (ptzDriveController.inFlight) return true;
-    while (!ptzCommandsEqual(ptzDriveController.desiredCommand, ptzDriveController.lastSentCommand)) {
+    while (
+      !ptzCommandsEqual(ptzDriveController.desiredCommand, ptzDriveController.lastSentCommand)
+      || ptzDriveController.retryStopNow
+    ) {
       const next = clonePtzCommand(ptzDriveController.desiredCommand);
+      const isStopRetry = ptzDriveController.retryStopNow
+        && isZeroPtzCommand(next)
+        && ptzCommandsEqual(next, ptzDriveController.lastSentCommand);
+      ptzDriveController.retryStopNow = false;
       if (!isZeroPtzCommand(next) && isProtectedLiveCamera(state.activeCam)) {
         setStatus('error', 'Protected live camera is on ATEM program. Switch cameras or turn off Protect Live Camera before moving.');
         ptzDriveController.desiredCommand = { pan: 0, tilt: 0, zoom: 0 };
         ptzDriveController.activeInputSource = null;
+        ptzDriveController.retryStopNow = false;
+        ptzDriveController.stopResendRemaining = 0;
+        clearPtzStopRetryTimer();
         if (ptzCommandsEqual(ptzDriveController.desiredCommand, ptzDriveController.lastSentCommand)) {
           return false;
         }
@@ -3150,9 +3184,21 @@
             ptzDriveController.nextCommandId,
             lastCommandId + 1
           );
+          if (isStopRetry && ptzDriveController.stopResendRemaining > 0) {
+            ptzDriveController.stopResendRemaining -= 1;
+          }
+          schedulePtzStopRetry();
           continue;
         }
         ptzDriveController.lastSentCommand = next;
+        if (!isZeroPtzCommand(next)) {
+          ptzDriveController.retryStopNow = false;
+          ptzDriveController.stopResendRemaining = 0;
+          clearPtzStopRetryTimer();
+        } else if (isStopRetry && ptzDriveController.stopResendRemaining > 0) {
+          ptzDriveController.stopResendRemaining -= 1;
+        }
+        schedulePtzStopRetry();
         checkRecalledPresetForDrift();
       } catch (err) {
         setStatus('error', `PTZ move failed: ${err.message || err}`);
@@ -3166,12 +3212,22 @@
 
   function sendPtzDriveCommand(pan = 0, tilt = 0, zoom = 0, source = 'virtual') {
     const next = clonePtzCommand({ pan, tilt, zoom });
+    const wasMoving = !isZeroPtzCommand(ptzDriveController.desiredCommand)
+      || !isZeroPtzCommand(ptzDriveController.lastSentCommand);
     ptzDriveController.desiredCommand = next;
     if (isZeroPtzCommand(next)) {
+      if (wasMoving) {
+        ptzDriveController.retryStopNow = false;
+        ptzDriveController.stopResendRemaining = PTZ_STOP_RETRY_COUNT;
+        schedulePtzStopRetry();
+      }
       if (source === 'system' || source === ptzDriveController.activeInputSource) {
         ptzDriveController.activeInputSource = null;
       }
     } else {
+      ptzDriveController.retryStopNow = false;
+      ptzDriveController.stopResendRemaining = 0;
+      clearPtzStopRetryTimer();
       ptzDriveController.activeInputSource = source;
     }
     return flushPtzDriveController();
