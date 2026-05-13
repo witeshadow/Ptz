@@ -148,6 +148,14 @@ class TestFrontendContracts(unittest.TestCase):
             self.html,
         )
 
+    def test_build_indicator_uses_version_endpoint(self):
+        self.assertIn("function applyBuildVersion(version)", self.html)
+        self.assertIn("fetch('/api/version')", self.html)
+        self.assertIn(
+            "elBuildCommit.title = `${branch} @ ${shortCommit} (${dirty}, ${defaultState})`;",
+            self.html,
+        )
+
     def test_joystick_state_is_normalized_and_visible(self):
         self.assertIn(
             'id="joystick-settings-section" class="gsp-extra-card gsp-mobile-section active" data-mobile-tab="atem"',

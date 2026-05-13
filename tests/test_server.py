@@ -835,6 +835,23 @@ class TestHTTPRoutes(unittest.TestCase):
         data = json.loads(body)
         self.assertIn("cameras", data)
 
+    def test_get_version_returns_git_metadata(self):
+        version_info = {
+            "gitAvailable": True,
+            "branch": "codex/test",
+            "commit": "abc123def456",
+            "shortCommit": "abc123d",
+            "dirty": False,
+            "localDefaultRef": "origin/default",
+            "localDefaultCommit": "fff111",
+            "headMatchesLocalDefault": False,
+        }
+        with patch("server._get_version_info", return_value=version_info):
+            status, body = self.srv.get("/api/version")
+
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body), version_info)
+
     def test_post_settings_persists(self):
         payload = json.dumps({"activeCam": 2, "cameras": [], "labels": {}}).encode()
         status, body = self.srv.post("/settings", payload)

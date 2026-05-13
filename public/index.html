@@ -2123,8 +2123,23 @@
   let statusTimer    = null;
 
   if (elBuildCommit) elBuildCommit.textContent = BUILD_COMMIT;
+  if (elBuildCommit) elBuildCommit.title = `build ${BUILD_COMMIT}`;
   if (elStatus) elStatus.title = elStatusText.textContent;
   if (elStatusText) elStatusText.title = elStatusText.textContent;
+
+  function applyBuildVersion(version) {
+    if (!elBuildCommit || !version || !version.gitAvailable) return;
+    const shortCommit = version.shortCommit || BUILD_COMMIT;
+    const branch = version.branch || '(detached)';
+    const dirty = version.dirty ? 'dirty' : 'clean';
+    const defaultState = version.headMatchesLocalDefault === true
+      ? `matches ${version.localDefaultRef || 'default'}`
+      : version.headMatchesLocalDefault === false
+        ? `differs from ${version.localDefaultRef || 'default'}`
+        : 'default ref unavailable';
+    elBuildCommit.textContent = shortCommit;
+    elBuildCommit.title = `${branch} @ ${shortCommit} (${dirty}, ${defaultState})`;
+  }
 
   function updateBuildIndicator() {
     if (!elBuildMode) return;
@@ -5540,6 +5555,10 @@
         if (elPlaywright) elPlaywright.style.display = 'block';
         if (elWarnings) elWarnings.style.display = 'block';
       }
+    } catch (_) {}
+    try {
+      const version = await fetch('/api/version').then(r => r.ok ? r.json() : null);
+      if (version) applyBuildVersion(version);
     } catch (_) {}
     // USB devices from server — store for use in output-map table
     try {
