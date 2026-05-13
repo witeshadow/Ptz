@@ -169,6 +169,26 @@ class TestFrontendContracts(unittest.TestCase):
         )
         self.assertIn("state.joystick = normalizeJoystickSettings({", self.html)
 
+    def test_virtual_joystick_response_curve_and_snapback_guard_present(self):
+        self.assertIn("let lastVirtualJoystickCommand = { pan: 0, tilt: 0 };", self.html)
+        self.assertIn("function applyVirtualJoystickResponseCurve(value)", self.html)
+        self.assertIn(
+            "return Math.sign(n) * Math.pow(Math.abs(n), 1.6);",
+            self.html,
+        )
+        self.assertIn(
+            "function applyVirtualJoystickSnapbackGuard(next, previous)",
+            self.html,
+        )
+        self.assertIn(
+            "pan = applyVirtualJoystickSnapbackGuard(pan, lastVirtualJoystickCommand.pan);",
+            self.html,
+        )
+        self.assertIn(
+            "tilt = applyVirtualJoystickSnapbackGuard(tilt, lastVirtualJoystickCommand.tilt);",
+            self.html,
+        )
+
     def test_dpad_invalid_warn_is_deduplicated(self):
         # Deduplication guard variable is initialized to true (valid by default).
         self.assertIn("let lastDpadValid = true;", self.html)
