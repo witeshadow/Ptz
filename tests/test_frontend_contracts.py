@@ -166,36 +166,66 @@ class TestFrontendContracts(unittest.TestCase):
             self.html,
         )
         self.assertIn("function normalizeJoystickSettings(value)", self.html)
+        self.assertIn("function normalizeVirtualJoystickSettings(value)", self.html)
         self.assertIn("joystick: normalizeJoystickSettings(),", self.html)
+        self.assertIn("virtualJoystick: normalizeVirtualJoystickSettings(),", self.html)
         self.assertIn(
             "if (s.joystick) state.joystick = normalizeJoystickSettings(s.joystick);",
+            self.html,
+        )
+        self.assertIn(
+            "if (s.virtualJoystick) state.virtualJoystick = normalizeVirtualJoystickSettings(s.virtualJoystick);",
             self.html,
         )
         self.assertIn(
             "const js = state.joystick = normalizeJoystickSettings(state.joystick);",
             self.html,
         )
+        self.assertIn(
+            "state.virtualJoystick = normalizeVirtualJoystickSettings(state.virtualJoystick);",
+            self.html,
+        )
         self.assertIn("state.joystick = normalizeJoystickSettings({", self.html)
 
     def test_virtual_joystick_response_curve_and_snapback_guard_present(self):
         self.assertIn("let lastVirtualJoystickCommand = { pan: 0, tilt: 0 };", self.html)
+        self.assertIn(
+            "let pendingVirtualJoystickDirection = { pan: 0, tilt: 0 };",
+            self.html,
+        )
         self.assertIn("function applyVirtualJoystickResponseCurve(value)", self.html)
         self.assertIn(
-            "return Math.sign(n) * Math.pow(Math.abs(n), 1.6);",
+            "return Math.sign(n) * Math.pow(Math.abs(n), 1.9);",
             self.html,
         )
         self.assertIn(
-            "function applyVirtualJoystickSnapbackGuard(next, previous)",
+            "function applyVirtualJoystickSnapbackGuard(next, previous, axis)",
             self.html,
         )
         self.assertIn(
-            "pan = applyVirtualJoystickSnapbackGuard(pan, lastVirtualJoystickCommand.pan);",
+            "if (pendingVirtualJoystickDirection[axis] !== nextDirection) {",
             self.html,
         )
         self.assertIn(
-            "tilt = applyVirtualJoystickSnapbackGuard(tilt, lastVirtualJoystickCommand.tilt);",
+            "pendingVirtualJoystickDirection[axis] = nextDirection;",
             self.html,
         )
+        self.assertIn(
+            "pan = applyVirtualJoystickSnapbackGuard(pan, lastVirtualJoystickCommand.pan, 'pan');",
+            self.html,
+        )
+        self.assertIn(
+            "tilt = applyVirtualJoystickSnapbackGuard(tilt, lastVirtualJoystickCommand.tilt, 'tilt');",
+            self.html,
+        )
+
+    def test_virtual_joystick_size_controls_present(self):
+        self.assertIn('id="f-virtual-joystick-size"', self.html)
+        self.assertIn('id="joystick-size-btn"', self.html)
+        self.assertIn("const VIRTUAL_JOYSTICK_SIZE_ORDER = ['normal', 'double', 'fullscreen'];", self.html)
+        self.assertIn("function applyVirtualJoystickLayout()", self.html)
+        self.assertIn("function cycleVirtualJoystickSize()", self.html)
+        self.assertIn("setVirtualJoystickSize(next);", self.html)
 
     def test_dpad_invalid_warn_is_deduplicated(self):
         # Deduplication guard variable is initialized to true (valid by default).
