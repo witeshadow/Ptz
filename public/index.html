@@ -1815,7 +1815,9 @@
       dpadMap: { up: 12, down: 13, left: 14, right: 15 },
     },
   };
-  const DEFAULT_VIRTUAL_JOYSTICK_DEADZONE = 0.15;
+  const DEFAULT_VIRTUAL_JOYSTICK_DEADZONE = 0.10;
+  const DEFAULT_VIRTUAL_JOYSTICK_RESPONSE_EXPONENT = 1.35;
+  const VIRTUAL_JOYSTICK_AXIS_STEP = 0.05;
 
   function normalizeJoystickSettings(value) {
     const joystick = value && typeof value === 'object' ? value : {};
@@ -3079,6 +3081,7 @@
   let virtualJoystickTouchId = null;
   let lastVirtualJoystickCommand = { pan: 0, tilt: 0 };
   let pendingVirtualJoystickDirection = { pan: 0, tilt: 0 };
+  let virtualJoystickCommand = { pan: 0, tilt: 0, zoom: 0 };
   const PTZ_STOP_RETRY_COUNT = 8;
   const PTZ_STOP_RETRY_INTERVAL_MS = 120;
   const ptzDriveController = {
@@ -3243,7 +3246,7 @@
   function applyVirtualJoystickResponseCurve(value) {
     const n = Math.max(-1, Math.min(1, Number(value) || 0));
     if (!n) return 0;
-    return Math.sign(n) * Math.pow(Math.abs(n), 1.9);
+    return Math.sign(n) * Math.pow(Math.abs(n), DEFAULT_VIRTUAL_JOYSTICK_RESPONSE_EXPONENT);
   }
 
   function applyVirtualJoystickSnapbackGuard(next, previous, axis) {
@@ -3268,6 +3271,34 @@
   }
 
   const VIRTUAL_JOYSTICK_SIZE_ORDER = ['normal', 'double', 'fullscreen'];
+
+  function quantizeVirtualJoystickAxis(value) {
+    const n = Math.max(-1, Math.min(1, Number(value) || 0));
+    return Math.round(n / VIRTUAL_JOYSTICK_AXIS_STEP) * VIRTUAL_JOYSTICK_AXIS_STEP;
+  }
+
+  function sendVirtualJoystickCommand(pan = virtualJoystickCommand.pan, tilt = virtualJoystickCommand.tilt, zoom = virtualJoystickCommand.zoom) {
+    virtualJoystickCommand = {
+      pan: quantizeVirtualJoystickAxis(pan),
+      tilt: quantizeVirtualJoystickAxis(tilt),
+      zoom: quantizeVirtualJoystickAxis(zoom),
+    };
+    return sendPtzDriveCommand(
+      virtualJoystickCommand.pan,
+      virtualJoystickCommand.tilt,
+      virtualJoystickCommand.zoom,
+      'virtual'
+    );
+  }
+
+  function stopVirtualJoystickZoom() {
+    return sendVirtualJoystickCommand(virtualJoystickCommand.pan, virtualJoystickCommand.tilt, 0);
+  }
+
+  function setVirtualJoystickZoom(direction) {
+    const zoom = Math.max(-1, Math.min(1, Number(direction) || 0));
+    return sendVirtualJoystickCommand(virtualJoystickCommand.pan, virtualJoystickCommand.tilt, zoom);
+  }
 
   function getVirtualJoystickMetrics() {
     const size = state.virtualJoystick?.size || 'normal';
@@ -3316,9 +3347,11 @@
       elJoystickSizeBtn.style.left = isFullscreen ? '20px' : '-12px';
     }
     if (elJoystickZoomUp) {
+      elJoystickZoomUp.style.display = 'block';
       elJoystickZoomUp.style.top = isFullscreen ? `${Math.max(24, overlaySpace - metrics.zoomOffset + 36)}px` : `-${metrics.zoomOffset}px`;
     }
     if (elJoystickZoomDown) {
+      elJoystickZoomDown.style.display = 'block';
       elJoystickZoomDown.style.bottom = isFullscreen ? `${Math.max(24, overlaySpace - metrics.zoomOffset + 36)}px` : `-${metrics.zoomOffset}px`;
     }
     const elJoystickLabel = document.getElementById('joystick-label');
@@ -3356,6 +3389,7 @@
       virtualJoystickTouchId = null;
       lastVirtualJoystickCommand = { pan: 0, tilt: 0 };
       pendingVirtualJoystickDirection = { pan: 0, tilt: 0 };
+      virtualJoystickCommand = { pan: 0, tilt: 0, zoom: 0 };
       void stopPtzInput('virtual');
       if (elJoystickCenter) {
         elJoystickCenter.style.transform = 'translate(-50%, -50%)';
@@ -3414,15 +3448,15 @@
       pan *= (sens.pan || 1.0);
       tilt *= (sens.tilt || 1.0);
 
-      // Quantize to 0.1 step to avoid float precision issues
-      pan = Math.round(pan * 10) / 10;
-      tilt = Math.round(tilt * 10) / 10;
+      // Quantize virtual touch input more finely than the physical stick.
+      pan = quantizeVirtualJoystickAxis(pan);
+      tilt = quantizeVirtualJoystickAxis(tilt);
 
       pan = applyVirtualJoystickSnapbackGuard(pan, lastVirtualJoystickCommand.pan, 'pan');
       tilt = applyVirtualJoystickSnapbackGuard(tilt, lastVirtualJoystickCommand.tilt, 'tilt');
       lastVirtualJoystickCommand = { pan, tilt };
 
-      sendPtzDriveCommand(pan, tilt, 0, 'virtual');
+      sendVirtualJoystickCommand(pan, tilt, virtualJoystickCommand.zoom);
       console.debug('[PTZ] Virtual joystick:', {
         pan: pan.toFixed(2),
         tilt: tilt.toFixed(2),
@@ -3434,6 +3468,7 @@
       elJoystickCenter.style.transform = 'translate(-50%, -50%)';
       lastVirtualJoystickCommand = { pan: 0, tilt: 0 };
       pendingVirtualJoystickDirection = { pan: 0, tilt: 0 };
+      virtualJoystickCommand = { pan: 0, tilt: 0, zoom: 0 };
       void stopPtzInput('virtual');
       console.debug('[PTZ] Virtual joystick reset to center');
     }
@@ -3487,6 +3522,28 @@
       cycleVirtualJoystickSize();
     });
   }
+
+  function bindVirtualJoystickZoomButton(el, direction) {
+    if (!el) return;
+    const start = (e) => {
+      e.preventDefault();
+      void setVirtualJoystickZoom(direction);
+    };
+    const stop = (e) => {
+      e.preventDefault();
+      void stopVirtualJoystickZoom();
+    };
+    el.addEventListener('pointerdown', start);
+    el.addEventListener('pointerup', stop);
+    el.addEventListener('pointercancel', stop);
+    el.addEventListener('lostpointercapture', stop);
+    el.addEventListener('pointerleave', (e) => {
+      if (e.buttons) stop(e);
+    });
+  }
+
+  bindVirtualJoystickZoomButton(elJoystickZoomUp, 0.5);
+  bindVirtualJoystickZoomButton(elJoystickZoomDown, -0.5);
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') {

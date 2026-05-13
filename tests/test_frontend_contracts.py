@@ -193,11 +193,14 @@ class TestFrontendContracts(unittest.TestCase):
             "let pendingVirtualJoystickDirection = { pan: 0, tilt: 0 };",
             self.html,
         )
+        self.assertIn("const DEFAULT_VIRTUAL_JOYSTICK_RESPONSE_EXPONENT = 1.35;", self.html)
+        self.assertIn("const VIRTUAL_JOYSTICK_AXIS_STEP = 0.05;", self.html)
         self.assertIn("function applyVirtualJoystickResponseCurve(value)", self.html)
         self.assertIn(
-            "return Math.sign(n) * Math.pow(Math.abs(n), 1.9);",
+            "return Math.sign(n) * Math.pow(Math.abs(n), DEFAULT_VIRTUAL_JOYSTICK_RESPONSE_EXPONENT);",
             self.html,
         )
+        self.assertIn("function quantizeVirtualJoystickAxis(value)", self.html)
         self.assertIn(
             "function applyVirtualJoystickSnapbackGuard(next, previous, axis)",
             self.html,
@@ -230,10 +233,22 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("schedulePtzStopRetry();", self.html)
 
     def test_virtual_joystick_deadzone_uses_smaller_default(self):
-        self.assertIn("const DEFAULT_VIRTUAL_JOYSTICK_DEADZONE = 0.15;", self.html)
+        self.assertIn("const DEFAULT_VIRTUAL_JOYSTICK_DEADZONE = 0.10;", self.html)
         self.assertIn(": DEFAULT_VIRTUAL_JOYSTICK_DEADZONE;", self.html)
         self.assertIn("const deadzone = state.virtualJoystick?.deadzone ?? DEFAULT_VIRTUAL_JOYSTICK_DEADZONE;", self.html)
         self.assertIn("deadzone: DEFAULT_VIRTUAL_JOYSTICK_DEADZONE,", self.html)
+
+    def test_virtual_joystick_zoom_buttons_drive_combined_command(self):
+        self.assertIn("let virtualJoystickCommand = { pan: 0, tilt: 0, zoom: 0 };", self.html)
+        self.assertIn("function sendVirtualJoystickCommand(", self.html)
+        self.assertIn("function stopVirtualJoystickZoom()", self.html)
+        self.assertIn("function setVirtualJoystickZoom(direction)", self.html)
+        self.assertIn("elJoystickZoomUp.style.display = 'block';", self.html)
+        self.assertIn("elJoystickZoomDown.style.display = 'block';", self.html)
+        self.assertIn("sendVirtualJoystickCommand(pan, tilt, virtualJoystickCommand.zoom);", self.html)
+        self.assertIn("function bindVirtualJoystickZoomButton(el, direction)", self.html)
+        self.assertIn("bindVirtualJoystickZoomButton(elJoystickZoomUp, 0.5);", self.html)
+        self.assertIn("bindVirtualJoystickZoomButton(elJoystickZoomDown, -0.5);", self.html)
 
     def test_virtual_joystick_size_controls_present(self):
         self.assertIn('id="f-virtual-joystick-size"', self.html)
