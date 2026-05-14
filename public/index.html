@@ -1425,6 +1425,16 @@
         </select>
       </div>
       <div class="field">
+        <label for="f-camera-model">Camera Model</label>
+        <select id="f-camera-model">
+          <option value="avipas-visca">AVIPAS / Standard VISCA IP</option>
+          <option value="canon-cr-n100">Canon CR-N100 (basic)</option>
+        </select>
+        <div id="f-camera-model-note" class="field-note">
+          Uses the existing standard IP PTZ control path. Canon XC Protocol support is planned for a later phase.
+        </div>
+      </div>
+      <div class="field">
         <label for="f-atem-input">ATEM Source Number</label>
         <input id="f-atem-input" type="number" min="1" placeholder="Optional" />
         <div class="field-note">
@@ -1459,6 +1469,9 @@
           <label for="f-stream-url">Stream URL (RTMP, HLS, etc.)</label>
           <input id="f-stream-url" type="text" placeholder="https://example.com/stream.m3u8" autocomplete="off" spellcheck="false" />
           <div class="field-note" style="color: var(--muted);">Supported: standard HTTP streams, RTMP, HLS. Not supported: vdo.ninja, WebRTC.</div>
+          <div id="f-canon-capture-note" class="field-note" style="display:none;">
+            Canon CR-N100 basic support expects preset image capture through the existing USB device path or ATEM-routed USB capture. RTSP, SRT, NDI, and XC control are not part of this workflow yet.
+          </div>
         </div>
         <div id="f-capture-source-status" class="field-note">Scan capture source: Not configured</div>
       </div>
@@ -1793,13 +1806,29 @@
   'use strict';
 
   const BUILD_COMMIT = '5efe1f2';
+  const DEFAULT_CAMERA_MODEL = 'avipas-visca';
+  const CANON_CR_N100_CAMERA_MODEL = 'canon-cr-n100';
+  const CAMERA_MODEL_META = {
+    [DEFAULT_CAMERA_MODEL]: {
+      label: 'AVIPAS / Standard VISCA IP',
+      defaultPort: 1259,
+      defaultViscaAddr: 1,
+      modelNote: 'Uses the existing standard IP PTZ control path. Stream URL capture remains optional for non-Canon workflows.',
+    },
+    [CANON_CR_N100_CAMERA_MODEL]: {
+      label: 'Canon CR-N100 (basic)',
+      defaultPort: 52381,
+      defaultViscaAddr: 1,
+      modelNote: 'Basic Canon support uses standard IP PTZ control plus USB or ATEM-routed USB capture. XC Protocol support is planned for a later phase.',
+    },
+  };
 
   // ── State ──────────────────────────────────────────────────────────────────
   const DEF_CAMERAS = [
-    { name: 'Camera 1', ip: '', port: 52381, viscaAddr: 1, atemInput: 1, streamUrl: '', usbDevice: '', enabled: true },
-    { name: 'Camera 2', ip: '', port: 52381, viscaAddr: 1, atemInput: 2, streamUrl: '', usbDevice: '', enabled: true },
-    { name: 'Camera 3', ip: '', port: 52381, viscaAddr: 1, atemInput: 3, streamUrl: '', usbDevice: '', enabled: true },
-    { name: 'Camera 4', ip: '', port: 52381, viscaAddr: 1, atemInput: 4, streamUrl: '', usbDevice: '', enabled: false },
+    { name: 'Camera 1', cameraModel: DEFAULT_CAMERA_MODEL, ip: '', port: 52381, viscaAddr: 1, atemInput: 1, streamUrl: '', usbDevice: '', enabled: true },
+    { name: 'Camera 2', cameraModel: DEFAULT_CAMERA_MODEL, ip: '', port: 52381, viscaAddr: 1, atemInput: 2, streamUrl: '', usbDevice: '', enabled: true },
+    { name: 'Camera 3', cameraModel: DEFAULT_CAMERA_MODEL, ip: '', port: 52381, viscaAddr: 1, atemInput: 3, streamUrl: '', usbDevice: '', enabled: true },
+    { name: 'Camera 4', cameraModel: DEFAULT_CAMERA_MODEL, ip: '', port: 52381, viscaAddr: 1, atemInput: 4, streamUrl: '', usbDevice: '', enabled: false },
   ];
 
   const JOYSTICK_PROFILES = {
@@ -1867,6 +1896,19 @@
         ...(virtual.sensitivity || {}),
       },
     };
+  }
+
+  function normalizeCameraModel(value) {
+    return CAMERA_MODEL_META[value] ? value : DEFAULT_CAMERA_MODEL;
+  }
+
+  function getCameraModelMeta(value) {
+    return CAMERA_MODEL_META[normalizeCameraModel(value)] || CAMERA_MODEL_META[DEFAULT_CAMERA_MODEL];
+  }
+
+  function getCameraModel(camOrIdx) {
+    const cam = typeof camOrIdx === 'number' ? state.cameras[camOrIdx] : camOrIdx;
+    return normalizeCameraModel(cam && cam.cameraModel);
   }
 
   function detectGamepadMode() {
@@ -2077,10 +2119,14 @@
       if (res.ok) {
         const s = await res.json();
         if (Array.isArray(s.cameras) && s.cameras.length) {
-          state.cameras = DEF_CAMERAS.map((defaults, idx) => ({
-            ...defaults,
-            ...(s.cameras[idx] || {}),
-          }));
+          state.cameras = DEF_CAMERAS.map((defaults, idx) => {
+            const merged = {
+              ...defaults,
+              ...(s.cameras[idx] || {}),
+            };
+            merged.cameraModel = normalizeCameraModel(merged.cameraModel);
+            return merged;
+          });
         }
         if (s.activeCam != null) state.activeCam = +s.activeCam;
         if (s.labels)   state.labels  = s.labels;
@@ -2326,6 +2372,7 @@
     if (!cam) return 'Not configured';
     if (cam.usbDevice) return getUsbDeviceName(cam.usbDevice);
     if (cam.streamUrl) return 'VDO.ninja / URL';
+    if (getCameraModel(cam) === CANON_CR_N100_CAMERA_MODEL) return 'Use USB or ATEM-routed USB capture';
     if (videoStream) return 'Browser preview camera';
     return 'Not configured';
   }
@@ -2918,6 +2965,9 @@
   const elIp        = document.getElementById('f-ip');
   const elPort      = document.getElementById('f-port');
   const elVisca     = document.getElementById('f-visca');
+  const elCameraModel = document.getElementById('f-camera-model');
+  const elCameraModelNote = document.getElementById('f-camera-model-note');
+  const elCanonCaptureNote = document.getElementById('f-canon-capture-note');
   const elAtemInput = document.getElementById('f-atem-input');
   const elAtemStatus = document.getElementById('f-atem-status');
   const elCaptureSourceStatus = document.getElementById('f-capture-source-status');
@@ -2933,6 +2983,21 @@
     if (elScanWaitMode) elScanWaitMode.value = manual ? 'dwell' : 'settle';
     if (elDwell) elDwell.disabled = !manual;
     if (elScanDwellField) elScanDwellField.style.opacity = manual ? '1' : '0.6';
+  }
+
+  function updateCameraModelUi(cam = state.cameras[settingsCameraIdx]) {
+    const model = getCameraModel(cam);
+    const meta = getCameraModelMeta(model);
+    if (elCameraModel) elCameraModel.value = model;
+    if (elCameraModelNote) elCameraModelNote.textContent = meta.modelNote;
+    if (elCanonCaptureNote) {
+      elCanonCaptureNote.style.display = model === CANON_CR_N100_CAMERA_MODEL ? 'block' : 'none';
+    }
+    if (elStreamUrl) {
+      elStreamUrl.placeholder = model === CANON_CR_N100_CAMERA_MODEL
+        ? 'Not needed for Canon basic support'
+        : 'https://example.com/stream.m3u8';
+    }
   }
 
   function updateCameraStatusHints(camIdx = state.activeCam) {
@@ -2970,6 +3035,7 @@
     elIp.value        = cam.ip;
     elPort.value      = cam.port;
     elVisca.value     = cam.viscaAddr;
+    updateCameraModelUi(cam);
     const atemInput = getCameraAtemInput(cam);
     elAtemInput.value = atemInput != null ? String(atemInput) : '';
     elDwell.value     = state.dwellMs / 1000;
@@ -2999,6 +3065,7 @@
     cam.ip         = elIp.value.trim();
     cam.port       = parseInt(elPort.value, 10) || 52381;
     cam.viscaAddr  = parseInt(elVisca.value, 10) || 1;
+    cam.cameraModel = normalizeCameraModel(elCameraModel && elCameraModel.value);
     cam.atemInput  = getCameraAtemInput({ atemInput: elAtemInput.value });
     cam.usbDevice  = elUsbDevice.value;
     cam.streamUrl  = elStreamUrl.value.trim();
@@ -3007,6 +3074,7 @@
     state.atem.enabled = elAtemEnabled.checked;
     state.atem.ip      = elAtemIp.value.trim();
     state.autoCutDelayMs = Math.max(0, Math.round(((parseFloat((elAutoCutDelay && elAutoCutDelay.value) || '0') || 0) * 1000)));
+    updateCameraModelUi(cam);
     updateCameraStatusHints();
     updateScanWaitModeUi();
   }
@@ -3019,7 +3087,7 @@
     if (elCameraSelectGuard) {
       elCameraSelectGuard.style.display = protectedLiveCamera ? 'block' : 'none';
     }
-    [elIp, elPort, elVisca, elAtemInput, elUsbDevice, elStreamUrl].forEach(el => {
+    [elIp, elPort, elVisca, elCameraModel, elAtemInput, elUsbDevice, elStreamUrl].forEach(el => {
       if (el) el.disabled = protectedLiveCamera;
     });
   }
@@ -3046,6 +3114,30 @@
   [elIp, elPort, elVisca, elAtemInput, elDwell, elScanWaitMode].forEach(el =>
     el.addEventListener('change', () => { saveCameraSettings(); schedSave(); })
   );
+
+  if (elCameraModel) {
+    elCameraModel.addEventListener('change', () => {
+      const cam = state.cameras[settingsCameraIdx];
+      const prevModel = getCameraModel(cam);
+      const nextModel = normalizeCameraModel(elCameraModel.value);
+      const prevMeta = getCameraModelMeta(prevModel);
+      const nextMeta = getCameraModelMeta(nextModel);
+      const currentPort = parseInt(elPort.value, 10) || 0;
+      const currentVisca = parseInt(elVisca.value, 10) || 0;
+      cam.cameraModel = nextModel;
+      if (!currentPort || currentPort === prevMeta.defaultPort) {
+        cam.port = nextMeta.defaultPort;
+        elPort.value = String(nextMeta.defaultPort);
+      }
+      if (!currentVisca || currentVisca === prevMeta.defaultViscaAddr) {
+        cam.viscaAddr = nextMeta.defaultViscaAddr;
+        elVisca.value = String(nextMeta.defaultViscaAddr);
+      }
+      updateCameraModelUi(cam);
+      saveCameraSettings();
+      schedSave();
+    });
+  }
 
   // ── ATEM settings ──────────────────────────────────────────────────────────
   const elAtemEnabled = document.getElementById('f-atem-enabled');

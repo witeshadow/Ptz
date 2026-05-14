@@ -47,6 +47,20 @@ _IS_MACOS = platform.system() == "Darwin"
 
 _logger = logging.getLogger(__name__)
 VISCA_DRIVE_COMMAND_TIMEOUT_S = 0.05
+DEFAULT_CAMERA_MODEL = "avipas-visca"
+CANON_CR_N100_CAMERA_MODEL = "canon-cr-n100"
+SUPPORTED_CAMERA_MODELS = {
+    DEFAULT_CAMERA_MODEL: {
+        "label": "AVIPAS / Standard VISCA IP",
+        "defaultPort": 1259,
+        "defaultViscaAddr": 1,
+    },
+    CANON_CR_N100_CAMERA_MODEL: {
+        "label": "Canon CR-N100",
+        "defaultPort": 52381,
+        "defaultViscaAddr": 1,
+    },
+}
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -60,6 +74,7 @@ DEFAULT_SETTINGS = {
     "cameras": [
         {
             "name": "Camera 1",
+            "cameraModel": DEFAULT_CAMERA_MODEL,
             "ip": "",
             "port": 1259,
             "viscaAddr": 1,
@@ -70,6 +85,7 @@ DEFAULT_SETTINGS = {
         },
         {
             "name": "Camera 2",
+            "cameraModel": DEFAULT_CAMERA_MODEL,
             "ip": "",
             "port": 1259,
             "viscaAddr": 2,
@@ -80,6 +96,7 @@ DEFAULT_SETTINGS = {
         },
         {
             "name": "Camera 3",
+            "cameraModel": DEFAULT_CAMERA_MODEL,
             "ip": "",
             "port": 1259,
             "viscaAddr": 3,
@@ -90,6 +107,7 @@ DEFAULT_SETTINGS = {
         },
         {
             "name": "Camera 4",
+            "cameraModel": DEFAULT_CAMERA_MODEL,
             "ip": "",
             "port": 52381,
             "viscaAddr": 1,
@@ -158,6 +176,27 @@ VISCA_POLL_INTERVAL_S = 0.2
 VISCA_STABLE_COUNT = 3
 VISCA_INQUIRY_TIMEOUT_S = 1.0
 ATEM_STATE_CONFIRM_TIMEOUT_S = 2.0
+
+
+def _normalize_camera_model(value: str | None) -> str:
+    if value in SUPPORTED_CAMERA_MODELS:
+        return value
+    return DEFAULT_CAMERA_MODEL
+
+
+def _camera_model_for_config(cfg: dict | None) -> str:
+    raw = ""
+    if isinstance(cfg, dict):
+        raw = str(cfg.get("cameraModel", "")).strip()
+    return _normalize_camera_model(raw)
+
+
+def _camera_transport_for_cfg(cfg: dict | None, port: int) -> str:
+    camera_model = _camera_model_for_config(cfg)
+    # Canon basic support uses the current standard IP control stack for v1.
+    if camera_model == CANON_CR_N100_CAMERA_MODEL:
+        return _visca_transport_for_port(port)
+    return _visca_transport_for_port(port)
 
 
 def _visca_transport_for_port(port: int) -> str:
@@ -326,6 +365,53 @@ def recall_visca_preset(
     return payload
 
 
+def recall_camera_preset(
+    ip: str,
+    port: int,
+    preset_number: int,
+    camera_address: int = 1,
+    wait_mode: str = "settle",
+    cfg: dict | None = None,
+):
+    _camera_model_for_config(cfg)
+    return recall_visca_preset(ip, port, preset_number, camera_address, wait_mode)
+
+
+def send_camera_pan_tilt_drive(
+    ip: str,
+    port: int,
+    pan_speed: int,
+    tilt_speed: int,
+    pan_dir: int,
+    tilt_dir: int,
+    camera_address: int = 1,
+    cfg: dict | None = None,
+) -> tuple[bool, str]:
+    _camera_model_for_config(cfg)
+    return send_visca_pan_tilt_drive(
+        ip,
+        port,
+        pan_speed,
+        tilt_speed,
+        pan_dir,
+        tilt_dir,
+        camera_address=camera_address,
+    )
+
+
+def send_camera_zoom_drive(
+    ip: str,
+    port: int,
+    zoom_value: float,
+    camera_address: int = 1,
+    cfg: dict | None = None,
+) -> tuple[bool, str]:
+    _camera_model_for_config(cfg)
+    return send_visca_zoom_drive(
+        ip, port, zoom_value, camera_address=camera_address
+    )
+
+
 def inquire_visca_absolute_position(
     ip: str, port: int, camera_address: int = 1
 ) -> tuple[bool, dict | str]:
@@ -360,6 +446,13 @@ def inquire_visca_absolute_position(
         return False, str(exc)
 
 
+def inquire_camera_absolute_position(
+    ip: str, port: int, camera_address: int = 1, cfg: dict | None = None
+) -> tuple[bool, dict | str]:
+    _camera_model_for_config(cfg)
+    return inquire_visca_absolute_position(ip, port, camera_address)
+
+
 # ── Settings ───────────────────────────────────────────────────────────────────
 def _ensure_dirs():
     os.makedirs(IMAGES_DIR, exist_ok=True)
@@ -388,7 +481,11 @@ def _normalize_settings(data: dict | None) -> dict:
             raw_camera = raw_cameras[idx] if idx < len(raw_cameras) else {}
             if not isinstance(raw_camera, dict):
                 raw_camera = {}
-            merged_cameras.append({**default_camera, **raw_camera})
+            merged_camera = {**default_camera, **raw_camera}
+            merged_camera["cameraModel"] = _normalize_camera_model(
+                str(merged_camera.get("cameraModel", ""))
+            )
+            merged_cameras.append(merged_camera)
         settings["cameras"] = merged_cameras
 
     raw_atem = data.get("atem")
@@ -1651,7 +1748,7 @@ def _try_record_position(settings: dict, cam: int, preset: int) -> dict | None:
         return None
     port = int(cfg.get("port", 52381) or 52381)
     visca_addr = int(cfg.get("viscaAddr", 1) or 1)
-    ok, result = inquire_visca_absolute_position(ip, port, visca_addr)
+    ok, result = inquire_camera_absolute_position(ip, port, visca_addr, cfg)
     if not ok or not isinstance(result, dict):
         print(
             f"[Position] Skip record: inquiry failed for camera {cam} (ok={ok}, result_type={type(result).__name__})"
@@ -1871,7 +1968,10 @@ class Handler(BaseHTTPRequestHandler):
                     )
                 self._json(409, {"success": False, "message": block_reason})
                 return
-        result = recall_visca_preset(ip, port, preset, camera, wait_mode)
+        if cfg is not None:
+            result = recall_camera_preset(ip, port, preset, camera, wait_mode, cfg)
+        else:
+            result = recall_camera_preset(ip, port, preset, camera, wait_mode)
         if not result.get("success"):
             _logger.warning(
                 "Recall failed ip=%s port=%s cam=%s preset=%s wait=%s: %s",
@@ -1972,7 +2072,7 @@ class Handler(BaseHTTPRequestHandler):
                 else max(1, min(0x10, int(round(tilt_mag * 0x10))))
             )
 
-            pt_ok, pt_message = send_visca_pan_tilt_drive(
+            pt_ok, pt_message = send_camera_pan_tilt_drive(
                 ip,
                 port,
                 pan_speed,
@@ -1980,9 +2080,10 @@ class Handler(BaseHTTPRequestHandler):
                 pan_dir,
                 tilt_dir,
                 camera_address=visca_addr,
+                cfg=cfg,
             )
-            zoom_ok, zoom_message = send_visca_zoom_drive(
-                ip, port, zoom, camera_address=visca_addr
+            zoom_ok, zoom_message = send_camera_zoom_drive(
+                ip, port, zoom, camera_address=visca_addr, cfg=cfg
             )
             ok = pt_ok and zoom_ok
         self._json(
@@ -2220,7 +2321,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"ok": False, "error": "Camera IP is not configured"})
             return
 
-        ok, result = inquire_visca_absolute_position(ip, port, visca_addr)
+        ok, result = inquire_camera_absolute_position(ip, port, visca_addr, cfg)
         if ok:
             self._json(200, {"ok": True, **result})
         else:
