@@ -72,5 +72,101 @@ class TestSendInquiry(unittest.TestCase):
         self.assertIn("saw 9041ff", str(ctx.exception))
 
 
+class _FakeProbeSocket:
+    def bind(self, _addr):
+        return None
+
+    def settimeout(self, _timeout):
+        return None
+
+    def getsockname(self):
+        return ("0.0.0.0", 52381)
+
+    def close(self):
+        return None
+
+
+class TestProbePreset(unittest.TestCase):
+    def test_preserves_completion_when_settle_polling_fails(self):
+        completion = probe.ViscaReply("completion", 0x90, 0x51, b"\x90\x51\xff", 1)
+
+        with (
+            patch("socket.socket", return_value=_FakeProbeSocket()),
+            patch("scripts.av1281_motion_probe.send_command"),
+            patch(
+                "scripts.av1281_motion_probe.wait_for_completion",
+                return_value=([completion], True),
+            ),
+            patch(
+                "scripts.av1281_motion_probe.query_motion_sample",
+                side_effect=TimeoutError("inquiry timeout"),
+            ),
+            patch(
+                "scripts.av1281_motion_probe.time.monotonic",
+                side_effect=[0.0, 0.0, 0.0],
+            ),
+        ):
+            result = probe.probe_preset(
+                ip="10.0.0.1",
+                port=52381,
+                camera_address=1,
+                preset=5,
+                transport="sony-udp",
+                local_port=None,
+                completion_timeout=2.0,
+                settle_timeout=8.0,
+                poll_interval=0.2,
+                stable_count=3,
+                inquiry_timeout=1.0,
+                include_focus=False,
+                require_settle=True,
+                verbose=False,
+            )
+
+        self.assertTrue(result.saw_completion)
+        self.assertEqual(result.replies, [completion])
+        self.assertFalse(result.settled)
+        self.assertIsNone(result.error)
+
+    def test_reports_error_when_no_completion_arrived_before_polling_failure(self):
+        with (
+            patch("socket.socket", return_value=_FakeProbeSocket()),
+            patch("scripts.av1281_motion_probe.send_command"),
+            patch(
+                "scripts.av1281_motion_probe.wait_for_completion",
+                return_value=([], False),
+            ),
+            patch(
+                "scripts.av1281_motion_probe.query_motion_sample",
+                side_effect=TimeoutError("inquiry timeout"),
+            ),
+            patch(
+                "scripts.av1281_motion_probe.time.monotonic",
+                side_effect=[0.0, 0.0, 0.0],
+            ),
+        ):
+            result = probe.probe_preset(
+                ip="10.0.0.1",
+                port=52381,
+                camera_address=1,
+                preset=5,
+                transport="sony-udp",
+                local_port=None,
+                completion_timeout=2.0,
+                settle_timeout=8.0,
+                poll_interval=0.2,
+                stable_count=3,
+                inquiry_timeout=1.0,
+                include_focus=False,
+                require_settle=True,
+                verbose=False,
+            )
+
+        self.assertFalse(result.saw_completion)
+        self.assertEqual(result.replies, [])
+        self.assertFalse(result.settled)
+        self.assertEqual(result.error, "inquiry timeout")
+
+
 if __name__ == "__main__":
     unittest.main()

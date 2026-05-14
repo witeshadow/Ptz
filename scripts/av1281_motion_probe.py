@@ -363,6 +363,8 @@ def probe_preset(
     if local_port is None and transport == "sony-udp":
         local_port = port
     samples: list[MotionSample] = []
+    replies: list[ViscaReply] = []
+    saw_completion = False
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -459,10 +461,22 @@ def probe_preset(
     except Exception as exc:
         if verbose:
             print(f"Probe failed: {exc}")
+        # Preserve a confirmed VISCA completion if settle polling fails later.
+        # This keeps autocut mode able to fall back to completion without
+        # masking true send/completion-path failures where no completion arrived.
+        if saw_completion:
+            return ProbeResult(
+                preset=preset,
+                replies=replies,
+                saw_completion=saw_completion,
+                settled=False,
+                samples=samples,
+                error=None,
+            )
         return ProbeResult(
             preset=preset,
-            replies=[],
-            saw_completion=False,
+            replies=replies,
+            saw_completion=saw_completion,
             settled=False,
             samples=samples,
             error=str(exc),

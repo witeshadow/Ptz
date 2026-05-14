@@ -4171,19 +4171,30 @@
     if (!autoCutPlan || !autoCutPlan.source) return;
     clearPendingAutoCut();
     const { source, camName, delayMs } = autoCutPlan;
-    if (delayMs > 0) {
+    const usingCompletionFallback = trigger === 'completion';
+    const usingTimeoutFallback = trigger === 'timeout';
+    const effectiveDelayMs = usingTimeoutFallback
+      ? Math.max(0, delayMs - Math.max(0, recallElapsedMs || 0))
+      : 0;
+    if (effectiveDelayMs > 0) {
       autoCutPending = { source, camName, preset };
       setAutoCutDebug(`WAIT ${source}`);
-      setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} after confirmed stop + ${(delayMs / 1000).toFixed(1).replace(/\.0$/, '')}s`, false);
+      const delayLabel = (effectiveDelayMs / 1000).toFixed(2).replace(/\.?0+$/, '');
+      setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} waiting up to ${delayLabel}s more for fallback max`, false);
       autoCutTimer = setTimeout(() => {
         const pending = autoCutPending;
         if (!pending) return;
         fireAutoCut(pending.source, pending.camName, pending.preset);
-      }, delayMs);
+      }, effectiveDelayMs);
       return;
     }
     setAutoCutDebug(`READY ${source}`);
-    setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} when camera stop is confirmed`, false);
+    const readyReason = usingCompletionFallback
+      ? 'on VISCA completion'
+      : usingTimeoutFallback
+        ? 'on fallback max timeout'
+        : 'when camera stop is confirmed';
+    setStatus('busy', `Auto Cut armed: ${camName} preset ${preset} ${readyReason}`, false);
     void fireAutoCut(source, camName, preset);
   }
 

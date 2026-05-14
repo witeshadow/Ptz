@@ -156,6 +156,32 @@ class TestFrontendContracts(unittest.TestCase):
             self.html,
         )
 
+    def test_auto_cut_uses_trigger_to_skip_fallback_delay(self):
+        self.assertIn(
+            "const usingCompletionFallback = trigger === 'completion';",
+            self.html,
+        )
+        self.assertIn(
+            "const usingTimeoutFallback = trigger === 'timeout';",
+            self.html,
+        )
+        self.assertIn(
+            "const effectiveDelayMs = usingTimeoutFallback",
+            self.html,
+        )
+        self.assertIn(
+            "waiting up to ${delayLabel}s more for fallback max",
+            self.html,
+        )
+        self.assertIn(
+            "? 'on VISCA completion'",
+            self.html,
+        )
+        self.assertIn(
+            "? 'on fallback max timeout'",
+            self.html,
+        )
+
     def test_joystick_state_is_normalized_and_visible(self):
         self.assertIn(
             'id="joystick-settings-section" class="gsp-extra-card gsp-mobile-section active" data-mobile-tab="atem"',
