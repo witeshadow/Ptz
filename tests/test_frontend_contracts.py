@@ -92,6 +92,14 @@ class TestFrontendContracts(unittest.TestCase):
             "if (webcamData.position) state.positions[presetKey(cam, preset)] = webcamData.position;",
             self.html,
         )
+        self.assertIn(
+            "if (!webcamRes.ok) {",
+            self.html,
+        )
+        self.assertIn(
+            "setStatus('error', webcamData.error || 'Capture failed');",
+            self.html,
+        )
         # position cleared on image delete
         self.assertIn("delete state.positions[presetKey(cam, preset)];", self.html)
         # position shown as tooltip on preset button

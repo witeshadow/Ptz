@@ -5181,6 +5181,10 @@
       body:    blob,
     });
     const webcamData = await webcamRes.json().catch(() => ({}));
+    if (!webcamRes.ok) {
+      setStatus('error', webcamData.error || 'Capture failed');
+      return false;
+    }
     if (webcamData.position) state.positions[presetKey(cam, preset)] = webcamData.position;
     return true;
   }
