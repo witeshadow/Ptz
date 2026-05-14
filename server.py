@@ -407,9 +407,7 @@ def send_camera_zoom_drive(
     cfg: dict | None = None,
 ) -> tuple[bool, str]:
     _camera_model_for_config(cfg)
-    return send_visca_zoom_drive(
-        ip, port, zoom_value, camera_address=camera_address
-    )
+    return send_visca_zoom_drive(ip, port, zoom_value, camera_address=camera_address)
 
 
 def inquire_visca_absolute_position(
