@@ -29,6 +29,9 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("ATEM Wait", self.html)
         self.assertIn("ATEM P${program} V${preview}", self.html)
         self.assertIn('id="cut-live-btn"', self.html)
+        self.assertIn("--cut-btn-min-width: 112px;", self.html)
+        self.assertIn("min-width: var(--cut-btn-min-width);", self.html)
+        self.assertIn("--cut-btn-min-width: 132px;", self.html)
 
     def test_explicit_scan_and_atem_mapping_hints_present(self):
         self.assertIn("ATEM Source Number", self.html)
@@ -165,6 +168,13 @@ class TestFrontendContracts(unittest.TestCase):
         )
 
     def test_auto_cut_uses_trigger_to_skip_fallback_delay(self):
+        self.assertIn("async function requestAtemCut(source, reason)", self.html)
+        self.assertIn("await requestAtemCut(source, 'auto');", self.html)
+        self.assertIn("await requestAtemCut(source, 'manual');", self.html)
+        self.assertIn(
+            "autoCutArmed = getDeviceAutoCutArmed() && !!getActiveCameraCutSource();",
+            self.html,
+        )
         self.assertIn(
             "const usingCompletionFallback = trigger === 'completion';",
             self.html,
