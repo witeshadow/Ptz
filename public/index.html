@@ -21,6 +21,11 @@
       --text:    #e2e8f0;
       --muted:   #64748b;
       --label:   #94a3b8;
+      --cut-btn-min-width: 112px;
+      --cut-btn-min-height: 46px;
+      --cut-btn-pad-y: 9px;
+      --cut-btn-pad-x: 24px;
+      --cut-btn-font-size: 0.9rem;
     }
 
     body {
@@ -291,11 +296,11 @@
       background: rgba(239, 68, 68, 0.12);
       border: 1px solid rgba(239, 68, 68, 0.35);
       border-radius: 999px;
-      padding: 8px 18px;
-      min-width: 88px;
-      min-height: 46px;
+      padding: var(--cut-btn-pad-y) var(--cut-btn-pad-x);
+      min-width: var(--cut-btn-min-width);
+      min-height: var(--cut-btn-min-height);
       color: #fca5a5;
-      font-size: 0.75rem;
+      font-size: var(--cut-btn-font-size);
       font-weight: 700;
       line-height: 1;
       text-transform: uppercase;
@@ -440,9 +445,11 @@
       min-height: 40px;
     }
     body.header-compact #cut-live-btn {
-      padding: 6px 12px;
-      min-height: 40px;
-      min-width: 80px;
+      --cut-btn-min-width: 100px;
+      --cut-btn-min-height: 42px;
+      --cut-btn-pad-y: 6px;
+      --cut-btn-pad-x: 18px;
+      --cut-btn-font-size: 0.84rem;
     }
     body.header-compact #btn-auto-cut {
       padding: 6px 12px;
@@ -929,7 +936,13 @@
     body.fill-mode #fill-cam-strip { display: none; }
     body.fill-mode #fullscreen-btn { padding: 4px 8px; font-size: 0.92rem; }
     body.fill-mode #protect-live-btn { padding: 4px 9px; font-size: 0.68rem; min-height: 40px; }
-    body.fill-mode #cut-live-btn { min-height: 40px; min-width: 80px; padding: 4px 12px; }
+    body.fill-mode #cut-live-btn {
+      --cut-btn-min-width: 104px;
+      --cut-btn-min-height: 44px;
+      --cut-btn-pad-y: 6px;
+      --cut-btn-pad-x: 18px;
+      --cut-btn-font-size: 0.84rem;
+    }
     body.fill-mode #btn-auto-cut { min-height: 40px; font-size: 0.68rem; padding: 4px 9px; }
     body.fill-mode #atem-pill { padding: 4px 8px; font-size: 0.68rem; }
     body.fill-mode #status { width: 150px; max-width: 150px; flex-basis: 150px; padding: 3px 8px; font-size: 0.7rem; }
@@ -958,9 +971,11 @@
     /* ── Tablet: larger CUT button touch target ─────────── */
     @media (min-width: 641px) and (max-width: 1279px) {
       #cut-live-btn {
-        min-height: 52px;
-        padding: 10px 20px;
-        font-size: 0.8rem;
+        --cut-btn-min-width: 132px;
+        --cut-btn-min-height: 58px;
+        --cut-btn-pad-y: 11px;
+        --cut-btn-pad-x: 28px;
+        --cut-btn-font-size: 0.96rem;
       }
     }
 
@@ -4048,6 +4063,7 @@
   let autoCutArmed = false;
   let autoCutTimer = null;
   let autoCutPending = null;
+  const inFlightAtemCuts = Object.create(null);
 
   // Joystick/Gamepad API state
   let gamepadConnected = false;
@@ -4146,6 +4162,10 @@
     return !!state.atem.enabled && !!atemConnected && !!getActiveCameraCutSource();
   }
 
+  function getActiveCameraName(camIdx = state.activeCam) {
+    return (state.cameras[camIdx] && state.cameras[camIdx].name) || `Camera ${camIdx + 1}`;
+  }
+
   function getAutoCutDebugState() {
     const source = getActiveCameraCutSource();
     if (!state.atem.enabled) return 'ATEM OFF';
@@ -4158,7 +4178,7 @@
   function updateManualCutButton() {
     if (!elCutLiveBtn) return;
     const source = getActiveCameraCutSource();
-    const camName = (state.cameras[state.activeCam] && state.cameras[state.activeCam].name) || `Camera ${state.activeCam + 1}`;
+    const camName = getActiveCameraName();
     const alreadyLive = !!source && cameraMatchesAtemSource(state.activeCam, state.programSource);
     elCutLiveBtn.style.display = state.atem.enabled ? '' : 'none';
     elCutLiveBtn.disabled = !canManualCut() || alreadyLive;
@@ -4194,8 +4214,8 @@
       elAutoCutBtn.title = 'Set an ATEM source number for this camera first';
     } else if (autoCutArmed) {
       elAutoCutBtn.title = delayText === '0s'
-        ? `Armed: cut ${(state.cameras[state.activeCam] && state.cameras[state.activeCam].name) || 'camera'} to air when camera stop or VISCA completion is confirmed`
-        : `Armed: cut ${(state.cameras[state.activeCam] && state.cameras[state.activeCam].name) || 'camera'} to air when camera stop or VISCA completion is confirmed, or by ${delayText} max if neither arrives`;
+        ? `Armed: cut ${getActiveCameraName()} to air when camera stop or VISCA completion is confirmed`
+        : `Armed: cut ${getActiveCameraName()} to air when camera stop or VISCA completion is confirmed, or by ${delayText} max if neither arrives`;
     } else {
       elAutoCutBtn.title = delayText === '0s'
         ? 'Arm the next automatic cut (confirmed stop or VISCA completion)'
@@ -4210,21 +4230,39 @@
     updateAutoCutButton();
   }
 
+  async function requestAtemCut(source, reason) {
+    if (inFlightAtemCuts[source]) return inFlightAtemCuts[source];
+    if (reason === 'manual') clearPendingAutoCut();
+
+    const cutPromise = (async () => {
+      const res = await fetch('/atem/cut', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source, reason }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || data.message || `HTTP ${res.status}`);
+      }
+      applyConfirmedProgramSource(source);
+      return data;
+    })();
+
+    inFlightAtemCuts[source] = cutPromise;
+    try {
+      return await cutPromise;
+    } finally {
+      if (inFlightAtemCuts[source] === cutPromise) {
+        delete inFlightAtemCuts[source];
+      }
+    }
+  }
+
   async function fireAutoCut(source, camName, preset) {
     try {
       setStatus('busy', `Auto Cut: switching ${camName} preset ${preset} to ATEM source ${source}…`, false);
       setAutoCutDebug(`FIRE ${source}`);
-      const res = await fetch('/atem/cut', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source, reason: 'auto' }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) {
-        setAutoCutDebug(`ERR ${source}`);
-        throw new Error(data.error || data.message || `HTTP ${res.status}`);
-      }
-      applyConfirmedProgramSource(source);
+      await requestAtemCut(source, 'auto');
       setAutoCutDebug(`OK ${source}`);
       setStatus('success', `Auto Cut: ${camName} preset ${preset} is now live on source ${source}`);
     } catch (err) {
@@ -4238,23 +4276,14 @@
 
   async function cutActiveCameraLive() {
     const source = getActiveCameraCutSource();
-    const camName = (state.cameras[state.activeCam] && state.cameras[state.activeCam].name) || `Camera ${state.activeCam + 1}`;
+    const camName = getActiveCameraName();
     if (!source) {
       setStatus('error', 'Set an ATEM source number for this camera first');
       return;
     }
     try {
       setStatus('busy', `Cutting ${camName} to ATEM source ${source}…`, false);
-      const res = await fetch('/atem/cut', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source, reason: 'manual' }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || data.message || `HTTP ${res.status}`);
-      }
-      applyConfirmedProgramSource(source);
+      await requestAtemCut(source, 'manual');
       setStatus('success', `Cut complete: ${camName} is now live on source ${source}`);
     } catch (err) {
       setStatus('error', `Manual cut failed: ${err.message || err}`);
@@ -4312,7 +4341,7 @@
       }
       setAutoCutArmed(!autoCutArmed);
       if (autoCutArmed) {
-        const camName = (state.cameras[state.activeCam] && state.cameras[state.activeCam].name) || 'camera';
+        const camName = getActiveCameraName();
         setAutoCutDebug(`ARM ${source}`);
         const fallbackDelay = Math.max(0, state.autoCutDelayMs || 0);
         const fallbackText = fallbackDelay > 0
@@ -5997,8 +6026,9 @@
   (async function boot() {
     await loadSettings();
     settingsCameraIdx = state.activeCam ?? 0;
-    // Hydrate runtime auto-cut armed state from persisted device settings
-    autoCutArmed = getDeviceAutoCutArmed() && canArmAutoCut() && !!getActiveCameraCutSource();
+    // Restore the persisted arm preference before the initial ATEM status poll.
+    // Connection state is still loading here, so don't gate hydration on canArmAutoCut().
+    autoCutArmed = getDeviceAutoCutArmed() && !!getActiveCameraCutSource();
     updateProtectLiveButton();
     initCameraSelector();
     loadCameraSettings();
