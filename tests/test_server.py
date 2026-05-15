@@ -355,6 +355,7 @@ class TestDefaultSettings(unittest.TestCase):
         cam = server.DEFAULT_SETTINGS["cameras"][0]
         for key in (
             "name",
+            "cameraModel",
             "ip",
             "port",
             "viscaAddr",
@@ -863,6 +864,14 @@ class TestHTTPRoutes(unittest.TestCase):
         _, body2 = self.srv.get("/settings")
         self.assertEqual(json.loads(body2)["activeCam"], 2)
 
+    def test_get_settings_includes_camera_model_defaults(self):
+        status, body = self.srv.get("/settings")
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(
+            data["cameras"][0]["cameraModel"], server.DEFAULT_CAMERA_MODEL
+        )
+
     def test_post_settings_bad_json_returns_400(self):
         status, body = self.srv.post("/settings", b"not json")
         self.assertEqual(status, 400)
@@ -912,7 +921,7 @@ class TestHTTPRoutes(unittest.TestCase):
             {"ip": "10.0.0.1", "port": 52381, "camera": 1, "preset": 4}
         ).encode()
         with patch(
-            "server.recall_visca_preset",
+            "server.recall_camera_preset",
             return_value={
                 "success": True,
                 "message": "ACK 9041ff • Completion 9051ff • Settled pan 1234 tilt 5678 zoom 00AA",
@@ -941,7 +950,7 @@ class TestHTTPRoutes(unittest.TestCase):
         ).encode()
         with (
             patch(
-                "server.recall_visca_preset",
+                "server.recall_camera_preset",
                 return_value={
                     "success": False,
                     "message": "Motion did not settle in time",
@@ -1010,9 +1019,9 @@ class TestHTTPRoutes(unittest.TestCase):
 
         with (
             patch(
-                "server.send_visca_pan_tilt_drive", return_value=(True, "pt ok")
+                "server.send_camera_pan_tilt_drive", return_value=(True, "pt ok")
             ) as mock_pt,
-            patch("server.send_visca_zoom_drive", return_value=(True, "zoom ok")),
+            patch("server.send_camera_zoom_drive", return_value=(True, "zoom ok")),
         ):
             first_status, _ = self.srv.post("/api/ptz/drive", first)
             stale_status, stale_body = self.srv.post("/api/ptz/drive", stale)
@@ -1041,9 +1050,9 @@ class TestHTTPRoutes(unittest.TestCase):
 
         with (
             patch(
-                "server.send_visca_pan_tilt_drive", return_value=(True, "pt ok")
+                "server.send_camera_pan_tilt_drive", return_value=(True, "pt ok")
             ) as mock_pt,
-            patch("server.send_visca_zoom_drive", return_value=(True, "zoom ok")),
+            patch("server.send_camera_zoom_drive", return_value=(True, "zoom ok")),
         ):
             self.srv.post("/api/ptz/drive", first)
             status, body = self.srv.post("/api/ptz/drive", newer)
@@ -1092,7 +1101,7 @@ class TestHTTPRoutes(unittest.TestCase):
             }
         ).encode()
         with patch(
-            "server.recall_visca_preset",
+            "server.recall_camera_preset",
             return_value={
                 "success": True,
                 "message": "ACK 9041ff • Manual dwell mode",
@@ -1121,7 +1130,7 @@ class TestHTTPRoutes(unittest.TestCase):
             }
         ).encode()
         with patch(
-            "server.recall_visca_preset",
+            "server.recall_camera_preset",
             return_value={
                 "success": True,
                 "message": "Command sent",
@@ -1150,7 +1159,7 @@ class TestHTTPRoutes(unittest.TestCase):
             }
         ).encode()
         with patch(
-            "server.recall_visca_preset",
+            "server.recall_camera_preset",
             return_value={
                 "success": True,
                 "message": "VISCA completion confirmed",
@@ -1167,6 +1176,79 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertTrue(data["success"])
         self.assertEqual(data["waitMode"], "autocut")
         mock_recall.assert_called_once_with("10.0.0.1", 52381, 5, 1, "autocut")
+
+    def test_recall_uses_camera_model_dispatch_when_camera_is_configured(self):
+        settings = dict(server.DEFAULT_SETTINGS)
+        settings["cameras"] = [
+            dict(
+                server.DEFAULT_SETTINGS["cameras"][0],
+                ip="10.0.0.1",
+                port=52381,
+                viscaAddr=1,
+                cameraModel=server.CANON_CR_N100_CAMERA_MODEL,
+            )
+        ]
+        server.write_settings(settings)
+        payload = json.dumps(
+            {"ip": "10.0.0.1", "port": 52381, "camera": 1, "preset": 5}
+        ).encode()
+        with patch(
+            "server.recall_camera_preset",
+            return_value={
+                "success": True,
+                "message": "Command sent",
+                "settled": False,
+                "sawCompletion": False,
+                "waitMode": "settle",
+                "position": None,
+            },
+        ) as mock_recall:
+            status, _ = self.srv.post("/recall", payload)
+
+        self.assertEqual(status, 200)
+        self.assertEqual(mock_recall.call_count, 1)
+        self.assertEqual(
+            mock_recall.call_args.args[:5], ("10.0.0.1", 52381, 5, 1, "settle")
+        )
+        self.assertEqual(
+            mock_recall.call_args.args[5]["cameraModel"],
+            server.CANON_CR_N100_CAMERA_MODEL,
+        )
+
+    def test_ptz_drive_uses_camera_model_dispatch(self):
+        settings = dict(server.DEFAULT_SETTINGS)
+        settings["cameras"] = [
+            dict(
+                server.DEFAULT_SETTINGS["cameras"][0],
+                ip="10.0.0.1",
+                cameraModel=server.CANON_CR_N100_CAMERA_MODEL,
+            )
+        ]
+        server.write_settings(settings)
+        payload = json.dumps(
+            {"camIdx": 0, "pan": 0.4, "tilt": 0.1, "zoom": 0.2, "commandId": 700}
+        ).encode()
+
+        with (
+            patch(
+                "server.send_camera_pan_tilt_drive", return_value=(True, "pt ok")
+            ) as mock_pt,
+            patch(
+                "server.send_camera_zoom_drive", return_value=(True, "zoom ok")
+            ) as mock_zoom,
+        ):
+            status, body = self.srv.post("/api/ptz/drive", payload)
+
+        self.assertEqual(status, 200)
+        self.assertTrue(json.loads(body)["ok"])
+        self.assertEqual(
+            mock_pt.call_args.kwargs["cfg"]["cameraModel"],
+            server.CANON_CR_N100_CAMERA_MODEL,
+        )
+        self.assertEqual(
+            mock_zoom.call_args.kwargs["cfg"]["cameraModel"],
+            server.CANON_CR_N100_CAMERA_MODEL,
+        )
 
     # ── image API ──────────────────────────────────────────────────────────────
 
@@ -1712,6 +1794,7 @@ class TestDefaultSettingsCamera4(unittest.TestCase):
         cam = self._cam4()
         for key in (
             "name",
+            "cameraModel",
             "ip",
             "port",
             "viscaAddr",

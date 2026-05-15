@@ -42,6 +42,8 @@ class TestFrontendContracts(unittest.TestCase):
         )
 
     def test_explicit_scan_and_atem_mapping_hints_present(self):
+        self.assertIn("Camera Model", self.html)
+        self.assertIn("Canon CR-N100 (basic)", self.html)
         self.assertIn("ATEM Source Number", self.html)
         self.assertIn("ATEM bus status:", self.html)
         self.assertIn("PTZ scan uses:", self.html)
@@ -61,6 +63,10 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("Scan Output", self.html)
         self.assertIn("Active Cam", self.html)
         self.assertIn("Route to:", self.html)
+        self.assertIn(
+            "Canon CR-N100 basic support expects preset image capture through the existing USB device path or ATEM-routed USB capture.",
+            self.html,
+        )
 
     def test_live_protection_and_manage_copy_are_explicit(self):
         self.assertIn(
@@ -174,6 +180,15 @@ class TestFrontendContracts(unittest.TestCase):
             "elBuildCommit.title = `${branch} @ ${shortCommit} (${dirty}, ${defaultState})`;",
             self.html,
         )
+
+    def test_camera_model_is_normalized_and_persisted(self):
+        self.assertIn("const DEFAULT_CAMERA_MODEL = 'avipas-visca';", self.html)
+        self.assertIn("const CANON_CR_N100_CAMERA_MODEL = 'canon-cr-n100';", self.html)
+        self.assertIn("function normalizeCameraModel(value)", self.html)
+        self.assertIn("cameraModel: DEFAULT_CAMERA_MODEL", self.html)
+        self.assertIn("merged.cameraModel = normalizeCameraModel(merged.cameraModel);", self.html)
+        self.assertIn("cam.cameraModel = normalizeCameraModel(elCameraModel && elCameraModel.value);", self.html)
+        self.assertIn("id=\"f-camera-model\"", self.html)
 
     def test_auto_cut_uses_trigger_to_skip_fallback_delay(self):
         self.assertIn("async function requestAtemCut(source, reason)", self.html)
