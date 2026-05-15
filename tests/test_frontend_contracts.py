@@ -32,6 +32,14 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("--cut-btn-min-width: 112px;", self.html)
         self.assertIn("min-width: var(--cut-btn-min-width);", self.html)
         self.assertIn("--cut-btn-min-width: 132px;", self.html)
+        self.assertLess(
+            self.html.index('id="cut-live-btn"'),
+            self.html.index('id="btn-auto-cut"'),
+        )
+        self.assertLess(
+            self.html.index('id="btn-auto-cut"'),
+            self.html.index('id="protect-live-btn"'),
+        )
 
     def test_explicit_scan_and_atem_mapping_hints_present(self):
         self.assertIn("ATEM Source Number", self.html)
