@@ -3971,6 +3971,7 @@
   let autoCutArmed = false;
   let autoCutTimer = null;
   let autoCutPending = null;
+  const inFlightAtemCuts = Object.create(null);
 
   // Joystick/Gamepad API state
   let gamepadConnected = false;
@@ -4138,17 +4139,31 @@
   }
 
   async function requestAtemCut(source, reason) {
-    const res = await fetch('/atem/cut', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source, reason }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.ok) {
-      throw new Error(data.error || data.message || `HTTP ${res.status}`);
+    if (inFlightAtemCuts[source]) return inFlightAtemCuts[source];
+    if (reason === 'manual') clearPendingAutoCut();
+
+    const cutPromise = (async () => {
+      const res = await fetch('/atem/cut', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source, reason }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || data.message || `HTTP ${res.status}`);
+      }
+      applyConfirmedProgramSource(source);
+      return data;
+    })();
+
+    inFlightAtemCuts[source] = cutPromise;
+    try {
+      return await cutPromise;
+    } finally {
+      if (inFlightAtemCuts[source] === cutPromise) {
+        delete inFlightAtemCuts[source];
+      }
     }
-    applyConfirmedProgramSource(source);
-    return data;
   }
 
   async function fireAutoCut(source, camName, preset) {

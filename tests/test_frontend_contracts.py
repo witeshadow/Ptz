@@ -177,10 +177,11 @@ class TestFrontendContracts(unittest.TestCase):
 
     def test_auto_cut_uses_trigger_to_skip_fallback_delay(self):
         self.assertIn("async function requestAtemCut(source, reason)", self.html)
+        self.assertIn("fetch('/atem/cut'", self.html)
         self.assertIn("await requestAtemCut(source, 'auto');", self.html)
         self.assertIn("await requestAtemCut(source, 'manual');", self.html)
-        self.assertIn(
-            "autoCutArmed = getDeviceAutoCutArmed() && !!getActiveCameraCutSource();",
+        self.assertNotIn(
+            "getDeviceAutoCutArmed() && canArmAutoCut()",
             self.html,
         )
         self.assertIn(
