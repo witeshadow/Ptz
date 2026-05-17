@@ -1286,8 +1286,8 @@ def _process_osc_ptz_command(cam_idx: int, pan: float, tilt: float, zoom: float)
 
         pan_mag = abs(pan)
         tilt_mag = abs(tilt)
-        pan_dir = 0x03 if pan_mag < deadzone else (0x01 if pan < 0 else 0x02)
-        tilt_dir = 0x03 if tilt_mag < deadzone else (0x01 if tilt > 0 else 0x02)
+        pan_dir = 0x03 if pan_mag == 0 else (0x01 if pan < 0 else 0x02)
+        tilt_dir = 0x03 if tilt_mag == 0 else (0x01 if tilt > 0 else 0x02)
         pan_speed = (
             1 if pan_dir == 0x03 else max(1, min(0x10, int(round(pan_mag * 0x10))))
         )
@@ -2420,7 +2420,9 @@ class Handler(BaseHTTPRequestHandler):
             if "rateLimit" in data:
                 rate_limit = int(data["rateLimit"])
                 if rate_limit < 1 or rate_limit > 240:
-                    self._json(400, {"ok": False, "error": "Rate limit must be 1-240 Hz"})
+                    self._json(
+                        400, {"ok": False, "error": "Rate limit must be 1-240 Hz"}
+                    )
                     return
                 osc_cfg["rateLimit"] = rate_limit
             if "sensitivity" in data and isinstance(data["sensitivity"], dict):
