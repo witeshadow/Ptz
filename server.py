@@ -1165,24 +1165,52 @@ _osc_rate_limit_lock = threading.Lock()
 
 
 def _parse_osc_message(data: bytes) -> tuple[str, float] | None:
-    """Parse simple OSC message in format: /ptz/{cam_id}/{control} {value}"""
+    """Parse OSC message with binary payload (handles type tags + binary floats)."""
     if not data.startswith(b"/"):
         return None
     try:
-        parts = data.split(b"\x00")
-        if len(parts) < 2:
+        null_term = data.find(b"\x00")
+        if null_term < 0:
             return None
-        address = parts[0].decode("utf-8", errors="ignore").strip()
+        address = data[:null_term].decode("utf-8", errors="ignore")
         if not address.startswith("/ptz/"):
             return None
-        payload_start = len(address) + 1
+
+        tag_start = null_term + 1
+        while tag_start < len(data) and data[tag_start] == 0:
+            tag_start += 1
+
+        if tag_start >= len(data):
+            return None
+
+        type_tag_start = tag_start
+        type_tag_null = data.find(b"\x00", type_tag_start)
+        if type_tag_null < 0:
+            type_tag_null = len(data)
+
+        type_tag = data[type_tag_start:type_tag_null]
+
+        payload_start = type_tag_null + 1
         while payload_start < len(data) and data[payload_start] == 0:
             payload_start += 1
+
         if payload_start >= len(data):
             return None
+
         try:
-            value = float(data[payload_start:].split(b"\x00")[0])
-        except (ValueError, IndexError):
+            if type_tag.startswith(b",f"):
+                if payload_start + 4 > len(data):
+                    return None
+                value = struct.unpack(">f", data[payload_start : payload_start + 4])[0]
+            elif type_tag.startswith(b",i"):
+                if payload_start + 4 > len(data):
+                    return None
+                value = float(
+                    struct.unpack(">i", data[payload_start : payload_start + 4])[0]
+                )
+            else:
+                value = float(data[payload_start:].split(b"\x00")[0])
+        except (ValueError, IndexError, struct.error):
             return None
         return (address, value)
     except Exception as e:
@@ -1191,16 +1219,19 @@ def _parse_osc_message(data: bytes) -> tuple[str, float] | None:
 
 
 def _should_rate_limit_osc(cam_id: int, now: float, rate_limit_hz: int) -> bool:
-    """Check if OSC message should be rate-limited (returns True if should skip)."""
+    """Rate-limit to max N messages per second (returns True if should skip)."""
     with _osc_rate_limit_lock:
-        window = 1.0 / rate_limit_hz
-        last_time, count = _osc_rate_limit.get(cam_id, (0, 0))
-        if now - last_time > window:
+        last_time, count = _osc_rate_limit.get(cam_id, (now - 1.0, 0))
+        time_elapsed = now - last_time
+
+        if time_elapsed >= 1.0:
             _osc_rate_limit[cam_id] = (now, 1)
             return False
+
         count += 1
         if count > rate_limit_hz:
             return True
+
         _osc_rate_limit[cam_id] = (last_time, count)
         return False
 
@@ -1267,8 +1298,7 @@ def _process_osc_ptz_command(cam_idx: int, pan: float, tilt: float, zoom: float)
             ip, port, pan_speed, tilt_speed, pan_dir, tilt_dir, visca_addr, cfg
         )
 
-        if zoom != 0:
-            send_camera_zoom_drive(ip, port, zoom, visca_addr, cfg)
+        send_camera_zoom_drive(ip, port, zoom, visca_addr, cfg)
 
 
 def _osc_loop():
@@ -1276,6 +1306,11 @@ def _osc_loop():
     _logger.info("OSC: Listener starting")
     sock = None
     last_config_check = time.monotonic()
+    enabled = False
+    port = 9000
+    rate_limit = 30
+    deadzone = 0.1
+    sensitivity = {}
     try:
         while True:
             now = time.monotonic()
