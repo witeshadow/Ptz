@@ -4011,16 +4011,17 @@
   function updateFullscreenZoomPosition(touchY) {
     const rect = elFullscreenZoomSlider.getBoundingClientRect();
     const sliderHeight = rect.height;
-    const trackRect = elFullscreenZoomSlider.querySelector('[id=""]')?.parentElement?.getBoundingClientRect() || rect;
-    const trackHeight = trackRect.height;
-    const trackTop = trackRect.top;
+    const trackHeight = rect.height;
+    const trackTop = rect.top;
+    const thumbHeight = elFullscreenZoomThumb.offsetHeight || 44;
 
     let deltaY = Math.max(0, Math.min(trackHeight, touchY - trackTop));
     fullscreenZoomPosition = (1 - deltaY / trackHeight) * 2 - 1;
     fullscreenZoomPosition = Math.max(-1, Math.min(1, fullscreenZoomPosition));
 
-    const thumbPosition = deltaY - trackHeight / 2;
-    elFullscreenZoomThumb.style.transform = `translate(-50%, ${thumbPosition}px)`;
+    const thumbCenterOffset = deltaY - trackHeight / 2;
+    const transform = `translate(-50%, calc(-50% + ${thumbCenterOffset}px))`;
+    elFullscreenZoomThumb.style.transform = transform;
 
     const deadzone = 0.10;
     let zoom = Math.abs(fullscreenZoomPosition) < deadzone ? 0 : fullscreenZoomPosition;
@@ -4035,7 +4036,7 @@
     fullscreenLastCommand = { pan: 0, tilt: 0 };
     fullscreenZoomPosition = 0;
     fullscreenLastZoom = 0;
-    elFullscreenZoomThumb.style.transform = 'translate(-50%, 0)';
+    elFullscreenZoomThumb.style.transform = 'translate(-50%, -50%)';
     void stopPtzInput('virtual');
   }
 
