@@ -300,33 +300,41 @@ Examples:
 
 ## Implementation Order
 
-### Phase 1: Backend OSC Foundation
-1. [ ] Add OSC listener thread to `server.py`
-2. [ ] Implement rate limiting
-3. [ ] Add VISCA command mapping
-4. [ ] Add OSC settings endpoints
-5. [ ] Add server-side logging
+### Phase 1: Backend OSC Foundation ✅ COMPLETE
+1. ✅ Add OSC listener thread to `server.py`
+2. ✅ Implement rate limiting (30 Hz)
+3. ✅ Add VISCA command mapping
+4. ✅ Add OSC settings endpoints (`/api/osc/status`, `/api/osc/config`)
+5. ✅ Add server-side logging (keeps last 50 messages)
 
-### Phase 2: Frontend OSC Settings & Diagnostics
-1. [ ] Add OSC settings UI to joystick panel
-2. [ ] Add diagnostic panel with message log
-3. [ ] Wire up settings to POST requests
-4. [ ] Display status and errors
+### Phase 2: Frontend OSC Settings & Diagnostics ✅ COMPLETE
+1. ✅ Add OSC settings UI to joystick panel
+2. ✅ Add diagnostic panel with message log
+3. ✅ Wire up settings to POST requests
+4. ✅ Display status and errors
+5. ✅ Real-time status polling when debug panel open
 
-### Phase 3: Full-Screen Joystick
-1. [ ] Add HTML structure and CSS
-2. [ ] Implement touch handlers (pan/tilt)
-3. [ ] Implement zoom slider with spring-back
-4. [ ] Add orientation detection and layout flip
-5. [ ] Wire up live status display
-6. [ ] Test on iOS device
+### Phase 3: Full-Screen Joystick ✅ COMPLETE
+1. ✅ Add HTML structure and CSS
+2. ✅ Implement touch handlers (pan/tilt)
+3. ✅ Implement zoom slider with spring-back (release stops zoom)
+4. ✅ Add live status display with lock indicator
+5. ✅ Wire up camera selector buttons
+6. ✅ Fullscreen page accessible via double-click on compact joystick
+7. ✅ Live status updates reflect ATEM program state
 
-### Phase 4: touchOSC Template & Docs
-1. [ ] Create touchOSC template file
-2. [ ] Test with real iOS device
-3. [ ] Write setup guide
-4. [ ] Create troubleshooting docs
-5. [ ] Document custom template creation
+### Phase 4: touchOSC Template & Documentation 🔄 IN PROGRESS
+1. ⏳ Create touchOSC template file (`.tosc` binary format)
+2. ⏳ Document template setup instructions
+3. ⏳ Write troubleshooting guide
+4. ⏳ Test with real iOS device (requires iOS 12+ iPad)
+
+### Phase 5: Testing & Validation ⏳ PENDING
+1. ⏳ Local server testing (done ✓)
+2. ⏳ iOS 12 iPad fullscreen joystick testing
+3. ⏳ touchOSC integration testing
+4. ⏳ Live mode safety verification
+5. ⏳ Multi-camera control testing
 
 ---
 
