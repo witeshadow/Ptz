@@ -1749,6 +1749,49 @@
         <div id="dbg-joystick-buttons" style="word-wrap:break-word;">—</div>
       </div>
     </div>
+    <!-- OSC Settings -->
+    <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
+      <div class="gsp-section-title" style="margin-bottom:10px;">OSC Controller (touchOSC)</div>
+      <label class="atem-toggle-wrap">
+        <input id="f-osc-enabled" type="checkbox" />
+        <span>Enable OSC Listener</span>
+      </label>
+      <div class="field">
+        <label for="f-osc-port">OSC Port</label>
+        <input id="f-osc-port" type="number" min="1024" max="65535" value="9000" style="width:100%; padding:6px; border:1px solid var(--border); background:var(--surf2); color:var(--text); border-radius:4px;" />
+      </div>
+      <div class="field">
+        <label for="f-osc-deadzone">Deadzone</label>
+        <input id="f-osc-deadzone" type="range" min="0" max="1" step="0.05" />
+        <span id="f-osc-deadzone-value">0.10</span>
+      </div>
+      <div class="field">
+        <label for="f-osc-pan-sens">Pan Sensitivity</label>
+        <input id="f-osc-pan-sens" type="range" min="0.1" max="2" step="0.1" value="1" />
+        <span id="f-osc-pan-value">1.0x</span>
+      </div>
+      <div class="field">
+        <label for="f-osc-tilt-sens">Tilt Sensitivity</label>
+        <input id="f-osc-tilt-sens" type="range" min="0.1" max="2" step="0.1" value="1" />
+        <span id="f-osc-tilt-value">1.0x</span>
+      </div>
+      <div class="field">
+        <label for="f-osc-zoom-sens">Zoom Sensitivity</label>
+        <input id="f-osc-zoom-sens" type="range" min="0.1" max="2" step="0.1" value="1" />
+        <span id="f-osc-zoom-value">1.0x</span>
+      </div>
+      <div id="osc-status" style="color:var(--muted); font-size:0.85rem; margin-top:12px;">
+        Status: <span id="osc-status-text">Inactive</span>
+      </div>
+      <label class="atem-toggle-wrap" style="margin-top:12px;">
+        <input id="f-osc-debug" type="checkbox" />
+        <span>Show OSC Diagnostic Panel</span>
+      </label>
+      <div id="osc-debug-panel" style="color:var(--muted); font-size:0.8rem; margin-top:12px; line-height:1.4; font-family:monospace; display:none; padding:8px; background:var(--surf2); border-radius:4px; max-height:200px; overflow-y:auto;">
+        <div style="margin-bottom:8px; color:var(--accent); font-weight:600;">Recent OSC Messages:</div>
+        <div id="osc-message-log" style="font-size:0.75rem;"></div>
+      </div>
+    </div>
   </div>
 
   <!-- Webcam preview at bottom -->
@@ -1797,6 +1840,46 @@
 </div>
 
 <!-- Virtual Joystick for Touch Devices -->
+<!-- Fullscreen Virtual Joystick Page -->
+<div id="fullscreen-joystick-page" style="display:none; position:fixed; inset:0; background:var(--bg); z-index:200; touch-action:none; overflow:hidden; flex-direction:column;">
+  <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--border); background:var(--surf); flex-shrink:0;">
+    <div>
+      <div style="font-size:0.9rem; font-weight:600; color:var(--text);" id="fullscreen-camera-name">Camera 1</div>
+      <div style="font-size:0.75rem; color:var(--label);" id="fullscreen-live-status">Ready</div>
+    </div>
+    <button id="fullscreen-joystick-close" style="padding:6px 12px; border:1px solid var(--border); background:var(--surf2); color:var(--text); border-radius:4px; font-size:0.8rem; cursor:pointer;">Close</button>
+  </div>
+  <div style="flex:1; display:flex; align-items:center; justify-content:center; padding:20px; gap:20px; overflow:hidden;" id="fullscreen-joystick-content">
+    <!-- Pan/Tilt Joystick -->
+    <div style="display:flex; flex-direction:column; align-items:center; gap:8px; flex:0 0 auto;">
+      <div id="fullscreen-pan-tilt" style="position:relative; width:200px; height:200px; background:var(--surf2); border:2px solid var(--border); border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:grab; user-select:none; touch-action:none;">
+        <div id="fullscreen-joystick-center" style="position:absolute; width:50px; height:50px; background:var(--accent); border-radius:50%; top:50%; left:50%; transform:translate(-50%,-50%); transition:all 0.05s ease-out; box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>
+        <div style="position:absolute; width:100%; height:100%; border:1px dashed var(--border); border-radius:50%; opacity:0.3;"></div>
+      </div>
+      <div style="font-size:0.75rem; color:var(--muted); font-weight:600;">Pan / Tilt</div>
+    </div>
+    <!-- Zoom Slider -->
+    <div style="display:flex; flex-direction:column; align-items:center; gap:8px; flex:0 0 auto;">
+      <div id="fullscreen-zoom-slider" style="width:60px; height:200px; touch-action:none; user-select:none;">
+        <div style="position:absolute; font-size:20px; font-weight:700; color:var(--accent); top:-20px;">+</div>
+        <div style="position:relative; width:100%; height:100%; border:1px solid var(--border); background:var(--surf2); border-radius:999px; touch-action:none;">
+          <div style="position:absolute; top:50%; left:2px; right:2px; height:1px; background:rgba(255,255,255,0.18); transform:translateY(-50%);"></div>
+          <div id="fullscreen-zoom-thumb" style="position:absolute; top:50%; left:50%; width:44px; height:44px; transform:translate(-50%, -50%); border:1px solid var(--border); background:var(--surf); color:var(--accent); border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,0.28); cursor:grab;"></div>
+        </div>
+        <div style="position:absolute; font-size:20px; font-weight:700; color:var(--accent); bottom:-20px;">−</div>
+      </div>
+      <div style="font-size:0.75rem; color:var(--muted); font-weight:600;">Zoom</div>
+    </div>
+  </div>
+  <!-- Camera/Cut buttons at bottom -->
+  <div style="padding:12px 16px; border-top:1px solid var(--border); background:var(--surf); flex-shrink:0; display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
+    <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:center;" id="fullscreen-camera-buttons"></div>
+    <div style="display:flex; gap:6px; display:none;" id="fullscreen-cut-buttons"></div>
+  </div>
+  <!-- Error/Status toast -->
+  <div id="fullscreen-status-toast" style="position:fixed; bottom:20px; left:50%; transform:translateX(-50%); padding:8px 12px; background:var(--error); color:white; border-radius:4px; font-size:0.8rem; display:none; z-index:201;"></div>
+</div>
+
 <div id="virtual-joystick-container" style="display:none; position:fixed; bottom:20px; left:20px; z-index:100; touch-action:none;">
   <button id="joystick-close-btn" style="position:absolute; top:-12px; right:-12px; width:28px; height:28px; padding:0; border:1px solid var(--border); background:var(--surf); color:var(--text); border-radius:999px; font-size:14px; cursor:pointer;">×</button>
   <button id="joystick-size-btn" style="position:absolute; top:-12px; left:-12px; min-width:40px; height:28px; padding:0 8px; border:1px solid var(--border); background:var(--surf); color:var(--text); border-radius:999px; font-size:12px; font-weight:600; cursor:pointer;">1x</button>
@@ -1915,6 +1998,28 @@
     };
   }
 
+  function normalizeOscSettings(value) {
+    const osc = value && typeof value === 'object' ? value : {};
+    const deadzone = Number.isFinite(+osc.deadzone)
+      ? Math.max(0, Math.min(1, +osc.deadzone))
+      : 0.1;
+    const rateLimit = Number.isInteger(+osc.rateLimit) && +osc.rateLimit >= 1 && +osc.rateLimit <= 240
+      ? +osc.rateLimit
+      : 30;
+    return {
+      enabled: osc.enabled === true,
+      port: Number.isInteger(+osc.port) && +osc.port >= 1024 && +osc.port <= 65535 ? +osc.port : 9000,
+      deadzone,
+      rateLimit,
+      sensitivity: {
+        pan: 1.0,
+        tilt: 1.0,
+        zoom: 1.0,
+        ...(osc.sensitivity || {}),
+      },
+    };
+  }
+
   function normalizeCameraModel(value) {
     return CAMERA_MODEL_META[value] ? value : DEFAULT_CAMERA_MODEL;
   }
@@ -1974,6 +2079,7 @@
     atem: { ip: '', enabled: false },
     showAtemDebug: false,
     showJoystickDebug: false,
+    showOscDebug: false,
     protectLiveCamera: true,
     atemFollows: 'preview',
     autoCutDelayMs: 0,
@@ -2002,6 +2108,7 @@
     positions: {},
     joystick: normalizeJoystickSettings(),
     virtualJoystick: normalizeVirtualJoystickSettings(),
+    osc: normalizeOscSettings(),
     // Runtime ATEM AUX sources (not persisted, updated via SSE)
     aux1Source: 0,
     aux2Source: 0,
@@ -2159,6 +2266,7 @@
         else if (s.lockLiveMode != null) state.protectLiveCamera = !!s.lockLiveMode;
         if (s.showAtemDebug != null) state.showAtemDebug = !!s.showAtemDebug;
         if (s.showJoystickDebug != null) state.showJoystickDebug = !!s.showJoystickDebug;
+        if (s.showOscDebug != null) state.showOscDebug = !!s.showOscDebug;
         if (s.atemFollows)           state.atemFollows   = ['off', 'preview', 'program'].includes(s.atemFollows) ? s.atemFollows : 'preview';
         if (s.autoCutDelayMs != null) state.autoCutDelayMs = Math.max(0, +s.autoCutDelayMs || 0);
         if (s.atemOutputMap) state.atemOutputMap = normalizeAtemOutputMap(s.atemOutputMap);
@@ -2168,6 +2276,7 @@
         if (s.positions) state.positions = { ...s.positions };
         if (s.joystick) state.joystick = normalizeJoystickSettings(s.joystick);
         if (s.virtualJoystick) state.virtualJoystick = normalizeVirtualJoystickSettings(s.virtualJoystick);
+        if (s.osc) state.osc = normalizeOscSettings(s.osc);
         if (s.deviceSettings) state.deviceSettings = { ...s.deviceSettings };
       }
     } catch (_) {}
@@ -3797,6 +3906,241 @@
     }
   }
 
+  // ── Fullscreen Joystick Page ───────────────────────────────────────────────
+  const elFullscreenPage = document.getElementById('fullscreen-joystick-page');
+  const elFullscreenPanTilt = document.getElementById('fullscreen-pan-tilt');
+  const elFullscreenJoystickCenter = document.getElementById('fullscreen-joystick-center');
+  const elFullscreenZoomSlider = document.getElementById('fullscreen-zoom-slider');
+  const elFullscreenZoomThumb = document.getElementById('fullscreen-zoom-thumb');
+  const elFullscreenClose = document.getElementById('fullscreen-joystick-close');
+  const elFullscreenCameraButtons = document.getElementById('fullscreen-camera-buttons');
+  const elFullscreenCameraName = document.getElementById('fullscreen-camera-name');
+  const elFullscreenLiveStatus = document.getElementById('fullscreen-live-status');
+
+  let fullscreenJoystickTouchId = null;
+  let fullscreenZoomTouchId = null;
+  let fullscreenZoomPosition = 0;
+  let fullscreenLastCommand = { pan: 0, tilt: 0 };
+  let fullscreenLastZoom = 0;
+
+  function showFullscreenJoystick(show) {
+    elFullscreenPage.style.display = show ? 'flex' : 'none';
+    if (show) {
+      updateFullscreenCameraButtons();
+      updateFullscreenStatus();
+    }
+  }
+
+  function updateFullscreenCameraButtons() {
+    elFullscreenCameraButtons.innerHTML = '';
+    const cameras = state.cameras || [];
+    cameras.forEach((cam, idx) => {
+      const btn = document.createElement('button');
+      btn.textContent = cam.name || `Camera ${idx + 1}`;
+      btn.style.cssText = `padding:6px 12px; border:1px solid var(--border); background:${
+        idx === state.activeCam ? 'var(--accent)' : 'var(--surf2)'
+      }; color:${idx === state.activeCam ? 'black' : 'var(--text)'}; border-radius:4px; font-size:0.8rem; cursor:pointer;`;
+      btn.addEventListener('click', () => {
+        switchCamera(idx);
+        updateFullscreenCameraButtons();
+        updateFullscreenStatus();
+      });
+      elFullscreenCameraButtons.appendChild(btn);
+    });
+  }
+
+  function updateFullscreenStatus() {
+    const cam = state.cameras[state.activeCam];
+    elFullscreenCameraName.textContent = cam?.name || `Camera ${state.activeCam + 1}`;
+    const isLiveLocked = isProtectedLiveCamera(state.activeCam);
+    if (isLiveLocked) {
+      elFullscreenLiveStatus.textContent = '🔴 LIVE - LOCKED';
+      elFullscreenLiveStatus.style.color = 'var(--error)';
+      elFullscreenPanTilt.style.borderColor = 'var(--error)';
+    } else {
+      elFullscreenLiveStatus.textContent = '✓ Ready';
+      elFullscreenLiveStatus.style.color = 'var(--success)';
+      elFullscreenPanTilt.style.borderColor = 'var(--border)';
+    }
+  }
+
+  function updateFullscreenPanTiltPosition(touchX, touchY) {
+    const rect = elFullscreenPanTilt.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    let deltaX = touchX - centerX;
+    let deltaY = touchY - centerY;
+
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    const handleSize = elFullscreenJoystickCenter.getBoundingClientRect().width || 50;
+    const maxDistance = Math.max(1, rect.width / 2 - handleSize / 2);
+
+    if (distance > maxDistance) {
+      const ratio = maxDistance / distance;
+      deltaX *= ratio;
+      deltaY *= ratio;
+    }
+
+    elFullscreenJoystickCenter.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
+
+    let pan = deltaX / maxDistance;
+    let tilt = -(deltaY / maxDistance);
+
+    const deadzone = 0.15;
+    if (Math.abs(pan) < deadzone) pan = 0;
+    if (Math.abs(tilt) < deadzone) tilt = 0;
+
+    pan = applyVirtualJoystickResponseCurve(pan);
+    tilt = applyVirtualJoystickResponseCurve(tilt);
+
+    const sens = state.virtualJoystick?.sensitivity || { pan: 0.6, tilt: 0.6, zoom: 0.3 };
+    pan *= (sens.pan || 0.6);
+    tilt *= (sens.tilt || 0.6);
+
+    pan = quantizeVirtualJoystickAxis(pan);
+    tilt = quantizeVirtualJoystickAxis(tilt);
+
+    pan = applyVirtualJoystickSnapbackGuard(pan, fullscreenLastCommand.pan, 'pan');
+    tilt = applyVirtualJoystickSnapbackGuard(tilt, fullscreenLastCommand.tilt, 'tilt');
+    fullscreenLastCommand = { pan, tilt };
+
+    sendVirtualJoystickCommand(pan, tilt, fullscreenLastZoom);
+  }
+
+  function updateFullscreenZoomPosition(touchY) {
+    const rect = elFullscreenZoomSlider.getBoundingClientRect();
+    const sliderHeight = rect.height;
+    const trackHeight = rect.height;
+    const trackTop = rect.top;
+    const thumbHeight = elFullscreenZoomThumb.offsetHeight || 44;
+
+    let deltaY = Math.max(0, Math.min(trackHeight, touchY - trackTop));
+    fullscreenZoomPosition = (1 - deltaY / trackHeight) * 2 - 1;
+    fullscreenZoomPosition = Math.max(-1, Math.min(1, fullscreenZoomPosition));
+
+    const thumbCenterOffset = deltaY - trackHeight / 2;
+    const transform = `translate(-50%, calc(-50% + ${thumbCenterOffset}px))`;
+    elFullscreenZoomThumb.style.transform = transform;
+
+    const deadzone = 0.10;
+    let zoom = Math.abs(fullscreenZoomPosition) < deadzone ? 0 : fullscreenZoomPosition;
+    zoom *= state.virtualJoystick?.sensitivity?.zoom || 0.3;
+    fullscreenLastZoom = zoom;
+
+    sendVirtualJoystickCommand(fullscreenLastCommand.pan, fullscreenLastCommand.tilt, zoom);
+  }
+
+  function resetFullscreenJoystick() {
+    elFullscreenJoystickCenter.style.transform = 'translate(-50%, -50%)';
+    fullscreenLastCommand = { pan: 0, tilt: 0 };
+    fullscreenZoomPosition = 0;
+    fullscreenLastZoom = 0;
+    elFullscreenZoomThumb.style.transform = 'translate(-50%, -50%)';
+    void stopPtzInput('virtual');
+  }
+
+  if (elFullscreenPanTilt) {
+    elFullscreenPanTilt.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (fullscreenJoystickTouchId !== null) return;
+      const touch = e.touches[0];
+      fullscreenJoystickTouchId = touch.identifier;
+      updateFullscreenPanTiltPosition(touch.clientX, touch.clientY);
+    }, { passive: false });
+
+    document.addEventListener('touchmove', (e) => {
+      if (fullscreenJoystickTouchId === null) return;
+      for (let i = 0; i < e.touches.length; i++) {
+        if (e.touches[i].identifier === fullscreenJoystickTouchId) {
+          e.preventDefault();
+          updateFullscreenPanTiltPosition(e.touches[i].clientX, e.touches[i].clientY);
+          break;
+        }
+      }
+    }, { passive: false });
+
+    document.addEventListener('touchend', (e) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === fullscreenJoystickTouchId) {
+          fullscreenJoystickTouchId = null;
+          resetFullscreenJoystick();
+          break;
+        }
+      }
+    });
+  }
+
+  if (elFullscreenZoomThumb) {
+    elFullscreenZoomThumb.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (fullscreenZoomTouchId !== null) return;
+      const touch = e.touches[0];
+      fullscreenZoomTouchId = touch.identifier;
+      updateFullscreenZoomPosition(touch.clientY);
+    }, { passive: false });
+
+    document.addEventListener('touchmove', (e) => {
+      if (fullscreenZoomTouchId === null) return;
+      for (let i = 0; i < e.touches.length; i++) {
+        if (e.touches[i].identifier === fullscreenZoomTouchId) {
+          e.preventDefault();
+          updateFullscreenZoomPosition(e.touches[i].clientY);
+          break;
+        }
+      }
+    }, { passive: false });
+
+    document.addEventListener('touchend', (e) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === fullscreenZoomTouchId) {
+          fullscreenZoomTouchId = null;
+          fullscreenLastZoom = 0;
+          elFullscreenZoomThumb.style.transform = 'translate(-50%, 0)';
+          void stopPtzInput('virtual');
+          break;
+        }
+      }
+    });
+  }
+
+  if (elFullscreenClose) {
+    elFullscreenClose.addEventListener('click', () => {
+      showFullscreenJoystick(false);
+      resetFullscreenJoystick();
+    });
+  }
+
+  // Add button to open fullscreen joystick from compact joystick
+  if (elVirtualJoystickBtn) {
+    const originalListener = elVirtualJoystickBtn.onclick;
+    elVirtualJoystickBtn.addEventListener('dblclick', () => {
+      showFullscreenJoystick(true);
+      showVirtualJoystick(false);
+    });
+
+    // Double-tap fallback for iOS 12 Safari (dblclick unreliable on touch)
+    let lastTapTime = 0;
+    elVirtualJoystickBtn.addEventListener('touchend', (e) => {
+      const now = Date.now();
+      if (now - lastTapTime < 300) {
+        e.preventDefault();
+        showFullscreenJoystick(true);
+        showVirtualJoystick(false);
+      }
+      lastTapTime = now;
+    });
+  }
+
+  // Listen for live status changes via SSE
+  const originalEventHandler = window.__ptzEventHandler;
+  window.__ptzEventHandler = function(e) {
+    if (originalEventHandler) originalEventHandler(e);
+    if (elFullscreenPage.style.display !== 'none') {
+      updateFullscreenStatus();
+    }
+  };
+
   // ── Gamepad/Joystick API ───────────────────────────────────────────────────
   function pollCameraZoom() {
     const session = zoomPollSession;
@@ -4693,6 +5037,147 @@
           }
         });
       }
+    });
+  }
+
+  // ── OSC Settings ───────────────────────────────────────────────────────────
+  const elOscEnabled = document.getElementById('f-osc-enabled');
+  const elOscPort = document.getElementById('f-osc-port');
+  const elOscDeadzone = document.getElementById('f-osc-deadzone');
+  const elOscPanSens = document.getElementById('f-osc-pan-sens');
+  const elOscTiltSens = document.getElementById('f-osc-tilt-sens');
+  const elOscZoomSens = document.getElementById('f-osc-zoom-sens');
+  const elOscStatus = document.getElementById('osc-status-text');
+  const elOscDebugPanel = document.getElementById('osc-debug-panel');
+  const elOscDebugCheckbox = document.getElementById('f-osc-debug');
+  const elOscMessageLog = document.getElementById('osc-message-log');
+
+  let oscStatusCheckTimer = null;
+
+  function loadOscSettings() {
+    const osc = state.osc || {};
+    if (elOscEnabled) elOscEnabled.checked = !!osc.enabled;
+    if (elOscPort) elOscPort.value = osc.port || 9000;
+    if (elOscDeadzone) {
+      elOscDeadzone.value = (osc.deadzone || 0.1).toFixed(2);
+      document.getElementById('f-osc-deadzone-value').textContent = (osc.deadzone || 0.1).toFixed(2);
+    }
+    if (elOscPanSens) {
+      elOscPanSens.value = (osc.sensitivity?.pan || 1.0).toFixed(1);
+      document.getElementById('f-osc-pan-value').textContent = (osc.sensitivity?.pan || 1.0).toFixed(1) + 'x';
+    }
+    if (elOscTiltSens) {
+      elOscTiltSens.value = (osc.sensitivity?.tilt || 1.0).toFixed(1);
+      document.getElementById('f-osc-tilt-value').textContent = (osc.sensitivity?.tilt || 1.0).toFixed(1) + 'x';
+    }
+    if (elOscZoomSens) {
+      elOscZoomSens.value = (osc.sensitivity?.zoom || 1.0).toFixed(1);
+      document.getElementById('f-osc-zoom-value').textContent = (osc.sensitivity?.zoom || 1.0).toFixed(1) + 'x';
+    }
+    if (elOscDebugCheckbox) elOscDebugCheckbox.checked = !!state.showOscDebug;
+    updateOscStatus();
+  }
+
+  async function saveOscSettings() {
+    const newOsc = {
+      enabled: elOscEnabled?.checked || false,
+      port: parseInt(elOscPort?.value || 9000, 10),
+      deadzone: parseFloat(elOscDeadzone?.value || 0.1),
+      sensitivity: {
+        pan: parseFloat(elOscPanSens?.value || 1.0),
+        tilt: parseFloat(elOscTiltSens?.value || 1.0),
+        zoom: parseFloat(elOscZoomSens?.value || 1.0),
+      },
+      rateLimit: 30,
+    };
+    state.osc = newOsc;
+    state.showOscDebug = elOscDebugCheckbox?.checked || false;
+
+    try {
+      const res = await fetch('/api/osc/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newOsc),
+      });
+      if (res.ok) {
+        updateOscStatus();
+      }
+    } catch (err) {
+      console.error('Failed to save OSC settings:', err);
+    }
+    schedSave();
+  }
+
+  async function updateOscStatus() {
+    if (!elOscStatus) return;
+    try {
+      const res = await fetch('/api/osc/status');
+      if (!res.ok) return;
+      const data = await res.json();
+      const enabled = data.enabled ? '✓ Active' : 'Inactive';
+      const port = data.port || 9000;
+      elOscStatus.textContent = `${enabled} (Port ${port})`;
+
+      // Update message log if debug panel is open
+      if (elOscDebugPanel && elOscDebugPanel.style.display !== 'none' && data.messages) {
+        updateOscMessageLog(data.messages);
+      }
+    } catch (err) {
+      console.debug('OSC status check failed:', err);
+    }
+  }
+
+  function updateOscMessageLog(messages) {
+    if (!elOscMessageLog) return;
+    if (!messages || messages.length === 0) {
+      elOscMessageLog.textContent = 'No messages received yet';
+      return;
+    }
+    const lines = messages.map(msg => {
+      const addr = msg.address || '?';
+      const val = (msg.value || 0).toFixed(2);
+      const ts = msg.timestamp ? new Date(msg.timestamp * 1000).toLocaleTimeString() : '';
+      return `${ts} ${addr} = ${val}`;
+    });
+    elOscMessageLog.textContent = lines.join('\n');
+  }
+
+  if (elOscEnabled) {
+    [elOscEnabled, elOscPort, elOscDeadzone, elOscPanSens, elOscTiltSens, elOscZoomSens].forEach(el => {
+      if (el) {
+        el.addEventListener('change', saveOscSettings);
+        el.addEventListener('input', () => {
+          // Update display values in real-time
+          if (el === elOscDeadzone) {
+            document.getElementById('f-osc-deadzone-value').textContent = el.value;
+          } else if (el === elOscPanSens) {
+            document.getElementById('f-osc-pan-value').textContent = el.value + 'x';
+          } else if (el === elOscTiltSens) {
+            document.getElementById('f-osc-tilt-value').textContent = el.value + 'x';
+          } else if (el === elOscZoomSens) {
+            document.getElementById('f-osc-zoom-value').textContent = el.value + 'x';
+          }
+        });
+      }
+    });
+  }
+
+  if (elOscDebugCheckbox) {
+    elOscDebugCheckbox.addEventListener('change', () => {
+      state.showOscDebug = elOscDebugCheckbox.checked;
+      if (elOscDebugPanel) {
+        elOscDebugPanel.style.display = elOscDebugCheckbox.checked ? 'block' : 'none';
+        if (elOscDebugCheckbox.checked) {
+          updateOscStatus();
+          if (!oscStatusCheckTimer) {
+            oscStatusCheckTimer = setInterval(updateOscStatus, 1000);
+          }
+        } else if (oscStatusCheckTimer) {
+          clearInterval(oscStatusCheckTimer);
+          oscStatusCheckTimer = null;
+        }
+      }
+      schedSave();
     });
   }
 
@@ -6034,6 +6519,7 @@
     loadCameraSettings();
     loadGridSettings();
     loadJoystickSettings();
+    loadOscSettings();
     loadCameraManagement();
     updateToolbarVisibility();
     renderTabs();

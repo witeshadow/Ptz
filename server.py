@@ -167,6 +167,17 @@ DEFAULT_SETTINGS = {
             "zoom": 0.3,
         },
     },
+    "osc": {
+        "enabled": False,
+        "port": 9000,
+        "deadzone": 0.10,
+        "sensitivity": {
+            "pan": 1.0,
+            "tilt": 1.0,
+            "zoom": 1.0,
+        },
+        "rateLimit": 30,
+    },
 }
 
 VISCA_RAW_UDP_PORT = 1259
@@ -1146,6 +1157,276 @@ def _atem_loop():
         time.sleep(3)
 
 
+# ── OSC Listener ───────────────────────────────────────────────────────────────
+_osc_messages_log = []
+_osc_log_lock = threading.Lock()
+_osc_rate_limit = {}  # {cam_id: (last_time, count_in_window)}
+_osc_rate_limit_lock = threading.Lock()
+
+
+def _parse_osc_message(data: bytes) -> tuple[str, float] | None:
+    """Parse OSC message with binary payload (handles type tags + binary floats)."""
+    if not data.startswith(b"/"):
+        return None
+    try:
+        null_term = data.find(b"\x00")
+        if null_term < 0:
+            return None
+        address = data[:null_term].decode("utf-8", errors="ignore")
+        if not address.startswith("/ptz/"):
+            return None
+
+        tag_start = null_term + 1
+        while tag_start < len(data) and data[tag_start] == 0:
+            tag_start += 1
+
+        if tag_start >= len(data):
+            return None
+
+        type_tag_start = tag_start
+        type_tag_null = data.find(b"\x00", type_tag_start)
+        if type_tag_null < 0:
+            type_tag_null = len(data)
+
+        type_tag = data[type_tag_start:type_tag_null]
+
+        payload_start = type_tag_null + 1
+        while payload_start < len(data) and data[payload_start] == 0:
+            payload_start += 1
+
+        if payload_start >= len(data):
+            return None
+
+        try:
+            if type_tag.startswith(b",f"):
+                if payload_start + 4 > len(data):
+                    return None
+                value = struct.unpack(">f", data[payload_start : payload_start + 4])[0]
+            elif type_tag.startswith(b",i"):
+                if payload_start + 4 > len(data):
+                    return None
+                value = float(
+                    struct.unpack(">i", data[payload_start : payload_start + 4])[0]
+                )
+            else:
+                value = float(data[payload_start:].split(b"\x00")[0])
+        except (ValueError, IndexError, struct.error):
+            return None
+        return (address, value)
+    except Exception as e:
+        _logger.debug(f"OSC parse error: {e}")
+        return None
+
+
+def _should_rate_limit_osc(cam_id: int, now: float, rate_limit_hz: int) -> bool:
+    """Rate-limit to max N messages per second (returns True if should skip)."""
+    if rate_limit_hz <= 0:
+        return False
+    with _osc_rate_limit_lock:
+        last_time, count = _osc_rate_limit.get(cam_id, (now - 1.0, 0))
+        time_elapsed = now - last_time
+
+        if time_elapsed >= 1.0:
+            _osc_rate_limit[cam_id] = (now, 1)
+            return False
+
+        count += 1
+        if count > rate_limit_hz:
+            return True
+
+        _osc_rate_limit[cam_id] = (last_time, count)
+        return False
+
+
+def _log_osc_message(address: str, value: float, cam_id: int | None = None):
+    """Log OSC message to diagnostic buffer (keeps last 50)."""
+    with _osc_log_lock:
+        _osc_messages_log.append(
+            {
+                "timestamp": time.time(),
+                "address": address,
+                "value": value,
+                "cam_id": cam_id,
+            }
+        )
+        if len(_osc_messages_log) > 50:
+            _osc_messages_log.pop(0)
+
+
+_osc_current_command = {0: {"pan": 0, "tilt": 0, "zoom": 0}}
+_osc_current_command_lock = threading.Lock()
+
+
+def _process_osc_ptz_command(cam_idx: int, pan: float, tilt: float, zoom: float):
+    """Process an OSC PTZ command using the same logic as _handle_ptz_drive."""
+    settings = load_settings()
+    cameras = settings.get("cameras") or []
+    if cam_idx < 0 or cam_idx >= len(cameras):
+        _logger.debug(f"OSC: Invalid camera index {cam_idx}")
+        return
+
+    cfg = cameras[cam_idx] or {}
+    ip = str(cfg.get("ip", "")).strip()
+    if not ip:
+        _logger.debug(f"OSC: No IP configured for camera {cam_idx}")
+        return
+
+    is_stop = pan == 0 and tilt == 0 and zoom == 0
+    if not is_stop:
+        block_reason = _live_movement_block_reason(settings, cam_idx, cfg)
+        if block_reason:
+            _logger.debug(
+                f"OSC: Live movement blocked for camera {cam_idx}: {block_reason}"
+            )
+            return
+
+    with _get_ptz_camera_lock(cam_idx):
+        port = int(cfg.get("port", 52381) or 52381)
+        visca_addr = int(cfg.get("viscaAddr", 1) or 1)
+
+        pan_mag = abs(pan)
+        tilt_mag = abs(tilt)
+        pan_dir = 0x03 if pan_mag == 0 else (0x01 if pan < 0 else 0x02)
+        tilt_dir = 0x03 if tilt_mag == 0 else (0x01 if tilt > 0 else 0x02)
+        pan_speed = (
+            1 if pan_dir == 0x03 else max(1, min(0x10, int(round(pan_mag * 0x10))))
+        )
+        tilt_speed = (
+            1 if tilt_dir == 0x03 else max(1, min(0x10, int(round(tilt_mag * 0x10))))
+        )
+
+        send_camera_pan_tilt_drive(
+            ip, port, pan_speed, tilt_speed, pan_dir, tilt_dir, visca_addr, cfg
+        )
+
+        send_camera_zoom_drive(ip, port, zoom, visca_addr, cfg)
+
+
+def _osc_loop():
+    """OSC listener thread: receives pan/tilt/zoom commands over UDP."""
+    _logger.info("OSC: Listener starting")
+    sock = None
+    last_config_check = time.monotonic()
+    enabled = False
+    port = 9000
+    rate_limit = 30
+    deadzone = 0.1
+    sensitivity = {}
+    try:
+        while True:
+            now = time.monotonic()
+            try:
+                if now - last_config_check > 2.0:
+                    cfg = load_settings().get("osc", {})
+                    enabled = cfg.get("enabled", False)
+                    port = cfg.get("port", 9000)
+                    rate_limit = cfg.get("rateLimit", 30)
+                    deadzone = cfg.get("deadzone", 0.1)
+                    sensitivity = cfg.get("sensitivity", {})
+                    last_config_check = now
+
+                    if not enabled:
+                        if sock:
+                            sock.close()
+                            sock = None
+                            _logger.info("OSC: Listener disabled")
+                        time.sleep(1)
+                        continue
+
+                    if not sock:
+                        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                        try:
+                            sock.bind(("0.0.0.0", port))
+                            sock.settimeout(2.0)
+                            _logger.info(f"OSC: Listening on port {port}")
+                        except OSError as e:
+                            _logger.error(f"OSC: Failed to bind port {port}: {e}")
+                            sock = None
+                            time.sleep(5)
+                            continue
+
+                if not enabled or not sock:
+                    time.sleep(0.5)
+                    continue
+
+                try:
+                    data, _ = sock.recvfrom(1024)
+                    result = _parse_osc_message(data)
+                    if not result:
+                        continue
+
+                    address, value = result
+                    _log_osc_message(address, value)
+
+                    parts = address.split("/")
+                    if len(parts) < 4:
+                        continue
+
+                    try:
+                        cam_id = int(parts[2]) - 1
+                    except (ValueError, IndexError):
+                        continue
+
+                    control = "/".join(parts[3:])
+
+                    if _should_rate_limit_osc(cam_id, now, rate_limit):
+                        continue
+
+                    n = max(-1, min(1, float(value)))
+
+                    with _osc_current_command_lock:
+                        cur = _osc_current_command.get(
+                            cam_id, {"pan": 0, "tilt": 0, "zoom": 0}
+                        )
+                        if control == "pan":
+                            pan = (
+                                n * sensitivity.get("pan", 1.0)
+                                if abs(n) > deadzone
+                                else 0
+                            )
+                            cur["pan"] = pan
+                        elif control == "tilt":
+                            tilt = (
+                                n * sensitivity.get("tilt", 1.0)
+                                if abs(n) > deadzone
+                                else 0
+                            )
+                            cur["tilt"] = tilt
+                        elif control == "zoom":
+                            zoom = (
+                                n * sensitivity.get("zoom", 1.0)
+                                if abs(n) > deadzone
+                                else 0
+                            )
+                            cur["zoom"] = zoom
+                        elif control == "stop":
+                            cur = {"pan": 0, "tilt": 0, "zoom": 0}
+                        _osc_current_command[cam_id] = cur
+                        _process_osc_ptz_command(
+                            cam_id, cur["pan"], cur["tilt"], cur["zoom"]
+                        )
+
+                except socket.timeout:
+                    continue
+                except Exception as e:
+                    _logger.debug(f"OSC: Processing error: {e}")
+                    continue
+
+            except Exception as e:
+                _logger.error(f"OSC: Unexpected error: {e}")
+                if sock:
+                    sock.close()
+                    sock = None
+                time.sleep(5)
+    except Exception as e:
+        _logger.error(f"OSC: Fatal error: {e}")
+    finally:
+        if sock:
+            sock.close()
+        _logger.info("OSC: Listener stopped")
+
+
 # ── VISCA ──────────────────────────────────────────────────────────────────────
 _sequence_number = 1
 _seq_lock = threading.Lock()
@@ -1891,6 +2172,18 @@ class Handler(BaseHTTPRequestHandler):
             )
         elif path == "/api/version":
             self._json(200, _get_version_info())
+        elif path == "/api/osc/status":
+            osc_cfg = load_settings().get("osc", {})
+            with _osc_log_lock:
+                messages = list(_osc_messages_log[-10:])
+            self._json(
+                200,
+                {
+                    "enabled": osc_cfg.get("enabled", False),
+                    "port": osc_cfg.get("port", 9000),
+                    "messages": messages,
+                },
+            )
         elif m := re.match(r"^/api/position/(\d+)$", path):
             self._get_position(int(m.group(1)))
         elif m := re.match(r"^/api/image/(\d+)/(\d+)/position$", path):
@@ -1912,6 +2205,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_atem_cut()
         elif path == "/api/ptz/drive":
             self._handle_ptz_drive()
+        elif path == "/api/osc/config":
+            self._handle_osc_config()
         elif path == "/api/atem/preview":
             self._handle_atem_preview_post()
         elif path == "/api/atem/aux-route":
@@ -2098,6 +2393,50 @@ class Handler(BaseHTTPRequestHandler):
                 "zoomMessage": zoom_message,
             },
         )
+
+    def _handle_osc_config(self):
+        """Handle POST /api/osc/config: update OSC settings."""
+        body = self._read_body()
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            self._json(400, {"ok": False, "error": "Invalid JSON"})
+            return
+
+        try:
+            settings = load_settings()
+            osc_cfg = settings.get("osc", {})
+
+            if "enabled" in data:
+                osc_cfg["enabled"] = bool(data["enabled"])
+            if "port" in data:
+                port = int(data["port"])
+                if port < 1024 or port > 65535:
+                    self._json(400, {"ok": False, "error": "Port must be 1024-65535"})
+                    return
+                osc_cfg["port"] = port
+            if "deadzone" in data:
+                osc_cfg["deadzone"] = max(0, min(1, float(data["deadzone"])))
+            if "rateLimit" in data:
+                rate_limit = int(data["rateLimit"])
+                if rate_limit < 1 or rate_limit > 240:
+                    self._json(
+                        400, {"ok": False, "error": "Rate limit must be 1-240 Hz"}
+                    )
+                    return
+                osc_cfg["rateLimit"] = rate_limit
+            if "sensitivity" in data and isinstance(data["sensitivity"], dict):
+                sensitivity = osc_cfg.get("sensitivity", {})
+                for key in ["pan", "tilt", "zoom"]:
+                    if key in data["sensitivity"]:
+                        sensitivity[key] = float(data["sensitivity"][key])
+                osc_cfg["sensitivity"] = sensitivity
+
+            settings["osc"] = osc_cfg
+            write_settings(settings)
+            self._json(200, {"ok": True, "osc": osc_cfg})
+        except (ValueError, TypeError) as e:
+            self._json(400, {"ok": False, "error": str(e)})
 
     def _handle_atem_cut(self):
         """
@@ -2651,6 +2990,8 @@ if __name__ == "__main__":
         )
     atem_thread = threading.Thread(target=_atem_loop, daemon=True, name="atem")
     atem_thread.start()
+    osc_thread = threading.Thread(target=_osc_loop, daemon=True, name="osc")
+    osc_thread.start()
     host, port = "0.0.0.0", 5001
     httpd = ThreadedHTTPServer((host, port), Handler)
     logger.info(f"PTZ Preset Control listening on http://localhost:{port}")
