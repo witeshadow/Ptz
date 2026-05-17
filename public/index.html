@@ -4117,6 +4117,18 @@
       showFullscreenJoystick(true);
       showVirtualJoystick(false);
     });
+
+    // Double-tap fallback for iOS 12 Safari (dblclick unreliable on touch)
+    let lastTapTime = 0;
+    elVirtualJoystickBtn.addEventListener('touchend', (e) => {
+      const now = Date.now();
+      if (now - lastTapTime < 300) {
+        e.preventDefault();
+        showFullscreenJoystick(true);
+        showVirtualJoystick(false);
+      }
+      lastTapTime = now;
+    });
   }
 
   // Listen for live status changes via SSE
