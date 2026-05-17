@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-Generate a touchOSC v2 template (.tosc) for PTZ control.
+Generate a touchOSC template reference (JSON) for PTZ control.
 
-This script creates a binary .tosc file compatible with touchOSC v2.x
+This script creates a JSON reference template that can be imported into touchOSC Editor.
 """
 
-import struct
 import json
 
 def create_touchosc_template():
@@ -129,8 +128,7 @@ def create_touchosc_template():
 if __name__ == "__main__":
     template = create_touchosc_template()
 
-    # For v2, export as JSON (can be imported)
-    import json
+    # Export as JSON (can be imported into touchOSC Editor)
     with open("touchosc-ptz-template.json", "w") as f:
         json.dump(template, f, indent=2)
 

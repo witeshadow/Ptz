@@ -1220,6 +1220,8 @@ def _parse_osc_message(data: bytes) -> tuple[str, float] | None:
 
 def _should_rate_limit_osc(cam_id: int, now: float, rate_limit_hz: int) -> bool:
     """Rate-limit to max N messages per second (returns True if should skip)."""
+    if rate_limit_hz <= 0:
+        return False
     with _osc_rate_limit_lock:
         last_time, count = _osc_rate_limit.get(cam_id, (now - 1.0, 0))
         time_elapsed = now - last_time
@@ -1281,7 +1283,6 @@ def _process_osc_ptz_command(cam_idx: int, pan: float, tilt: float, zoom: float)
     with _get_ptz_camera_lock(cam_idx):
         port = int(cfg.get("port", 52381) or 52381)
         visca_addr = int(cfg.get("viscaAddr", 1) or 1)
-        deadzone = 0.20
 
         pan_mag = abs(pan)
         tilt_mag = abs(tilt)
@@ -2416,6 +2417,12 @@ class Handler(BaseHTTPRequestHandler):
                 osc_cfg["port"] = port
             if "deadzone" in data:
                 osc_cfg["deadzone"] = max(0, min(1, float(data["deadzone"])))
+            if "rateLimit" in data:
+                rate_limit = int(data["rateLimit"])
+                if rate_limit < 1 or rate_limit > 240:
+                    self._json(400, {"ok": False, "error": "Rate limit must be 1-240 Hz"})
+                    return
+                osc_cfg["rateLimit"] = rate_limit
             if "sensitivity" in data and isinstance(data["sensitivity"], dict):
                 sensitivity = osc_cfg.get("sensitivity", {})
                 for key in ["pan", "tilt", "zoom"]:

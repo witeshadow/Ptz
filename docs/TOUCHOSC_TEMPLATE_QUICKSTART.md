@@ -2,9 +2,9 @@
 
 ## Template File
 
-**File:** `touchosc-ptz-template.toml`
+**File:** `touchosc-ptz-template.json`
 
-This is a pre-configured touchOSC v1 template ready to use for PTZ camera control.
+This is a pre-configured touchOSC template reference (JSON format) ready to use for PTZ camera control. You can import this into touchOSC Editor or manually create the template using the step-by-step instructions in `CREATE_TOUCHOSC_TEMPLATE.md`.
 
 ### What's Included
 
