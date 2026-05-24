@@ -1980,9 +1980,7 @@ def _execute_ptz_drive(
             1 if pan_dir == 0x03 else max(1, min(0x10, int(round(pan_mag * 0x10))))
         )
         tilt_speed = (
-            1
-            if tilt_dir == 0x03
-            else max(1, min(0x10, int(round(tilt_mag * 0x10))))
+            1 if tilt_dir == 0x03 else max(1, min(0x10, int(round(tilt_mag * 0x10))))
         )
 
         previous_pan, previous_tilt, previous_zoom = _get_last_ptz_drive_command(
@@ -1999,9 +1997,7 @@ def _execute_ptz_drive(
             pt_results = []
             max_attempts = (
                 PTZ_STOP_MAX_ATTEMPTS
-                if pan == 0
-                and tilt == 0
-                and (previous_pan != 0 or previous_tilt != 0)
+                if pan == 0 and tilt == 0 and (previous_pan != 0 or previous_tilt != 0)
                 else 1
             )
             for attempt in range(max_attempts):
@@ -2128,7 +2124,9 @@ def _normalize_server_joystick_config(settings: dict) -> dict:
         "enabled": bool(raw.get("enabled")),
         "serverEnabled": bool(raw.get("serverEnabled")),
         "model": model,
-        "deadzone": float(raw.get("deadzone") or DEFAULT_SETTINGS["joystick"]["deadzone"]),
+        "deadzone": float(
+            raw.get("deadzone") or DEFAULT_SETTINGS["joystick"]["deadzone"]
+        ),
         "sensitivity": sensitivity,
         "axisMap": axis_map,
         "buttonMap": button_map,
@@ -2211,8 +2209,7 @@ def _apply_joystick_fine_control(
     if not enabled:
         return command
     return tuple(
-        _quantize_joystick_axis(axis * JOYSTICK_FINE_CONTROL_SCALE)
-        for axis in command
+        _quantize_joystick_axis(axis * JOYSTICK_FINE_CONTROL_SCALE) for axis in command
     )
 
 
@@ -2278,7 +2275,9 @@ def _server_joystick_target_cam(settings: dict) -> int:
         if follows in {"preview", "program"}:
             atem = _get_atem()
             if atem.get("connected"):
-                followed_cam = _camera_index_for_atem_source(settings, atem.get(follows))
+                followed_cam = _camera_index_for_atem_source(
+                    settings, atem.get(follows)
+                )
                 if followed_cam is not None:
                     return followed_cam
     return active_cam
@@ -2573,9 +2572,7 @@ def _joystick_loop():
                         axis_centers["zoom"],
                         [round(sample, 3) for sample in zoom_center_samples],
                     )
-                    command = _read_server_joystick_command(
-                        joystick, cfg, axis_centers
-                    )
+                    command = _read_server_joystick_command(joystick, cfg, axis_centers)
 
             sensitivity = cfg.get("sensitivity") or {}
             zoom, zoom_axis_active = _apply_zoom_start_hysteresis(
