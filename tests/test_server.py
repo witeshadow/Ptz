@@ -385,6 +385,80 @@ class TestDefaultSettings(unittest.TestCase):
             )
 
 
+class TestJoystickAxisHelpers(unittest.TestCase):
+    def test_normalize_hid_axis_uses_calibrated_center(self):
+        self.assertEqual(server._normalize_hid_axis(92, 92, 0, 255), 0.0)
+        self.assertGreater(server._normalize_hid_axis(170, 92, 0, 255), 0)
+        self.assertLess(server._normalize_hid_axis(40, 92, 0, 255), 0)
+
+    def test_normalize_hid_axis_handles_asymmetric_span(self):
+        self.assertAlmostEqual(server._normalize_hid_axis(255, 92, 0, 255), 1.0)
+        self.assertAlmostEqual(server._normalize_hid_axis(0, 92, 0, 255), -1.0)
+
+    def test_hid_hat_to_xy_maps_cardinal_and_neutral_values(self):
+        self.assertEqual(server._hid_hat_to_xy(0), (0, 1))
+        self.assertEqual(server._hid_hat_to_xy(2), (1, 0))
+        self.assertEqual(server._hid_hat_to_xy(4), (0, -1))
+        self.assertEqual(server._hid_hat_to_xy(6), (-1, 0))
+        self.assertEqual(server._hid_hat_to_xy(8), (0, 0))
+
+    def test_hat_nudge_sets_pan_tilt_without_changing_zoom(self):
+        command = server._apply_joystick_hat_nudge((0.0, 0.0, -0.5), (1, -1))
+        self.assertAlmostEqual(command[0], 0.35)
+        self.assertAlmostEqual(command[1], -0.35)
+        self.assertAlmostEqual(command[2], -0.5)
+
+    def test_fine_control_scales_command(self):
+        command = server._apply_joystick_fine_control((1.0, -0.4, 0.4), True)
+        self.assertAlmostEqual(command[0], 0.35)
+        self.assertAlmostEqual(command[1], -0.15)
+        self.assertAlmostEqual(command[2], 0.15)
+
+    def test_server_joystick_command_applies_zoom_center(self):
+        class FakeJoystick:
+            def get_numaxes(self):
+                return 3
+
+            def get_axis(self, axis_idx):
+                return {0: 0.0, 1: 0.0, 2: -0.7}[axis_idx]
+
+            def get_numbuttons(self):
+                return 0
+
+        cfg = {
+            "deadzone": 0.2,
+            "sensitivity": {"pan": 1.0, "tilt": 1.0, "zoom": 0.5},
+            "axisMap": {"pan": 0, "tilt": 1, "zoom": 2},
+            "useDpad": False,
+        }
+
+        self.assertEqual(
+            server._read_server_joystick_command(
+                FakeJoystick(), cfg, {"zoom": -0.7}
+            ),
+            (0.0, 0.0, 0.0),
+        )
+
+    def test_zoom_hysteresis_suppresses_idle_drift(self):
+        zoom, active = server._apply_zoom_start_hysteresis(
+            0.15, deadzone=0.25, sensitivity=0.5, active=False
+        )
+        self.assertEqual(zoom, 0.0)
+        self.assertFalse(active)
+
+    def test_zoom_hysteresis_allows_deliberate_twist_and_stops_at_zero(self):
+        zoom, active = server._apply_zoom_start_hysteresis(
+            0.2, deadzone=0.25, sensitivity=0.5, active=False
+        )
+        self.assertEqual(zoom, 0.2)
+        self.assertTrue(active)
+        zoom, active = server._apply_zoom_start_hysteresis(
+            0.0, deadzone=0.25, sensitivity=0.5, active=True
+        )
+        self.assertEqual(zoom, 0.0)
+        self.assertFalse(active)
+
+
 # ── VISCA packet construction ──────────────────────────────────────────────────
 
 
@@ -872,6 +946,22 @@ class TestHTTPRoutes(unittest.TestCase):
             data["cameras"][0]["cameraModel"], server.DEFAULT_CAMERA_MODEL
         )
 
+    def test_get_joystick_status_returns_server_driver_state(self):
+        server._set_joystick_status(
+            enabled=True,
+            serverEnabled=True,
+            available=False,
+            connected=False,
+            message="Install pygame for server joystick support",
+        )
+        status, body = self.srv.get("/api/joystick/status")
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["enabled"])
+        self.assertTrue(data["serverEnabled"])
+        self.assertFalse(data["available"])
+        self.assertIn("pygame", data["message"])
+
     def test_post_settings_bad_json_returns_400(self):
         status, body = self.srv.post("/settings", b"not json")
         self.assertEqual(status, 400)
@@ -1021,7 +1111,7 @@ class TestHTTPRoutes(unittest.TestCase):
             patch(
                 "server.send_camera_pan_tilt_drive", return_value=(True, "pt ok")
             ) as mock_pt,
-            patch("server.send_camera_zoom_drive", return_value=(True, "zoom ok")),
+            patch("server.send_camera_zoom_drive", return_value=(True, "zoom ok")) as mock_zoom,
         ):
             first_status, _ = self.srv.post("/api/ptz/drive", first)
             stale_status, stale_body = self.srv.post("/api/ptz/drive", stale)
@@ -1034,6 +1124,7 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertEqual(stale_data["commandId"], 499)
         self.assertEqual(stale_data["lastCommandId"], 500)
         self.assertEqual(mock_pt.call_count, 1)
+        self.assertEqual(mock_zoom.call_count, 0)
 
     def test_ptz_drive_applies_newer_command_ids(self):
         settings = dict(server.DEFAULT_SETTINGS)
@@ -1063,6 +1154,113 @@ class TestHTTPRoutes(unittest.TestCase):
         self.assertFalse(data["stale"])
         self.assertEqual(data["commandId"], 501)
         self.assertEqual(mock_pt.call_count, 2)
+
+    def test_ptz_drive_does_not_send_unchanged_zoom_stop_after_pan(self):
+        settings = dict(server.DEFAULT_SETTINGS)
+        settings["cameras"] = [
+            dict(server.DEFAULT_SETTINGS["cameras"][0], ip="10.0.0.1")
+        ]
+        server.write_settings(settings)
+        payload = json.dumps(
+            {"camIdx": 0, "pan": 0.7, "tilt": 0, "zoom": 0, "commandId": 900}
+        ).encode()
+
+        with (
+            patch("server.send_camera_pan_tilt_drive", return_value=(True, "pt ok"))
+            as mock_pt,
+            patch("server.send_camera_zoom_drive", return_value=(True, "zoom ok"))
+            as mock_zoom,
+        ):
+            status, body = self.srv.post("/api/ptz/drive", payload)
+
+        self.assertEqual(status, 200)
+        self.assertTrue(json.loads(body)["ok"])
+        mock_pt.assert_called_once()
+        mock_zoom.assert_not_called()
+
+    def test_ptz_drive_sends_zoom_stop_after_prior_zoom(self):
+        settings = dict(server.DEFAULT_SETTINGS)
+        settings["cameras"] = [
+            dict(server.DEFAULT_SETTINGS["cameras"][0], ip="10.0.0.1")
+        ]
+        server.write_settings(settings)
+        zoom_in = json.dumps(
+            {"camIdx": 0, "pan": 0, "tilt": 0, "zoom": 0.6, "commandId": 901}
+        ).encode()
+        zoom_stop = json.dumps(
+            {"camIdx": 0, "pan": 0, "tilt": 0, "zoom": 0, "commandId": 902}
+        ).encode()
+
+        with (
+            patch("server.send_camera_pan_tilt_drive", return_value=(True, "pt ok"))
+            as mock_pt,
+            patch("server.send_camera_zoom_drive", return_value=(True, "zoom ok"))
+            as mock_zoom,
+        ):
+            first_status, _ = self.srv.post("/api/ptz/drive", zoom_in)
+            stop_status, stop_body = self.srv.post("/api/ptz/drive", zoom_stop)
+
+        self.assertEqual(first_status, 200)
+        self.assertEqual(stop_status, 200)
+        self.assertTrue(json.loads(stop_body)["ok"])
+        mock_pt.assert_not_called()
+        self.assertEqual(mock_zoom.call_count, 2)
+
+    def test_ptz_drive_resends_pan_tilt_stop_after_prior_movement(self):
+        settings = dict(server.DEFAULT_SETTINGS)
+        settings["cameras"] = [
+            dict(server.DEFAULT_SETTINGS["cameras"][0], ip="10.0.0.1")
+        ]
+        server.write_settings(settings)
+        move = json.dumps(
+            {"camIdx": 0, "pan": 0.6, "tilt": 0, "zoom": 0, "commandId": 903}
+        ).encode()
+        stop = json.dumps(
+            {"camIdx": 0, "pan": 0, "tilt": 0, "zoom": 0, "commandId": 904}
+        ).encode()
+
+        with (
+            patch("server.send_camera_pan_tilt_drive", return_value=(True, "pt ok"))
+            as mock_pt,
+            patch("server.send_camera_zoom_drive", return_value=(True, "zoom ok"))
+            as mock_zoom,
+        ):
+            first_status, _ = self.srv.post("/api/ptz/drive", move)
+            stop_status, stop_body = self.srv.post("/api/ptz/drive", stop)
+
+        self.assertEqual(first_status, 200)
+        self.assertEqual(stop_status, 200)
+        self.assertTrue(json.loads(stop_body)["ok"])
+        self.assertEqual(mock_pt.call_count, 2)
+        mock_zoom.assert_not_called()
+
+    def test_ptz_drive_retries_stop_without_ack_up_to_limit(self):
+        settings = dict(server.DEFAULT_SETTINGS)
+        settings["cameras"] = [
+            dict(server.DEFAULT_SETTINGS["cameras"][0], ip="10.0.0.1")
+        ]
+        server.write_settings(settings)
+        zoom_in = json.dumps(
+            {"camIdx": 0, "pan": 0, "tilt": 0, "zoom": 0.6, "commandId": 905}
+        ).encode()
+        zoom_stop = json.dumps(
+            {"camIdx": 0, "pan": 0, "tilt": 0, "zoom": 0, "commandId": 906}
+        ).encode()
+
+        with (
+            patch("server.send_camera_pan_tilt_drive", return_value=(True, "pt ok")),
+            patch(
+                "server.send_camera_zoom_drive",
+                return_value=(True, "Command sent (no VISCA response received)"),
+            ) as mock_zoom,
+        ):
+            first_status, _ = self.srv.post("/api/ptz/drive", zoom_in)
+            stop_status, stop_body = self.srv.post("/api/ptz/drive", zoom_stop)
+
+        self.assertEqual(first_status, 200)
+        self.assertEqual(stop_status, 200)
+        self.assertTrue(json.loads(stop_body)["ok"])
+        self.assertEqual(mock_zoom.call_count, 1 + server.PTZ_STOP_MAX_ATTEMPTS)
 
     def test_post_image_live_protection_returns_409_when_target_camera_is_on_program(
         self,

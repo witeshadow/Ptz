@@ -72,6 +72,37 @@ Once in DirectInput mode:
 3. **Sensitivity**: Adjust as needed (start with 1.0x for pan/tilt)
 4. The debug panel should show a suggestion if mode is wrong
 
+### Browser vs Server Driver
+
+By default, physical joystick control uses the browser Gamepad API. That means the browser must stay open for joystick input.
+
+To run the joystick from `python server.py` instead:
+
+1. Install the optional dependency:
+
+```bash
+pip install pygame hidapi
+```
+
+2. In Settings → Joystick Control:
+   - Check **Enable Physical Joystick**
+   - Check **Run Physical Joystick in Python Server**
+   - Select the correct device profile
+
+When the server driver is enabled, the browser-side joystick driver is turned off so both drivers do not send PTZ commands at the same time. The server still honors Protect Live Camera and blocks movement when the target camera is live on ATEM program.
+
+The server tries `pygame` first, then falls back to direct HID for the Logitech Extreme 3D Pro if SDL does not expose it.
+
+### Logitech Extreme 3D Pro Server Controls
+
+With the Python server driver enabled, the Logitech profile also supports:
+
+- Trigger: stop pan, tilt, and zoom immediately
+- Thumb button: toggle fine-control mode
+- Hat switch: nudge pan/tilt at a fixed low speed
+
+Each of those mappings can be disabled in Settings -> Joystick Control.
+
 ## Understanding Debug Output
 
 When enabled, you'll see:
