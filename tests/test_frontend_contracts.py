@@ -237,6 +237,14 @@ class TestFrontendContracts(unittest.TestCase):
         self.assertIn("function normalizeVirtualJoystickSettings(value)", self.html)
         self.assertIn("joystick: normalizeJoystickSettings(),", self.html)
         self.assertIn("virtualJoystick: normalizeVirtualJoystickSettings(),", self.html)
+        self.assertIn('id="f-joystick-server-enabled"', self.html)
+        self.assertIn('id="f-joystick-trigger-stop"', self.html)
+        self.assertIn('id="f-joystick-thumb-fine"', self.html)
+        self.assertIn('id="f-joystick-hat-nudge"', self.html)
+        self.assertIn('id="joystick-server-status-text"', self.html)
+        self.assertIn("serverEnabled: false,", self.html)
+        self.assertIn("serverActions: { triggerStop: true, thumbFine: true, hatNudge: true }", self.html)
+        self.assertIn("function refreshServerJoystickStatus()", self.html)
         self.assertIn(
             "if (s.joystick) state.joystick = normalizeJoystickSettings(s.joystick);",
             self.html,
@@ -254,6 +262,8 @@ class TestFrontendContracts(unittest.TestCase):
             self.html,
         )
         self.assertIn("state.joystick = normalizeJoystickSettings({", self.html)
+        self.assertIn("serverEnabled: elJoystickServerEnabled?.checked || false,", self.html)
+        self.assertIn("triggerStop: elJoystickTriggerStop?.checked !== false,", self.html)
 
     def test_virtual_joystick_response_curve_and_snapback_guard_present(self):
         self.assertIn("let lastVirtualJoystickCommand = { pan: 0, tilt: 0 };", self.html)

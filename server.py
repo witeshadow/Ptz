@@ -47,6 +47,11 @@ _IS_MACOS = platform.system() == "Darwin"
 
 _logger = logging.getLogger(__name__)
 VISCA_DRIVE_COMMAND_TIMEOUT_S = 0.05
+PTZ_STOP_MAX_ATTEMPTS = 3
+PTZ_STOP_RESEND_INTERVAL_S = 0.06
+JOYSTICK_ZOOM_START_MARGIN = 0.10
+JOYSTICK_FINE_CONTROL_SCALE = 0.35
+JOYSTICK_HAT_NUDGE_SPEED = 0.35
 DEFAULT_CAMERA_MODEL = "avipas-visca"
 CANON_CR_N100_CAMERA_MODEL = "canon-cr-n100"
 SUPPORTED_CAMERA_MODELS = {
@@ -137,6 +142,7 @@ DEFAULT_SETTINGS = {
     "positions": {},
     "joystick": {
         "enabled": False,
+        "serverEnabled": False,
         "model": "logitech-extreme-3d",
         "deadzone": 0.25,
         "sensitivity": {
@@ -154,6 +160,15 @@ DEFAULT_SETTINGS = {
             "preset2": 1,
             "preset3": 2,
             "preset4": 3,
+        },
+        "serverButtonMap": {
+            "triggerStop": 0,
+            "toggleFine": 1,
+        },
+        "serverActions": {
+            "triggerStop": True,
+            "thumbFine": True,
+            "hatNudge": True,
         },
         "zoomCompensationCurve": "linear",
     },
@@ -507,6 +522,14 @@ def _normalize_settings(data: dict | None) -> dict:
                 **DEFAULT_SETTINGS["joystick"]["buttonMap"],
                 **(raw_joystick.get("buttonMap") or {}),
             },
+            "serverButtonMap": {
+                **DEFAULT_SETTINGS["joystick"]["serverButtonMap"],
+                **(raw_joystick.get("serverButtonMap") or {}),
+            },
+            "serverActions": {
+                **DEFAULT_SETTINGS["joystick"]["serverActions"],
+                **(raw_joystick.get("serverActions") or {}),
+            },
         }
 
     raw_virtual = data.get("virtualJoystick")
@@ -600,6 +623,43 @@ _atem_conn_lock = threading.Lock()
 _ptz_runtime_lock = threading.Lock()
 _ptz_last_command_ids: dict[int, int] = {}
 _ptz_camera_locks: dict[int, threading.Lock] = {}
+_ptz_last_drive_commands: dict[int, tuple[float, float, float]] = {}
+_joystick_status_lock = threading.Lock()
+_joystick_status = {
+    "enabled": False,
+    "serverEnabled": False,
+    "available": False,
+    "connected": False,
+    "device": "",
+    "message": "Server joystick driver is disabled",
+    "camIdx": None,
+    "pan": 0.0,
+    "tilt": 0.0,
+    "zoom": 0.0,
+    "fineControl": False,
+    "lastCommand": None,
+    "lastError": "",
+    "updatedAt": 0.0,
+}
+
+_JOYSTICK_PROFILES = {
+    "logitech-extreme-3d": {
+        "axisMap": {"pan": 0, "tilt": 1, "zoom": 2},
+        "buttonMap": {"preset1": 0, "preset2": 1, "preset3": 2, "preset4": 3},
+        "serverButtonMap": {"triggerStop": 0, "toggleFine": 1},
+        "serverActions": {"triggerStop": True, "thumbFine": True, "hatNudge": True},
+        "useDpad": False,
+    },
+    "8bitdo-zero2": {
+        "axisMap": {"zoom": 2},
+        "buttonMap": {"preset1": 4, "preset2": 5, "preset3": 6, "preset4": 7},
+        "useDpad": True,
+        "dpadMap": {"up": 12, "down": 13, "left": 14, "right": 15},
+    },
+}
+JOYSTICK_POLL_INTERVAL_S = 0.05
+JOYSTICK_COMMAND_INTERVAL_S = 0.08
+JOYSTICK_ERROR_RETRY_INTERVAL_S = 1.0
 
 
 def _set_atem(
@@ -629,6 +689,7 @@ def _reset_ptz_runtime_state():
     with _ptz_runtime_lock:
         _ptz_last_command_ids.clear()
         _ptz_camera_locks.clear()
+        _ptz_last_drive_commands.clear()
 
 
 def _get_ptz_camera_lock(cam_idx: int) -> threading.Lock:
@@ -651,6 +712,39 @@ def _claim_ptz_command_id(
             return False, last_seen
         _ptz_last_command_ids[cam_idx] = command_id
         return True, last_seen
+
+
+def _get_last_ptz_drive_command(cam_idx: int) -> tuple[float, float, float]:
+    with _ptz_runtime_lock:
+        return _ptz_last_drive_commands.get(cam_idx, (0.0, 0.0, 0.0))
+
+
+def _set_last_ptz_drive_command(
+    cam_idx: int, command: tuple[float, float, float]
+) -> None:
+    with _ptz_runtime_lock:
+        _ptz_last_drive_commands[cam_idx] = command
+
+
+def _combine_command_results(results: list[tuple[bool, str]]) -> tuple[bool, str]:
+    ok = all(result[0] for result in results)
+    message = "; ".join(result[1] for result in results)
+    return ok, message
+
+
+def _visca_message_has_reply(message: str) -> bool:
+    return "no VISCA response received" not in message
+
+
+def _set_joystick_status(**updates):
+    updates["updatedAt"] = time.time()
+    with _joystick_status_lock:
+        _joystick_status.update(updates)
+
+
+def _get_joystick_status() -> dict:
+    with _joystick_status_lock:
+        return dict(_joystick_status)
 
 
 def _set_atem_last_action(
@@ -1833,6 +1927,814 @@ def _require_camera(
     return True, None, cams[cam_idx]
 
 
+def _execute_ptz_drive(
+    cam_idx: int,
+    pan: float,
+    tilt: float,
+    zoom: float,
+    command_id: int | None = None,
+) -> tuple[int, dict]:
+    settings = load_settings()
+    cameras = settings.get("cameras") or []
+    if cam_idx < 0 or cam_idx >= len(cameras):
+        return 404, {"ok": False, "error": "Camera not found"}
+
+    cfg = cameras[cam_idx] or {}
+    ip = str(cfg.get("ip", "")).strip()
+    if not ip:
+        return 400, {"ok": False, "error": "Camera IP is required"}
+
+    is_stop = pan == 0 and tilt == 0 and zoom == 0
+    if not is_stop:
+        block_reason = _live_movement_block_reason(settings, cam_idx, cfg)
+        if block_reason:
+            if block_reason == "Protected live camera is on ATEM program.":
+                block_reason = (
+                    "Protected live camera is on ATEM program. Switch cameras "
+                    "or turn off Protect Live Camera before moving."
+                )
+            return 409, {"ok": False, "error": block_reason}
+
+    with _get_ptz_camera_lock(cam_idx):
+        fresh, last_seen = _claim_ptz_command_id(cam_idx, command_id)
+        if not fresh:
+            return 200, {
+                "ok": True,
+                "stale": True,
+                "commandId": command_id,
+                "lastCommandId": last_seen,
+                "camIdx": cam_idx,
+                "pan": pan,
+                "tilt": tilt,
+                "zoom": zoom,
+            }
+
+        port = int(cfg.get("port", 52381) or 52381)
+        visca_addr = int(cfg.get("viscaAddr", 1) or 1)
+        deadzone = 0.20
+        pan_mag = abs(pan)
+        tilt_mag = abs(tilt)
+        pan_dir = 0x03 if pan_mag < deadzone else (0x01 if pan < 0 else 0x02)
+        tilt_dir = 0x03 if tilt_mag < deadzone else (0x01 if tilt > 0 else 0x02)
+        pan_speed = (
+            1 if pan_dir == 0x03 else max(1, min(0x10, int(round(pan_mag * 0x10))))
+        )
+        tilt_speed = (
+            1 if tilt_dir == 0x03 else max(1, min(0x10, int(round(tilt_mag * 0x10))))
+        )
+
+        previous_pan, previous_tilt, previous_zoom = _get_last_ptz_drive_command(
+            cam_idx
+        )
+        pan_tilt_changed = pan != previous_pan or tilt != previous_tilt
+        zoom_changed = zoom != previous_zoom
+
+        pt_ok = True
+        zoom_ok = True
+        pt_message = "Pan/tilt unchanged"
+        zoom_message = "Zoom unchanged"
+        if pan_tilt_changed:
+            pt_results = []
+            max_attempts = (
+                PTZ_STOP_MAX_ATTEMPTS
+                if pan == 0 and tilt == 0 and (previous_pan != 0 or previous_tilt != 0)
+                else 1
+            )
+            for attempt in range(max_attempts):
+                if attempt:
+                    time.sleep(PTZ_STOP_RESEND_INTERVAL_S)
+                result = send_camera_pan_tilt_drive(
+                    ip,
+                    port,
+                    pan_speed,
+                    tilt_speed,
+                    pan_dir,
+                    tilt_dir,
+                    camera_address=visca_addr,
+                    cfg=cfg,
+                )
+                pt_results.append(result)
+                if result[0] and _visca_message_has_reply(result[1]):
+                    break
+            pt_ok, pt_message = _combine_command_results(pt_results)
+        if zoom_changed:
+            zoom_results = []
+            max_attempts = (
+                PTZ_STOP_MAX_ATTEMPTS if zoom == 0 and previous_zoom != 0 else 1
+            )
+            for attempt in range(max_attempts):
+                if attempt:
+                    time.sleep(PTZ_STOP_RESEND_INTERVAL_S)
+                result = send_camera_zoom_drive(
+                    ip, port, zoom, camera_address=visca_addr, cfg=cfg
+                )
+                zoom_results.append(result)
+                if result[0] and _visca_message_has_reply(result[1]):
+                    break
+            zoom_ok, zoom_message = _combine_command_results(zoom_results)
+        ok = pt_ok and zoom_ok
+        if ok:
+            _set_last_ptz_drive_command(cam_idx, (pan, tilt, zoom))
+
+    return 200 if ok else 502, {
+        "ok": ok,
+        "stale": False,
+        "commandId": command_id,
+        "camIdx": cam_idx,
+        "pan": pan,
+        "tilt": tilt,
+        "zoom": zoom,
+        "panTiltMessage": pt_message,
+        "zoomMessage": zoom_message,
+    }
+
+
+def _clamp_axis(value: float) -> float:
+    return max(-1.0, min(1.0, float(value or 0.0)))
+
+
+def _apply_joystick_deadzone(value: float, deadzone: float) -> float:
+    value = _clamp_axis(value)
+    return 0.0 if abs(value) < deadzone else value
+
+
+def _apply_zoom_start_hysteresis(
+    zoom: float, deadzone: float, sensitivity: float, active: bool
+) -> tuple[float, bool]:
+    zoom = _clamp_axis(zoom)
+    if zoom == 0:
+        return 0.0, False
+    if active:
+        return zoom, True
+    start_threshold = min(1.0, deadzone + JOYSTICK_ZOOM_START_MARGIN) * abs(
+        sensitivity or 1.0
+    )
+    if abs(zoom) < start_threshold:
+        return 0.0, False
+    return zoom, True
+
+
+def _quantize_joystick_axis(value: float) -> float:
+    return round(_clamp_axis(value) / 0.05) * 0.05
+
+
+def _normalize_hid_axis(value: int, center: int, low: int, high: int) -> float:
+    if value == center:
+        return 0.0
+    if value > center:
+        span = max(1, high - center)
+    else:
+        span = max(1, center - low)
+    return _clamp_axis((value - center) / span)
+
+
+def _normalize_server_joystick_config(settings: dict) -> dict:
+    raw = settings.get("joystick") if isinstance(settings.get("joystick"), dict) else {}
+    model = str(raw.get("model") or "logitech-extreme-3d")
+    profile = _JOYSTICK_PROFILES.get(model) or _JOYSTICK_PROFILES["logitech-extreme-3d"]
+    sensitivity = {
+        **DEFAULT_SETTINGS["joystick"]["sensitivity"],
+        **profile.get("sensitivity", {}),
+        **(raw.get("sensitivity") or {}),
+    }
+    axis_map = {
+        **profile.get("axisMap", {}),
+        **(raw.get("axisMap") or {}),
+    }
+    button_map = {
+        **profile.get("buttonMap", {}),
+        **(raw.get("buttonMap") or {}),
+    }
+    server_button_map = {
+        **DEFAULT_SETTINGS["joystick"]["serverButtonMap"],
+        **profile.get("serverButtonMap", {}),
+        **(raw.get("serverButtonMap") or {}),
+    }
+    server_actions = {
+        **DEFAULT_SETTINGS["joystick"]["serverActions"],
+        **profile.get("serverActions", {}),
+        **(raw.get("serverActions") or {}),
+    }
+    dpad_map = {
+        **profile.get("dpadMap", {}),
+        **(raw.get("dpadMap") or {}),
+    }
+    return {
+        **raw,
+        "enabled": bool(raw.get("enabled")),
+        "serverEnabled": bool(raw.get("serverEnabled")),
+        "model": model,
+        "deadzone": float(
+            raw.get("deadzone") or DEFAULT_SETTINGS["joystick"]["deadzone"]
+        ),
+        "sensitivity": sensitivity,
+        "axisMap": axis_map,
+        "buttonMap": button_map,
+        "serverButtonMap": server_button_map,
+        "serverActions": {key: bool(value) for key, value in server_actions.items()},
+        "dpadMap": dpad_map,
+        "useDpad": bool(raw.get("useDpad", profile.get("useDpad", False))),
+    }
+
+
+def _safe_joystick_axis(joystick, axis_idx: int | None) -> float:
+    if axis_idx is None:
+        return 0.0
+    try:
+        if axis_idx < 0 or axis_idx >= joystick.get_numaxes():
+            return 0.0
+        return float(joystick.get_axis(axis_idx))
+    except Exception:
+        return 0.0
+
+
+def _safe_joystick_button(joystick, button_idx: int | None) -> bool:
+    if button_idx is None:
+        return False
+    try:
+        if button_idx < 0 or button_idx >= joystick.get_numbuttons():
+            return False
+        return bool(joystick.get_button(button_idx))
+    except Exception:
+        return False
+
+
+def _hid_hat_to_xy(hat: int) -> tuple[int, int]:
+    return {
+        0: (0, 1),
+        1: (1, 1),
+        2: (1, 0),
+        3: (1, -1),
+        4: (0, -1),
+        5: (-1, -1),
+        6: (-1, 0),
+        7: (-1, 1),
+    }.get(hat, (0, 0))
+
+
+def _safe_joystick_hat(joystick, hat_idx: int = 0) -> tuple[int, int]:
+    try:
+        if not hasattr(joystick, "get_numhats") or not hasattr(joystick, "get_hat"):
+            return (0, 0)
+        if hat_idx < 0 or hat_idx >= joystick.get_numhats():
+            return (0, 0)
+        x, y = joystick.get_hat(hat_idx)
+        return (
+            1 if int(x) > 0 else (-1 if int(x) < 0 else 0),
+            1 if int(y) > 0 else (-1 if int(y) < 0 else 0),
+        )
+    except Exception:
+        return (0, 0)
+
+
+def _apply_joystick_hat_nudge(
+    command: tuple[float, float, float], hat: tuple[int, int]
+) -> tuple[float, float, float]:
+    pan, tilt, zoom = command
+    hat_x, hat_y = hat
+    if hat_x:
+        pan = hat_x * JOYSTICK_HAT_NUDGE_SPEED
+    if hat_y:
+        tilt = hat_y * JOYSTICK_HAT_NUDGE_SPEED
+    return (
+        _quantize_joystick_axis(pan),
+        _quantize_joystick_axis(tilt),
+        _quantize_joystick_axis(zoom),
+    )
+
+
+def _apply_joystick_fine_control(
+    command: tuple[float, float, float], enabled: bool
+) -> tuple[float, float, float]:
+    if not enabled:
+        return command
+    return tuple(
+        _quantize_joystick_axis(axis * JOYSTICK_FINE_CONTROL_SCALE) for axis in command
+    )
+
+
+def _read_server_joystick_command(
+    joystick, cfg: dict, axis_centers: dict[str, float] | None = None
+) -> tuple[float, float, float]:
+    deadzone = max(0.0, min(1.0, float(cfg.get("deadzone") or 0.2)))
+    sensitivity = cfg.get("sensitivity") or {}
+    axis_map = cfg.get("axisMap") or {}
+
+    if cfg.get("useDpad"):
+        dpad_map = cfg.get("dpadMap") or {}
+        left = _safe_joystick_button(joystick, dpad_map.get("left"))
+        right = _safe_joystick_button(joystick, dpad_map.get("right"))
+        up = _safe_joystick_button(joystick, dpad_map.get("up"))
+        down = _safe_joystick_button(joystick, dpad_map.get("down"))
+        pan = ((1.0 if right else 0.0) - (1.0 if left else 0.0)) * float(
+            sensitivity.get("pan") or 1.0
+        )
+        tilt = ((1.0 if down else 0.0) - (1.0 if up else 0.0)) * float(
+            sensitivity.get("tilt") or 1.0
+        )
+    else:
+        pan = _apply_joystick_deadzone(
+            _safe_joystick_axis(joystick, axis_map.get("pan")), deadzone
+        ) * float(sensitivity.get("pan") or 1.0)
+        tilt = _apply_joystick_deadzone(
+            _safe_joystick_axis(joystick, axis_map.get("tilt")), deadzone
+        ) * float(sensitivity.get("tilt") or 1.0)
+
+    raw_zoom = _safe_joystick_axis(joystick, axis_map.get("zoom"))
+    if axis_centers and "zoom" in axis_centers:
+        raw_zoom = _clamp_axis(raw_zoom - axis_centers["zoom"])
+    zoom = _apply_joystick_deadzone(raw_zoom, deadzone) * float(
+        sensitivity.get("zoom") or 0.5
+    )
+
+    return (
+        _quantize_joystick_axis(pan),
+        _quantize_joystick_axis(tilt),
+        _quantize_joystick_axis(zoom),
+    )
+
+
+def _camera_index_for_atem_source(settings: dict, source: int | None) -> int | None:
+    if source is None:
+        return None
+    for idx, cfg in enumerate(settings.get("cameras") or []):
+        if cfg.get("enabled") is False:
+            continue
+        try:
+            if int(cfg.get("atemInput", 0) or 0) == int(source):
+                return idx
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _server_joystick_target_cam(settings: dict) -> int:
+    active_cam = int(settings.get("activeCam", 0) or 0)
+    if settings.get("atem", {}).get("enabled"):
+        follows = _normalize_atem_follows(str(settings.get("atemFollows", "preview")))
+        if follows in {"preview", "program"}:
+            atem = _get_atem()
+            if atem.get("connected"):
+                followed_cam = _camera_index_for_atem_source(
+                    settings, atem.get(follows)
+                )
+                if followed_cam is not None:
+                    return followed_cam
+    return active_cam
+
+
+def _server_joystick_stop(cam_idx: int | None):
+    if cam_idx is None:
+        return
+    _execute_ptz_drive(cam_idx, 0.0, 0.0, 0.0)
+
+
+class _LogitechExtreme3DHidJoystick:
+    VENDOR_ID = 0x046D
+    PRODUCT_ID = 0xC215
+
+    def __init__(self):
+        import hid
+
+        devices = [
+            d
+            for d in hid.enumerate(self.VENDOR_ID, self.PRODUCT_ID)
+            if int(d.get("usage_page") or 0) == 1 and int(d.get("usage") or 0) == 4
+        ]
+        if not devices:
+            raise RuntimeError("Logitech Extreme 3D Pro HID device was not found")
+        self._hid = hid
+        self._device = hid.device()
+        self._device.open_path(devices[0]["path"])
+        self._device.set_nonblocking(True)
+        self._name = str(devices[0].get("product_string") or "Extreme 3D Pro")
+        self._axes = [0.0, 0.0, 0.0, 0.0]
+        self._buttons = [False] * 12
+        self._hat = (0, 0)
+        self._rz_center = None
+        self._rz_samples = []
+        self._rz_calibration_deadline = time.monotonic() + 1.0
+        self.pump()
+
+    def close(self):
+        try:
+            self._device.close()
+        except Exception:
+            pass
+
+    def get_name(self):
+        return self._name
+
+    def get_numaxes(self):
+        return len(self._axes)
+
+    def get_axis(self, axis_idx: int):
+        return self._axes[axis_idx]
+
+    def get_numbuttons(self):
+        return len(self._buttons)
+
+    def get_button(self, button_idx: int):
+        return self._buttons[button_idx]
+
+    def get_numhats(self):
+        return 1
+
+    def get_hat(self, hat_idx: int):
+        if hat_idx != 0:
+            return (0, 0)
+        return self._hat
+
+    def pump(self):
+        while True:
+            report = self._device.read(64)
+            if not report:
+                return
+            if len(report) < 7:
+                continue
+            x = int(report[0]) | ((int(report[1]) & 0x03) << 8)
+            y = (int(report[1]) >> 2) | ((int(report[2]) & 0x0F) << 6)
+            hat = (int(report[2]) >> 4) & 0x0F
+            rz = int(report[3])
+            slider = int(report[4])
+            buttons = int(report[5]) | ((int(report[6]) & 0x0F) << 8)
+            if self._rz_center is None:
+                self._rz_samples.append(rz)
+                still_calibrating = (
+                    time.monotonic() < self._rz_calibration_deadline
+                    or len(self._rz_samples) < 8
+                )
+                if still_calibrating:
+                    rz_axis = 0.0
+                else:
+                    sorted_samples = sorted(self._rz_samples)
+                    self._rz_center = sorted_samples[len(sorted_samples) // 2]
+                    _logger.info(
+                        "Joystick: calibrated twist center at raw value %s from samples %s",
+                        self._rz_center,
+                        self._rz_samples,
+                    )
+                    rz_axis = _normalize_hid_axis(rz, self._rz_center, 0, 255)
+            else:
+                rz_axis = _normalize_hid_axis(rz, self._rz_center, 0, 255)
+            self._axes = [
+                _normalize_hid_axis(x, 512, 0, 1023),
+                _normalize_hid_axis(y, 512, 0, 1023),
+                rz_axis,
+                _normalize_hid_axis(slider, 128, 0, 255),
+            ]
+            self._hat = _hid_hat_to_xy(hat)
+            self._buttons = [bool(buttons & (1 << idx)) for idx in range(12)]
+
+
+def _open_hid_joystick_for_config(cfg: dict):
+    if cfg.get("model") != "logitech-extreme-3d":
+        return None
+    return _LogitechExtreme3DHidJoystick()
+
+
+def _joystick_loop():
+    pygame = None
+    joystick = None
+    hid_joystick = None
+    hid_error = ""
+    joystick_index = 0
+    last_command = (0.0, 0.0, 0.0)
+    last_sent_command: tuple[float, float, float] | None = None
+    last_sent_cam: int | None = None
+    last_device_name = ""
+    last_attempt_command: tuple[int, tuple[float, float, float]] | None = None
+    last_attempt_at = 0.0
+    axis_centers: dict[str, float] = {}
+    zoom_center_samples: list[float] = []
+    zoom_center_deadline = 0.0
+    zoom_axis_active = False
+    fine_control_enabled = False
+    last_button_states: dict[str, bool] = {}
+
+    while True:
+        settings = load_settings()
+        cfg = _normalize_server_joystick_config(settings)
+        enabled = bool(cfg.get("enabled") and cfg.get("serverEnabled"))
+        if not enabled:
+            if last_sent_command != (0.0, 0.0, 0.0):
+                _server_joystick_stop(last_sent_cam)
+            if hid_joystick is not None:
+                hid_joystick.close()
+                hid_joystick = None
+            last_command = (0.0, 0.0, 0.0)
+            last_sent_command = None
+            last_sent_cam = None
+            axis_centers = {}
+            zoom_center_samples = []
+            zoom_center_deadline = 0.0
+            zoom_axis_active = False
+            fine_control_enabled = False
+            last_button_states = {}
+            _set_joystick_status(
+                enabled=bool(cfg.get("enabled")),
+                serverEnabled=bool(cfg.get("serverEnabled")),
+                available=pygame is not None,
+                connected=False,
+                device="",
+                message="Server joystick driver is disabled",
+                camIdx=None,
+                pan=0.0,
+                tilt=0.0,
+                zoom=0.0,
+                fineControl=False,
+                lastCommand=None,
+                lastError="",
+            )
+            time.sleep(0.5)
+            continue
+
+        if pygame is None:
+            try:
+                os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+                import pygame as _pygame
+
+                pygame = _pygame
+                pygame.init()
+                pygame.joystick.init()
+            except Exception as exc:
+                try:
+                    hid_joystick = _open_hid_joystick_for_config(cfg)
+                    hid_error = ""
+                    pygame = False
+                except Exception as hid_exc:
+                    _set_joystick_status(
+                        enabled=True,
+                        serverEnabled=True,
+                        available=False,
+                        connected=False,
+                        device="",
+                        message=(
+                            "Install pygame or hidapi for server joystick support: "
+                            f"pygame={exc}; hidapi={hid_exc}"
+                        ),
+                        camIdx=None,
+                        pan=0.0,
+                        tilt=0.0,
+                        zoom=0.0,
+                        fineControl=False,
+                        lastCommand=None,
+                        lastError=f"pygame={exc}; hidapi={hid_exc}",
+                    )
+                    time.sleep(2.0)
+                    continue
+
+        try:
+            if pygame:
+                pygame.event.pump()
+                count = pygame.joystick.get_count()
+            else:
+                count = 0
+            if count <= 0:
+                if hid_joystick is None:
+                    try:
+                        hid_joystick = _open_hid_joystick_for_config(cfg)
+                        hid_error = ""
+                    except Exception as exc:
+                        hid_error = str(exc)
+                if hid_joystick is not None:
+                    joystick = hid_joystick
+                    joystick.pump()
+                else:
+                    if last_sent_command != (0.0, 0.0, 0.0):
+                        _server_joystick_stop(last_sent_cam)
+                    joystick = None
+                    last_command = (0.0, 0.0, 0.0)
+                    last_sent_command = None
+                    fine_control_enabled = False
+                    last_button_states = {}
+                    message = "Server joystick enabled, waiting for device"
+                    if hid_error:
+                        message = f"{message}; HID fallback unavailable: {hid_error}"
+                    _set_joystick_status(
+                        enabled=True,
+                        serverEnabled=True,
+                        available=True,
+                        connected=False,
+                        device="",
+                        message=message,
+                        camIdx=None,
+                        pan=0.0,
+                        tilt=0.0,
+                        zoom=0.0,
+                        fineControl=False,
+                        lastCommand=None,
+                        lastError=hid_error,
+                    )
+                    time.sleep(0.5)
+                    continue
+            elif hid_joystick is not None:
+                hid_joystick.close()
+                hid_joystick = None
+
+            if hid_joystick is None and (joystick is None or joystick_index >= count):
+                joystick_index = 0
+                joystick = pygame.joystick.Joystick(joystick_index)
+                joystick.init()
+
+            cam_idx = _server_joystick_target_cam(settings)
+            command = _read_server_joystick_command(joystick, cfg, axis_centers)
+            device_name = joystick.get_name()
+            if device_name != last_device_name:
+                _logger.info("Joystick: connected to %s", device_name)
+                last_device_name = device_name
+                axis_centers = {}
+                zoom_center_samples = []
+                zoom_center_deadline = time.monotonic() + 1.0
+                zoom_axis_active = False
+                fine_control_enabled = False
+                last_button_states = {}
+            if cam_idx != last_sent_cam and last_sent_command != (0.0, 0.0, 0.0):
+                _server_joystick_stop(last_sent_cam)
+                last_sent_command = (0.0, 0.0, 0.0)
+
+            axis_map = cfg.get("axisMap") or {}
+            if "zoom" not in axis_centers:
+                raw_zoom = _safe_joystick_axis(joystick, axis_map.get("zoom"))
+                zoom_center_samples.append(raw_zoom)
+                still_calibrating = (
+                    time.monotonic() < zoom_center_deadline
+                    or len(zoom_center_samples) < 8
+                )
+                if still_calibrating:
+                    command = (command[0], command[1], 0.0)
+                    zoom_axis_active = False
+                else:
+                    sorted_samples = sorted(zoom_center_samples)
+                    axis_centers["zoom"] = sorted_samples[len(sorted_samples) // 2]
+                    _logger.info(
+                        "Joystick: calibrated zoom axis center at %.3f from samples %s",
+                        axis_centers["zoom"],
+                        [round(sample, 3) for sample in zoom_center_samples],
+                    )
+                    command = _read_server_joystick_command(joystick, cfg, axis_centers)
+
+            sensitivity = cfg.get("sensitivity") or {}
+            zoom, zoom_axis_active = _apply_zoom_start_hysteresis(
+                command[2],
+                max(0.0, min(1.0, float(cfg.get("deadzone") or 0.2))),
+                float(sensitivity.get("zoom") or 0.5),
+                zoom_axis_active,
+            )
+            command = (command[0], command[1], zoom)
+
+            server_actions = cfg.get("serverActions") or {}
+            server_button_map = cfg.get("serverButtonMap") or {}
+            trigger_action_enabled = bool(server_actions.get("triggerStop", True))
+            fine_action_enabled = bool(server_actions.get("thumbFine", True))
+            hat_action_enabled = bool(server_actions.get("hatNudge", True))
+
+            trigger_pressed = _safe_joystick_button(
+                joystick, server_button_map.get("triggerStop")
+            )
+            fine_button_pressed = _safe_joystick_button(
+                joystick, server_button_map.get("toggleFine")
+            )
+            if fine_action_enabled:
+                fine_was_pressed = last_button_states.get("toggleFine", False)
+                if fine_button_pressed and not fine_was_pressed:
+                    fine_control_enabled = not fine_control_enabled
+                    _logger.info(
+                        "Joystick: fine control %s",
+                        "enabled" if fine_control_enabled else "disabled",
+                    )
+            else:
+                fine_control_enabled = False
+            last_button_states["toggleFine"] = fine_button_pressed
+
+            if hat_action_enabled:
+                command = _apply_joystick_hat_nudge(
+                    command, _safe_joystick_hat(joystick)
+                )
+            command = _apply_joystick_fine_control(command, fine_control_enabled)
+
+            trigger_was_pressed = last_button_states.get("triggerStop", False)
+            if trigger_action_enabled and trigger_pressed:
+                if not trigger_was_pressed:
+                    _logger.info("Joystick: trigger stop")
+                command = (0.0, 0.0, 0.0)
+                zoom_axis_active = False
+            last_button_states["triggerStop"] = trigger_pressed
+
+            now = time.monotonic()
+            should_send = command != last_sent_command or cam_idx != last_sent_cam
+            should_retry = (
+                last_attempt_command != (cam_idx, command)
+                or now - last_attempt_at >= JOYSTICK_ERROR_RETRY_INTERVAL_S
+            )
+            if should_send and should_retry:
+                last_attempt_command = (cam_idx, command)
+                last_attempt_at = now
+                status, response = _execute_ptz_drive(cam_idx, *command)
+                if 200 <= status < 300 and response.get("ok"):
+                    last_sent_command = command
+                    last_sent_cam = cam_idx
+                else:
+                    error_message = response.get("error") or "PTZ move failed"
+                    _logger.warning(
+                        "Joystick: command blocked/failed cam=%s pan=%.2f tilt=%.2f zoom=%.2f: %s",
+                        cam_idx + 1,
+                        command[0],
+                        command[1],
+                        command[2],
+                        error_message,
+                    )
+                    _set_joystick_status(
+                        enabled=True,
+                        serverEnabled=True,
+                        available=True,
+                        connected=True,
+                        device=device_name,
+                        message=error_message,
+                        camIdx=cam_idx,
+                        pan=command[0],
+                        tilt=command[1],
+                        zoom=command[2],
+                        fineControl=fine_control_enabled,
+                        lastCommand={
+                            "camIdx": cam_idx,
+                            "pan": command[0],
+                            "tilt": command[1],
+                            "zoom": command[2],
+                            "ok": False,
+                            "status": status,
+                            "message": error_message,
+                        },
+                        lastError=error_message,
+                    )
+                    time.sleep(JOYSTICK_COMMAND_INTERVAL_S)
+                    continue
+
+            if command != last_command:
+                last_command = command
+                _logger.info(
+                    "Joystick: input cam=%s pan=%.2f tilt=%.2f zoom=%.2f",
+                    cam_idx + 1,
+                    command[0],
+                    command[1],
+                    command[2],
+                )
+            message = (
+                "Server joystick input idle"
+                if command == (0.0, 0.0, 0.0)
+                else "Server joystick sending PTZ input"
+            )
+            _set_joystick_status(
+                enabled=True,
+                serverEnabled=True,
+                available=True,
+                connected=True,
+                device=device_name,
+                message=message,
+                camIdx=cam_idx,
+                pan=command[0],
+                tilt=command[1],
+                zoom=command[2],
+                fineControl=fine_control_enabled,
+                lastCommand={
+                    "camIdx": cam_idx,
+                    "pan": command[0],
+                    "tilt": command[1],
+                    "zoom": command[2],
+                    "ok": last_sent_command == command and last_sent_cam == cam_idx,
+                    "status": 200,
+                    "message": message,
+                },
+                lastError="",
+            )
+            time.sleep(JOYSTICK_POLL_INTERVAL_S)
+        except Exception as exc:
+            if last_sent_command != (0.0, 0.0, 0.0):
+                _server_joystick_stop(last_sent_cam)
+            joystick = None
+            last_sent_command = None
+            last_device_name = ""
+            fine_control_enabled = False
+            last_button_states = {}
+            _logger.warning("Joystick: error: %r", exc)
+            _set_joystick_status(
+                enabled=True,
+                serverEnabled=True,
+                available=True,
+                connected=False,
+                device="",
+                message=f"Server joystick error: {exc}",
+                camIdx=None,
+                pan=0.0,
+                tilt=0.0,
+                zoom=0.0,
+                fineControl=False,
+                lastCommand=None,
+                lastError=str(exc),
+            )
+            time.sleep(1.0)
+
+
 # ── HTTP handler ───────────────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):  # noqa: A002
@@ -1879,6 +2781,8 @@ class Handler(BaseHTTPRequestHandler):
             self._sse()
         elif path == "/api/devices":
             self._json(200, list_usb_devices())
+        elif path == "/api/joystick/status":
+            self._json(200, _get_joystick_status())
         elif path == "/api/system":
             self._json(
                 200,
@@ -2012,92 +2916,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"ok": False, "error": "Invalid PTZ command payload"})
             return
 
-        settings = load_settings()
-        cameras = settings.get("cameras") or []
-        if cam_idx < 0 or cam_idx >= len(cameras):
-            self._json(404, {"ok": False, "error": "Camera not found"})
-            return
-
-        cfg = cameras[cam_idx] or {}
-        ip = str(cfg.get("ip", "")).strip()
-        if not ip:
-            self._json(400, {"ok": False, "error": "Camera IP is required"})
-            return
-
-        is_stop = pan == 0 and tilt == 0 and zoom == 0
-        if not is_stop:
-            block_reason = _live_movement_block_reason(settings, cam_idx, cfg)
-            if block_reason:
-                if block_reason == "Protected live camera is on ATEM program.":
-                    block_reason = (
-                        "Protected live camera is on ATEM program. Switch cameras "
-                        "or turn off Protect Live Camera before moving."
-                    )
-                self._json(409, {"ok": False, "error": block_reason})
-                return
-
-        with _get_ptz_camera_lock(cam_idx):
-            fresh, last_seen = _claim_ptz_command_id(cam_idx, command_id)
-            if not fresh:
-                self._json(
-                    200,
-                    {
-                        "ok": True,
-                        "stale": True,
-                        "commandId": command_id,
-                        "lastCommandId": last_seen,
-                        "camIdx": cam_idx,
-                        "pan": pan,
-                        "tilt": tilt,
-                        "zoom": zoom,
-                    },
-                )
-                return
-
-            port = int(cfg.get("port", 52381) or 52381)
-            visca_addr = int(cfg.get("viscaAddr", 1) or 1)
-            deadzone = 0.20
-            pan_mag = abs(pan)
-            tilt_mag = abs(tilt)
-            pan_dir = 0x03 if pan_mag < deadzone else (0x01 if pan < 0 else 0x02)
-            tilt_dir = 0x03 if tilt_mag < deadzone else (0x01 if tilt > 0 else 0x02)
-            pan_speed = (
-                1 if pan_dir == 0x03 else max(1, min(0x10, int(round(pan_mag * 0x10))))
-            )
-            tilt_speed = (
-                1
-                if tilt_dir == 0x03
-                else max(1, min(0x10, int(round(tilt_mag * 0x10))))
-            )
-
-            pt_ok, pt_message = send_camera_pan_tilt_drive(
-                ip,
-                port,
-                pan_speed,
-                tilt_speed,
-                pan_dir,
-                tilt_dir,
-                camera_address=visca_addr,
-                cfg=cfg,
-            )
-            zoom_ok, zoom_message = send_camera_zoom_drive(
-                ip, port, zoom, camera_address=visca_addr, cfg=cfg
-            )
-            ok = pt_ok and zoom_ok
-        self._json(
-            200 if ok else 502,
-            {
-                "ok": ok,
-                "stale": False,
-                "commandId": command_id,
-                "camIdx": cam_idx,
-                "pan": pan,
-                "tilt": tilt,
-                "zoom": zoom,
-                "panTiltMessage": pt_message,
-                "zoomMessage": zoom_message,
-            },
-        )
+        status, response = _execute_ptz_drive(cam_idx, pan, tilt, zoom, command_id)
+        self._json(status, response)
 
     def _handle_atem_cut(self):
         """
@@ -2651,6 +3471,10 @@ if __name__ == "__main__":
         )
     atem_thread = threading.Thread(target=_atem_loop, daemon=True, name="atem")
     atem_thread.start()
+    joystick_thread = threading.Thread(
+        target=_joystick_loop, daemon=True, name="joystick"
+    )
+    joystick_thread.start()
     host, port = "0.0.0.0", 5001
     httpd = ThreadedHTTPServer((host, port), Handler)
     logger.info(f"PTZ Preset Control listening on http://localhost:{port}")
