@@ -171,6 +171,7 @@ DEFAULT_SETTINGS = {
             "hatNudge": True,
         },
         "zoomCompensationCurve": "linear",
+        "unresponsivenessTimeoutS": 5.0,
     },
     "virtualJoystick": {
         "enabled": True,
@@ -640,6 +641,7 @@ _joystick_status = {
     "lastCommand": None,
     "lastError": "",
     "updatedAt": 0.0,
+    "stale": False,
 }
 
 _JOYSTICK_PROFILES = {
@@ -745,6 +747,15 @@ def _set_joystick_status(**updates):
 def _get_joystick_status() -> dict:
     with _joystick_status_lock:
         return dict(_joystick_status)
+
+
+def _check_joystick_staleness(timeout_s: float) -> bool:
+    status = _get_joystick_status()
+    if not status.get("connected"):
+        return False
+    now = time.time()
+    updated_at = float(status.get("updatedAt") or 0.0)
+    return (now - updated_at) > timeout_s
 
 
 def _set_atem_last_action(
@@ -2134,6 +2145,10 @@ def _normalize_server_joystick_config(settings: dict) -> dict:
         "serverActions": {key: bool(value) for key, value in server_actions.items()},
         "dpadMap": dpad_map,
         "useDpad": bool(raw.get("useDpad", profile.get("useDpad", False))),
+        "unresponsivenessTimeoutS": float(
+            raw.get("unresponsivenessTimeoutS")
+            or DEFAULT_SETTINGS["joystick"]["unresponsivenessTimeoutS"]
+        ),
     }
 
 
@@ -2411,6 +2426,7 @@ def _joystick_loop():
     zoom_axis_active = False
     fine_control_enabled = False
     last_button_states: dict[str, bool] = {}
+    last_status_update_at = 0.0
 
     while True:
         settings = load_settings()
@@ -2445,7 +2461,9 @@ def _joystick_loop():
                 fineControl=False,
                 lastCommand=None,
                 lastError="",
+                stale=False,
             )
+            last_status_update_at = 0.0
             time.sleep(0.5)
             continue
 
@@ -2480,11 +2498,52 @@ def _joystick_loop():
                         fineControl=False,
                         lastCommand=None,
                         lastError=f"pygame={exc}; hidapi={hid_exc}",
+                        stale=False,
                     )
+                    last_status_update_at = 0.0
                     time.sleep(2.0)
                     continue
 
         try:
+            # Check for joystick unresponsiveness timeout
+            timeout_s = float(cfg.get("unresponsivenessTimeoutS") or 5.0)
+            now = time.time()
+            if (
+                joystick is not None
+                and last_status_update_at > 0.0
+                and (now - last_status_update_at) > timeout_s
+            ):
+                _logger.warning(
+                    "Joystick: unresponsive for %.1f seconds; resetting connection",
+                    now - last_status_update_at,
+                )
+                if hid_joystick is not None:
+                    hid_joystick.close()
+                    hid_joystick = None
+                joystick = None
+                last_sent_command = (0.0, 0.0, 0.0)
+                fine_control_enabled = False
+                last_button_states = {}
+                _set_joystick_status(
+                    enabled=True,
+                    serverEnabled=True,
+                    available=True,
+                    connected=False,
+                    device=last_device_name,
+                    message=f"Joystick unresponsive for {timeout_s}s; reconnecting...",
+                    camIdx=None,
+                    pan=0.0,
+                    tilt=0.0,
+                    zoom=0.0,
+                    fineControl=False,
+                    lastCommand=None,
+                    lastError="Unresponsive timeout",
+                    stale=True,
+                )
+                last_device_name = ""
+                time.sleep(0.5)
+                continue
+
             if pygame:
                 pygame.event.pump()
                 count = pygame.joystick.get_count()
@@ -2525,7 +2584,9 @@ def _joystick_loop():
                         fineControl=False,
                         lastCommand=None,
                         lastError=hid_error,
+                        stale=False,
                     )
+                    last_status_update_at = time.time()
                     time.sleep(0.5)
                     continue
             elif hid_joystick is not None:
@@ -2707,6 +2768,7 @@ def _joystick_loop():
                 },
                 lastError="",
             )
+            last_status_update_at = time.time()
             time.sleep(JOYSTICK_POLL_INTERVAL_S)
         except Exception as exc:
             if last_sent_command != (0.0, 0.0, 0.0):
@@ -2731,7 +2793,9 @@ def _joystick_loop():
                 fineControl=False,
                 lastCommand=None,
                 lastError=str(exc),
+                stale=False,
             )
+            last_status_update_at = 0.0
             time.sleep(1.0)
 
 
