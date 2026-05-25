@@ -1733,6 +1733,10 @@
           <option value="quadratic">Quadratic</option>
         </select>
       </div>
+      <div class="field">
+        <label for="f-joystick-unresponsiveness-timeout">Unresponsiveness Timeout (seconds)</label>
+        <input id="f-joystick-unresponsiveness-timeout" type="number" min="1" max="30" step="0.5" value="5" />
+      </div>
       <div id="joystick-status" style="color:var(--muted); font-size:0.85rem; margin-top:12px;">
         Browser: <span id="joystick-status-text">Not connected</span><br/>
         Server: <span id="joystick-server-status-text">Disabled</span>
@@ -1913,6 +1917,7 @@
       dpadMap: { ...(profile.dpadMap || {}) },
       useDpad: !!profile.useDpad,
       zoomCompensationCurve: "linear",
+      unresponsivenessTimeoutS: 5.0,
     };
 
     return {
@@ -4514,6 +4519,7 @@
   const elJoystickTiltSens = document.getElementById('f-joystick-tilt-sens');
   const elJoystickZoomSens = document.getElementById('f-joystick-zoom-sens');
   const elJoystickZoomComp = document.getElementById('f-joystick-zoom-comp');
+  const elJoystickUnresponsivenessTimeout = document.getElementById('f-joystick-unresponsiveness-timeout');
   const elJoystickStatus = document.getElementById('joystick-status-text');
   const elJoystickServerStatus = document.getElementById('joystick-server-status-text');
   const elJoystickDebug = document.getElementById('joystick-debug');
@@ -4659,6 +4665,9 @@
     if (elJoystickZoomComp) {
       elJoystickZoomComp.value = js.zoomCompensationCurve || 'linear';
     }
+    if (elJoystickUnresponsivenessTimeout) {
+      elJoystickUnresponsivenessTimeout.value = (js.unresponsivenessTimeoutS || 5.0).toFixed(1);
+    }
     updateVirtualJoystickVisibility();
     updateJoystickStatus();
     scheduleGamepadPolling();
@@ -4693,6 +4702,7 @@
         zoom: parseFloat(elJoystickZoomSens?.value || 0.5),
       },
       zoomCompensationCurve: elJoystickZoomComp?.value || 'linear',
+      unresponsivenessTimeoutS: parseFloat(elJoystickUnresponsivenessTimeout?.value || 5.0),
     });
 
     state.virtualJoystick = normalizeVirtualJoystickSettings({
@@ -4742,16 +4752,24 @@
     if (elJoystickServerStatus) {
       if (!state.joystick.serverEnabled) {
         elJoystickServerStatus.textContent = 'Disabled';
+        elJoystickServerStatus.style.color = '';
       } else if (state.serverJoystickStatus) {
         const s = state.serverJoystickStatus;
-        const camLabel = Number.isInteger(s.camIdx) ? ` CAM ${s.camIdx + 1}` : '';
-        const fineLabel = s.fineControl ? ' fine' : '';
-        const deviceLabel = (s.device ? `${s.device}${camLabel}${fineLabel}` : `${camLabel}${fineLabel}`).trim();
-        elJoystickServerStatus.textContent = deviceLabel
-          ? `${s.message || 'Enabled'} (${deviceLabel})`
-          : (s.message || 'Enabled');
+        if (s.stale) {
+          elJoystickServerStatus.textContent = '⚠ Joystick unresponsive - reconnecting...';
+          elJoystickServerStatus.style.color = 'orange';
+        } else {
+          const camLabel = Number.isInteger(s.camIdx) ? ` CAM ${s.camIdx + 1}` : '';
+          const fineLabel = s.fineControl ? ' fine' : '';
+          const deviceLabel = (s.device ? `${s.device}${camLabel}${fineLabel}` : `${camLabel}${fineLabel}`).trim();
+          elJoystickServerStatus.textContent = deviceLabel
+            ? `${s.message || 'Enabled'} (${deviceLabel})`
+            : (s.message || 'Enabled');
+          elJoystickServerStatus.style.color = '';
+        }
       } else {
         elJoystickServerStatus.textContent = 'Starting...';
+        elJoystickServerStatus.style.color = '';
       }
     }
   }
@@ -4788,6 +4806,7 @@
       elJoystickTiltSens,
       elJoystickZoomSens,
       elJoystickZoomComp,
+      elJoystickUnresponsivenessTimeout,
     ].forEach(el => {
       if (el) {
         el.addEventListener('change', saveJoystickSettings);
