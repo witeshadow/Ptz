@@ -2,4 +2,4 @@
 set -eu
 
 cd "$(dirname "$0")/.."
-exec /usr/local/bin/python3 server.py
+exec /usr/bin/env python3 server.py
